@@ -46,7 +46,7 @@ To disable this feature, set `XUI_HIDDEN_INBOUND_REMARKS` to a value that does n
 Example:
 
 ```bash
-XUI_HIDDEN_INBOUND_REMARKS=nothing
+XUI_HIDDEN_INBOUND_REMARKS=disable
 XRAY_VMESS_AEAD_FORCED=false
 ```
 
@@ -55,11 +55,3 @@ Then restart the service:
 ```bash
 systemctl restart x-ui
 ```
-
-You can also use another placeholder value such as:
-
-```bash
-XUI_HIDDEN_INBOUND_REMARKS=disabled
-```
-
-The important point is that the value must not be the same as any existing inbound remark.
