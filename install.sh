@@ -1348,6 +1348,7 @@ mkdir -p /etc/default
 
 cat > /etc/default/x-ui <<'XUIENV'
 XUI_HIDDEN_INBOUND_REMARKS=s1,s2,s3,s4,s5,s6
+XUI_HIDDEN_OUTBOUND_TAGS=s1-DontTouchMe
 XRAY_VMESS_AEAD_FORCED=false
 XUIENV
 
