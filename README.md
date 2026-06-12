@@ -1,3 +1,6 @@
+بزودی این بخش راهنما رو آپدیت میکنم
+
+
 ## Quick Start
 
 Run the following command to install or update the panel:
