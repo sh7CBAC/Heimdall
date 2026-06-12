@@ -1,3 +1,4 @@
+```bash
 #!/usr/bin/env bash
 
 set -u
@@ -8,16 +9,27 @@ yellow='\033[0;33m'
 blue='\033[0;34m'
 plain='\033[0m'
 
-log_info() {
+clear_screen() {
+    if [[ -t 1 ]]; then
+        printf '\033[2J\033[3J\033[H'
+    fi
+}
+
+info() {
     echo -e "${green}[INFO]${plain} $*"
 }
 
-log_error() {
+error() {
     echo -e "${red}[ERROR]${plain} $*" >&2
 }
 
+pause_screen() {
+    echo
+    read -r -p "Press Enter to return..." _
+}
+
 if [[ "${EUID}" -ne 0 ]]; then
-    log_error "Run this command as root."
+    error "Run y-ui as root."
     exit 1
 fi
 
@@ -51,17 +63,19 @@ chmod 600 "${xui_env_file}"
 
 trim() {
     local value="$1"
+
     value="${value#"${value%%[![:space:]]*}"}"
     value="${value%"${value##*[![:space:]]}"}"
+
     printf '%s' "${value}"
 }
 
 normalize_csv() {
     local input="$1"
-    local raw item
+    local raw item joined
+    local -a parts=()
+    local -a output=()
     local -A seen=()
-    local output=()
-    local parts=()
 
     IFS=',' read -r -a parts <<< "${input}"
 
@@ -69,22 +83,21 @@ normalize_csv() {
         item="$(trim "${raw}")"
         [[ -z "${item}" ]] && continue
 
-        if [[ -z "${seen[${item}]+x}" ]]; then
+        if [[ -z "${seen["${item}"]+x}" ]]; then
             seen["${item}"]=1
             output+=("${item}")
         fi
     done
 
-    local joined=""
     if [[ ${#output[@]} -gt 0 ]]; then
         joined="$(IFS=','; printf '%s' "${output[*]}")"
+        printf '%s' "${joined}"
     fi
-
-    printf '%s' "${joined}"
 }
 
 get_env_value() {
     local key="$1"
+
     awk -v key="${key}" '
         index($0, key "=") == 1 {
             print substr($0, length(key) + 2)
@@ -104,6 +117,7 @@ set_env_value() {
         BEGIN {
             written = 0
         }
+
         index($0, key "=") == 1 {
             if (!written) {
                 print key "=" value
@@ -111,9 +125,11 @@ set_env_value() {
             }
             next
         }
+
         {
             print
         }
+
         END {
             if (!written) {
                 print key "=" value
@@ -129,42 +145,43 @@ set_env_value() {
 add_values() {
     local current="$1"
     local requested="$2"
+
     normalize_csv "${current},${requested}"
 }
 
 remove_values() {
     local current="$1"
     local requested="$2"
-    local raw item
-    local current_parts=()
-    local remove_parts=()
-    local output=()
+    local raw item joined
+    local -a current_parts=()
+    local -a remove_parts=()
+    local -a output=()
     local -A remove_set=()
     local -A seen=()
 
     IFS=',' read -r -a remove_parts <<< "$(normalize_csv "${requested}")"
+
     for raw in "${remove_parts[@]}"; do
         item="$(trim "${raw}")"
         [[ -n "${item}" ]] && remove_set["${item}"]=1
     done
 
     IFS=',' read -r -a current_parts <<< "$(normalize_csv "${current}")"
+
     for raw in "${current_parts[@]}"; do
         item="$(trim "${raw}")"
         [[ -z "${item}" ]] && continue
-        [[ -n "${remove_set[${item}]+x}" ]] && continue
-        [[ -n "${seen[${item}]+x}" ]] && continue
+        [[ -n "${remove_set["${item}"]+x}" ]] && continue
+        [[ -n "${seen["${item}"]+x}" ]] && continue
 
         seen["${item}"]=1
         output+=("${item}")
     done
 
-    local joined=""
     if [[ ${#output[@]} -gt 0 ]]; then
         joined="$(IFS=','; printf '%s' "${output[*]}")"
+        printf '%s' "${joined}"
     fi
-
-    printf '%s' "${joined}"
 }
 
 ensure_systemd_environment_file() {
@@ -174,24 +191,22 @@ ensure_systemd_environment_file() {
 
     install -d -m 755 /etc/systemd/system/x-ui.service.d
 
-    cat > /etc/systemd/system/x-ui.service.d/10-visibility-env.conf <<EOT
+    cat > /etc/systemd/system/x-ui.service.d/10-y-ui-env.conf <<EOF
 [Service]
 EnvironmentFile=-${xui_env_file}
-EOT
+EOF
 
     systemctl daemon-reload
 }
 
 restart_xui() {
-    echo
-
     if [[ "${release}" == "alpine" ]] && command -v rc-service >/dev/null 2>&1; then
         if rc-service x-ui restart; then
-            log_info "x-ui restarted successfully."
+            info "x-ui restarted successfully."
             return 0
         fi
 
-        log_error "Failed to restart x-ui."
+        error "Failed to restart x-ui."
         return 1
     fi
 
@@ -199,149 +214,211 @@ restart_xui() {
         ensure_systemd_environment_file
 
         if systemctl restart x-ui; then
-            log_info "x-ui restarted successfully."
-            systemctl --no-pager --full status x-ui | sed -n '1,8p'
+            info "x-ui restarted successfully."
             return 0
         fi
 
-        log_error "Failed to restart x-ui."
+        error "Failed to restart x-ui."
+        echo
         journalctl -u x-ui -n 30 --no-pager
         return 1
     fi
 
-    log_error "No supported service manager was found."
+    error "No supported service manager was found."
     return 1
 }
 
-show_current_config() {
+show_hidden_config() {
+    clear_screen
+
+    echo -e "${blue}Current Hidden Configuration${plain}"
     echo
-    echo -e "${blue}Current hidden-item configuration:${plain}"
-    echo "1. Inbounds : $(get_env_value XUI_HIDDEN_INBOUND_REMARKS)"
-    echo "2. Outbounds: $(get_env_value XUI_HIDDEN_OUTBOUND_TAGS)"
-    echo "3. Balancers: $(get_env_value XUI_HIDDEN_BALANCER_TAGS)"
-    echo "4. Clients  : $(get_env_value XUI_HIDDEN_CLIENT_EMAILS)"
+    echo "Inbound remarks : $(get_env_value XUI_HIDDEN_INBOUND_REMARKS)"
+    echo "Outbound tags   : $(get_env_value XUI_HIDDEN_OUTBOUND_TAGS)"
+    echo "Balancer tags   : $(get_env_value XUI_HIDDEN_BALANCER_TAGS)"
+    echo "Client emails   : $(get_env_value XUI_HIDDEN_CLIENT_EMAILS)"
     echo
-    echo "Configuration file: ${xui_env_file}"
+    echo "Environment file: ${xui_env_file}"
+
+    pause_screen
 }
 
-select_target() {
-    echo
-    echo -e "${blue}What do you want to configure?${plain}"
-    echo "1. Inbound remarks"
-    echo "2. Outbound tags"
-    echo "3. Balancer tags"
-    echo "4. Client emails"
-    echo "5. Show current configuration"
-    echo "0. Exit"
-    read -r -p "Choose an option [0-5]: " target_choice
-
-    case "${target_choice}" in
-        1)
-            target_key="XUI_HIDDEN_INBOUND_REMARKS"
-            target_label="Inbound remarks"
-            ;;
-        2)
-            target_key="XUI_HIDDEN_OUTBOUND_TAGS"
-            target_label="Outbound tags"
-            ;;
-        3)
-            target_key="XUI_HIDDEN_BALANCER_TAGS"
-            target_label="Balancer tags"
-            ;;
-        4)
-            target_key="XUI_HIDDEN_CLIENT_EMAILS"
-            target_label="Client emails"
-            ;;
-        5)
-            show_current_config
-            return 2
-            ;;
-        0)
-            exit 0
-            ;;
-        *)
-            log_error "Invalid option."
-            return 1
-            ;;
-    esac
-
-    return 0
-}
-
-configure_target() {
-    local current_value action input_value new_value
-
-    current_value="$(get_env_value "${target_key}")"
-
-    echo
-    echo -e "${blue}${target_label}${plain}"
-    echo "Current value: ${current_value}"
-    echo
-    echo "1. Replace the complete list"
-    echo "2. Add one or more values"
-    echo "3. Remove one or more values"
-    echo "4. Clear the list"
-    echo "0. Back"
-    read -r -p "Choose an action [0-4]: " action
-
-    case "${action}" in
-        1)
-            echo
-            echo "Enter one exact value or multiple comma-separated values."
-            echo "Prefix matching example: system-*"
-            read -r -p "New value: " input_value
-            new_value="$(normalize_csv "${input_value}")"
-            ;;
-        2)
-            echo
-            echo "Enter one value or multiple comma-separated values."
-            echo "Examples: client-1,client-2 or system-*,tunnel-*"
-            read -r -p "Values to add: " input_value
-            new_value="$(add_values "${current_value}" "${input_value}")"
-            ;;
-        3)
-            echo
-            echo "Enter the exact entries to remove from the configured list."
-            read -r -p "Values to remove: " input_value
-            new_value="$(remove_values "${current_value}" "${input_value}")"
-            ;;
-        4)
-            new_value=""
-            ;;
-        0)
-            return 0
-            ;;
-        *)
-            log_error "Invalid action."
-            return 1
-            ;;
-    esac
+apply_hidden_value() {
+    local target_key="$1"
+    local target_label="$2"
+    local new_value="$3"
 
     set_env_value "${target_key}" "${new_value}"
 
+    clear_screen
+    info "${target_label} updated."
     echo
-    log_info "${target_key} updated."
     echo "New value: ${new_value}"
+    echo
 
     restart_xui
+    pause_screen
 }
 
-main() {
+configure_hidden_target() {
+    local target_key="$1"
+    local target_label="$2"
+    local current_value action input_value new_value
+
     while true; do
-        select_target
-        case "$?" in
-            0)
-                configure_target
+        current_value="$(get_env_value "${target_key}")"
+
+        clear_screen
+        echo -e "${blue}${target_label}${plain}"
+        echo
+        echo "Current value: ${current_value}"
+        echo
+        echo "1. Replace the complete list"
+        echo "2. Add one or more values"
+        echo "3. Remove one or more values"
+        echo "4. Clear the list"
+        echo "0. Back"
+        echo
+        read -r -p "Choose an action [0-4]: " action
+
+        case "${action}" in
+            1)
+                clear_screen
+                echo -e "${blue}Replace ${target_label}${plain}"
+                echo
+                echo "Enter one exact value or multiple comma-separated values."
+                echo "Prefix example: system-*"
+                echo
+                read -r -p "New value: " input_value
+
+                new_value="$(normalize_csv "${input_value}")"
+                apply_hidden_value "${target_key}" "${target_label}" "${new_value}"
                 ;;
             2)
+                clear_screen
+                echo -e "${blue}Add to ${target_label}${plain}"
+                echo
+                echo "Enter one value or multiple comma-separated values."
+                echo "Examples: item-1,item-2 or system-*,tunnel-*"
+                echo
+                read -r -p "Values to add: " input_value
+
+                new_value="$(add_values "${current_value}" "${input_value}")"
+                apply_hidden_value "${target_key}" "${target_label}" "${new_value}"
+                ;;
+            3)
+                clear_screen
+                echo -e "${blue}Remove from ${target_label}${plain}"
+                echo
+                echo "Enter the exact configured entries to remove."
+                echo
+                read -r -p "Values to remove: " input_value
+
+                new_value="$(remove_values "${current_value}" "${input_value}")"
+                apply_hidden_value "${target_key}" "${target_label}" "${new_value}"
+                ;;
+            4)
+                clear_screen
+                echo -e "${yellow}Clear ${target_label}?${plain}"
+                echo
+                read -r -p "Type yes to confirm: " input_value
+
+                if [[ "${input_value}" == "yes" ]]; then
+                    apply_hidden_value "${target_key}" "${target_label}" ""
+                fi
+                ;;
+            0)
+                return 0
                 ;;
             *)
+                clear_screen
+                error "Invalid action."
+                pause_screen
                 ;;
         esac
-
-        echo
-        read -r -p "Press Enter to continue..." _
     done
 }
 
-main
+hidden_items_menu() {
+    local choice
+
+    while true; do
+        clear_screen
+        echo -e "${blue}Hidden Items Management${plain}"
+        echo
+        echo "1. Manage inbound remarks"
+        echo "2. Manage outbound tags"
+        echo "3. Manage balancer tags"
+        echo "4. Manage client emails"
+        echo "5. Show current hidden configuration"
+        echo "0. Back to main menu"
+        echo
+        read -r -p "Choose an option [0-5]: " choice
+
+        case "${choice}" in
+            1)
+                configure_hidden_target \
+                    "XUI_HIDDEN_INBOUND_REMARKS" \
+                    "Inbound remarks"
+                ;;
+            2)
+                configure_hidden_target \
+                    "XUI_HIDDEN_OUTBOUND_TAGS" \
+                    "Outbound tags"
+                ;;
+            3)
+                configure_hidden_target \
+                    "XUI_HIDDEN_BALANCER_TAGS" \
+                    "Balancer tags"
+                ;;
+            4)
+                configure_hidden_target \
+                    "XUI_HIDDEN_CLIENT_EMAILS" \
+                    "Client emails"
+                ;;
+            5)
+                show_hidden_config
+                ;;
+            0)
+                return 0
+                ;;
+            *)
+                clear_screen
+                error "Invalid option."
+                pause_screen
+                ;;
+        esac
+    done
+}
+
+main_menu() {
+    local choice
+
+    while true; do
+        clear_screen
+        echo -e "${blue}Y-UI Management Script${plain}"
+        echo
+        echo "1. Hidden items management"
+        echo "0. Exit"
+        echo
+        read -r -p "Choose an option [0-1]: " choice
+
+        case "${choice}" in
+            1)
+                hidden_items_menu
+                ;;
+            0)
+                clear_screen
+                exit 0
+                ;;
+            *)
+                clear_screen
+                error "Invalid option."
+                pause_screen
+                ;;
+        esac
+    done
+}
+
+main_menu
+```
