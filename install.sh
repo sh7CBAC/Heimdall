@@ -1371,22 +1371,19 @@ set_xui_env_default() {
 
 # Hidden-item rules:
 #
-# 1) Hide one exact value:
-#    XUI_HIDDEN_INBOUND_REMARKS=inbound-1
+# Hide one exact value:
+# XUI_HIDDEN_INBOUND_REMARKS=inbound-1
 #
-# 2) Hide multiple exact values (comma-separated):
-#    XUI_HIDDEN_OUTBOUND_TAGS=outbound-1,outbound-2,outbound-3
+# Hide multiple exact values:
+# XUI_HIDDEN_OUTBOUND_TAGS=outbound-1,outbound-2,outbound-3
 #
-# 3) Hide every value starting with a prefix (put * at the end):
-#    XUI_HIDDEN_CLIENT_EMAILS=system-*,tunnel-*
+# Hide every value starting with a prefix:
+# XUI_HIDDEN_CLIENT_EMAILS=system-*,tunnel-*
 #
-# 4) Combine exact and prefix rules:
-#    XUI_HIDDEN_CLIENT_EMAILS=admin,system-*,tunnel-*
+# Combine exact and prefix rules:
+# XUI_HIDDEN_CLIENT_EMAILS=admin,system-*,tunnel-*
 #
-# Spaces around comma-separated values are trimmed, but values without spaces
-# are recommended. Leave a value empty to disable hiding for that item type.
-# Suffix rules such as *-internal and contains rules such as *internal* are not
-# supported by the current implementation.
+# Leave a value empty to disable hiding for that item type.
 
 set_xui_env_default "XUI_HIDDEN_INBOUND_REMARKS" ""
 set_xui_env_default "XUI_HIDDEN_OUTBOUND_TAGS" ""
