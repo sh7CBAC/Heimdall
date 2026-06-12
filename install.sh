@@ -1388,11 +1388,11 @@ set_xui_env_default() {
 # Suffix rules such as *-internal and contains rules such as *internal* are not
 # supported by the current implementation.
 
-set_xui_env "XUI_HIDDEN_INBOUND_REMARKS" "Your-Inbound-Name"
-set_xui_env "XUI_HIDDEN_OUTBOUND_TAGS" "Your-Outbound-Name"
-set_xui_env "XUI_HIDDEN_BALANCER_TAGS" "Your-Balancer-Name"
-set_xui_env "XUI_HIDDEN_CLIENT_EMAILS" "Your-Client-Name"
-set_xui_env "XRAY_VMESS_AEAD_FORCED" "false"
+set_xui_env_default "XUI_HIDDEN_INBOUND_REMARKS" ""
+set_xui_env_default "XUI_HIDDEN_OUTBOUND_TAGS" ""
+set_xui_env_default "XUI_HIDDEN_BALANCER_TAGS" ""
+set_xui_env_default "XUI_HIDDEN_CLIENT_EMAILS" ""
+set_xui_env_default "XRAY_VMESS_AEAD_FORCED" "false"
 
 if [[ "${release}" != "alpine" ]] && [[ -f "${xui_service}/x-ui.service" ]]; then
     if ! grep -Fqx "EnvironmentFile=-${xui_env_file}" "${xui_service}/x-ui.service"; then
