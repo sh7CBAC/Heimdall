@@ -1360,16 +1360,33 @@ esac
 mkdir -p "$(dirname "${xui_env_file}")"
 touch "${xui_env_file}"
 
-set_xui_env() {
+set_xui_env_default() {
     local key="$1"
     local value="$2"
 
-    if grep -q "^${key}=" "${xui_env_file}"; then
-        sed -i "s|^${key}=.*|${key}=${value}|" "${xui_env_file}"
-    else
+    if ! grep -q "^${key}=" "${xui_env_file}"; then
         printf '%s=%s\n' "${key}" "${value}" >> "${xui_env_file}"
     fi
 }
+
+# Hidden-item rules:
+#
+# 1) Hide one exact value:
+#    XUI_HIDDEN_INBOUND_REMARKS=inbound-1
+#
+# 2) Hide multiple exact values (comma-separated):
+#    XUI_HIDDEN_OUTBOUND_TAGS=outbound-1,outbound-2,outbound-3
+#
+# 3) Hide every value starting with a prefix (put * at the end):
+#    XUI_HIDDEN_CLIENT_EMAILS=system-*,tunnel-*
+#
+# 4) Combine exact and prefix rules:
+#    XUI_HIDDEN_CLIENT_EMAILS=admin,system-*,tunnel-*
+#
+# Spaces around comma-separated values are trimmed, but values without spaces
+# are recommended. Leave a value empty to disable hiding for that item type.
+# Suffix rules such as *-internal and contains rules such as *internal* are not
+# supported by the current implementation.
 
 set_xui_env "XUI_HIDDEN_INBOUND_REMARKS" "Your-Inbound-Name"
 set_xui_env "XUI_HIDDEN_OUTBOUND_TAGS" "Your-Outbound-Name"
@@ -1377,11 +1394,11 @@ set_xui_env "XUI_HIDDEN_BALANCER_TAGS" "Your-Balancer-Name"
 set_xui_env "XUI_HIDDEN_CLIENT_EMAILS" "Your-Client-Name"
 set_xui_env "XRAY_VMESS_AEAD_FORCED" "false"
 
-if [[ "${release}" != "alpine" ]] && [[ -f /etc/systemd/system/x-ui.service ]]; then
-    if ! grep -q '^EnvironmentFile=' /etc/systemd/system/x-ui.service; then
+if [[ "${release}" != "alpine" ]] && [[ -f "${xui_service}/x-ui.service" ]]; then
+    if ! grep -Fqx "EnvironmentFile=-${xui_env_file}" "${xui_service}/x-ui.service"; then
         sed -i \
             "/^\[Service\]/a EnvironmentFile=-${xui_env_file}" \
-            /etc/systemd/system/x-ui.service
+            "${xui_service}/x-ui.service"
     fi
 
     systemctl daemon-reload
