@@ -1343,21 +1343,51 @@ echo -e "${green}Running...${plain}"
 install_base
 install_x-ui $1
 
-# ---- custom hidden inbound config ----
-mkdir -p /etc/default
+# ---- custom visibility config ----
 
-cat > /etc/default/x-ui <<'XUIENV'
-XUI_HIDDEN_INBOUND_REMARKS=s1,s2,s3,s4,s5,s6
-XUI_HIDDEN_OUTBOUND_TAGS=s1-DontTouchMe
-XRAY_VMESS_AEAD_FORCED=false
-XUIENV
+case "${release}" in
+    ubuntu | debian | armbian)
+        xui_env_file="/etc/default/x-ui"
+        ;;
+    arch | manjaro | parch | alpine)
+        xui_env_file="/etc/conf.d/x-ui"
+        ;;
+    *)
+        xui_env_file="/etc/sysconfig/x-ui"
+        ;;
+esac
 
-if [ -f /etc/systemd/system/x-ui.service ]; then
-    if ! grep -q "EnvironmentFile=-/etc/default/x-ui" /etc/systemd/system/x-ui.service; then
-        sed -i '/^\[Service\]/a EnvironmentFile=-/etc/default/x-ui' /etc/systemd/system/x-ui.service
+mkdir -p "$(dirname "${xui_env_file}")"
+touch "${xui_env_file}"
+
+set_xui_env() {
+    local key="$1"
+    local value="$2"
+
+    if grep -q "^${key}=" "${xui_env_file}"; then
+        sed -i "s|^${key}=.*|${key}=${value}|" "${xui_env_file}"
+    else
+        printf '%s=%s\n' "${key}" "${value}" >> "${xui_env_file}"
     fi
+}
+
+set_xui_env "XUI_HIDDEN_INBOUND_REMARKS" "Your-Inbound-Name"
+set_xui_env "XUI_HIDDEN_OUTBOUND_TAGS" "Your-Outbound-Name"
+set_xui_env "XUI_HIDDEN_BALANCER_TAGS" "Your-Balancer-Name"
+set_xui_env "XUI_HIDDEN_CLIENT_EMAILS" "Your-Client-Name"
+set_xui_env "XRAY_VMESS_AEAD_FORCED" "false"
+
+if [[ "${release}" != "alpine" ]] && [[ -f /etc/systemd/system/x-ui.service ]]; then
+    if ! grep -q '^EnvironmentFile=' /etc/systemd/system/x-ui.service; then
+        sed -i \
+            "/^\[Service\]/a EnvironmentFile=-${xui_env_file}" \
+            /etc/systemd/system/x-ui.service
+    fi
+
+    systemctl daemon-reload
+    systemctl restart x-ui
+elif [[ "${release}" == "alpine" ]]; then
+    rc-service x-ui restart
 fi
 
-systemctl daemon-reload
-systemctl restart x-ui
-# ---- end custom hidden inbound config ----
+# ---- end custom visibility config ----
