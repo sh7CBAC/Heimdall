@@ -1164,11 +1164,22 @@ install_x-ui() {
             exit 1
         fi
     fi
-    curl -4fLRo /usr/bin/x-ui-temp https://raw.githubusercontent.com/sh7CBAC/3x-ui-custom/main/x-ui.sh
-    if [[ $? -ne 0 ]]; then
-        echo -e "${red}Failed to download x-ui.sh${plain}"
-        exit 1
-    fi
+curl -4fLRo /usr/bin/x-ui-temp https://raw.githubusercontent.com/sh7CBAC/3x-ui-custom/main/x-ui.sh
+if [[ $? -ne 0 ]]; then
+    echo -e "${red}Failed to download x-ui.sh${plain}"
+    exit 1
+fi
+
+# Install custom visibility management command
+curl -4fLRo /usr/bin/y-ui \
+    https://raw.githubusercontent.com/sh7CBAC/3x-ui-custom/main/y-ui.sh
+
+if [[ $? -ne 0 ]]; then
+    echo -e "${red}Failed to download y-ui.sh${plain}"
+    exit 1
+fi
+
+chmod +x /usr/bin/y-ui
 
     # Stop x-ui service and remove old resources
     if [[ -e ${xui_folder}/ ]]; then
