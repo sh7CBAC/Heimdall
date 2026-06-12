@@ -1,4 +1,3 @@
-```bash
 #!/usr/bin/env bash
 
 set -u
@@ -191,10 +190,10 @@ ensure_systemd_environment_file() {
 
     install -d -m 755 /etc/systemd/system/x-ui.service.d
 
-    cat > /etc/systemd/system/x-ui.service.d/10-y-ui-env.conf <<EOF
+    cat > /etc/systemd/system/x-ui.service.d/10-y-ui-env.conf <<ENVEOF
 [Service]
 EnvironmentFile=-${xui_env_file}
-EOF
+ENVEOF
 
     systemctl daemon-reload
 }
@@ -421,4 +420,3 @@ main_menu() {
 }
 
 main_menu
-```
