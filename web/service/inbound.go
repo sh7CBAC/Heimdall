@@ -222,16 +222,27 @@ func (s *InboundService) enrichClientStats(db *gorm.DB, inbounds []*model.Inboun
 }
 
 // GetInbounds retrieves all inbounds for a specific user with client stats.
+// GetInbounds retrieves all visible inbounds for a specific user with client stats.
 func (s *InboundService) GetInbounds(userId int) ([]*model.Inbound, error) {
 	db := database.GetDB()
 	var inbounds []*model.Inbound
-	err := db.Model(model.Inbound{}).Preload("ClientStats").Where("user_id = ?", userId).Order("id ASC").Find(&inbounds).Error
+
+	err := db.Model(model.Inbound{}).
+		Preload("ClientStats").
+		Where("user_id = ?", userId).
+		Order("id ASC").
+		Find(&inbounds).Error
+
 	if err != nil && err != gorm.ErrRecordNotFound {
 		return nil, err
 	}
+
+	inbounds = filterVisibleInbounds(inbounds)
+
 	s.enrichClientStats(db, inbounds)
 	s.annotateFallbackParents(db, inbounds)
 	s.annotateLocalOriginGuid(inbounds)
+
 	return inbounds, nil
 }
 
@@ -268,15 +279,26 @@ func (s *InboundService) annotateLocalOriginGuid(inbounds []*model.Inbound) {
 func (s *InboundService) GetInboundsSlim(userId int) ([]*model.Inbound, error) {
 	db := database.GetDB()
 	var inbounds []*model.Inbound
-	err := db.Model(model.Inbound{}).Preload("ClientStats").Where("user_id = ?", userId).Order("id ASC").Find(&inbounds).Error
+
+	err := db.Model(model.Inbound{}).
+		Preload("ClientStats").
+		Where("user_id = ?", userId).
+		Order("id ASC").
+		Find(&inbounds).Error
+
 	if err != nil && err != gorm.ErrRecordNotFound {
 		return nil, err
 	}
+
+	inbounds = filterVisibleInbounds(inbounds)
+
 	s.annotateFallbackParents(db, inbounds)
 	s.annotateLocalOriginGuid(inbounds)
+
 	for _, ib := range inbounds {
 		ib.Settings = slimSettingsClients(ib.Settings)
 	}
+
 	return inbounds, nil
 }
 
@@ -376,16 +398,23 @@ func (s *InboundService) GetInboundOptions(userId int) ([]InboundOption, error) 
 		StreamSettings string `gorm:"column:stream_settings"`
 		Settings       string `gorm:"column:settings"`
 	}
+
 	err := db.Table("inbounds").
 		Select("id, remark, tag, protocol, port, stream_settings, settings").
 		Where("user_id = ?", userId).
 		Order("id ASC").
 		Scan(&rows).Error
+
 	if err != nil && err != gorm.ErrRecordNotFound {
 		return nil, err
 	}
+
 	out := make([]InboundOption, 0, len(rows))
 	for _, r := range rows {
+		if isHiddenInboundRemark(r.Remark) {
+			continue
+		}
+
 		out = append(out, InboundOption{
 			Id:             r.Id,
 			Remark:         r.Remark,
@@ -396,6 +425,7 @@ func (s *InboundService) GetInboundOptions(userId int) ([]InboundOption, error) 
 			SsMethod:       inboundShadowsocksMethod(r.Protocol, r.Settings),
 		})
 	}
+
 	return out, nil
 }
 
@@ -1008,11 +1038,21 @@ func (s *InboundService) GetInbound(id int) (*model.Inbound, error) {
 func (s *InboundService) GetInboundDetail(id int) (*model.Inbound, error) {
 	db := database.GetDB()
 	inbound := &model.Inbound{}
-	err := db.Model(model.Inbound{}).Preload("ClientStats").First(inbound, id).Error
+
+	err := db.Model(model.Inbound{}).
+		Preload("ClientStats").
+		First(inbound, id).Error
+
 	if err != nil {
 		return nil, err
 	}
+
+	if isHiddenInbound(inbound) {
+		return nil, gorm.ErrRecordNotFound
+	}
+
 	s.enrichClientStats(db, []*model.Inbound{inbound})
+
 	return inbound, nil
 }
 
@@ -3490,11 +3530,22 @@ func (s *InboundService) GetActiveClientTraffics(emails []string) ([]*xray.Clien
 // node sync failed, leaving client rows in the UI stuck at stale numbers.
 func (s *InboundService) GetAllClientTraffics() ([]*xray.ClientTraffic, error) {
 	db := database.GetDB()
+
 	var traffics []*xray.ClientTraffic
 	if err := db.Model(xray.ClientTraffic{}).Find(&traffics).Error; err != nil {
 		return nil, err
 	}
-	return traffics, nil
+
+	visibleTraffics := make([]*xray.ClientTraffic, 0, len(traffics))
+	for _, traffic := range traffics {
+		if traffic == nil || IsHiddenClientEmail(traffic.Email) {
+			continue
+		}
+
+		visibleTraffics = append(visibleTraffics, traffic)
+	}
+
+	return visibleTraffics, nil
 }
 
 type InboundTrafficSummary struct {
@@ -3507,12 +3558,29 @@ type InboundTrafficSummary struct {
 
 func (s *InboundService) GetInboundsTrafficSummary() ([]InboundTrafficSummary, error) {
 	db := database.GetDB()
-	var summaries []InboundTrafficSummary
+
+	var inbounds []model.Inbound
 	if err := db.Model(&model.Inbound{}).
-		Select("id, up, down, total, enable").
-		Find(&summaries).Error; err != nil {
+		Select("id, remark, up, down, total, enable").
+		Find(&inbounds).Error; err != nil {
 		return nil, err
 	}
+
+	summaries := make([]InboundTrafficSummary, 0, len(inbounds))
+	for _, inbound := range inbounds {
+		if isHiddenInboundRemark(inbound.Remark) {
+			continue
+		}
+
+		summaries = append(summaries, InboundTrafficSummary{
+			Id:     inbound.Id,
+			Up:     inbound.Up,
+			Down:   inbound.Down,
+			Total:  inbound.Total,
+			Enable: inbound.Enable,
+		})
+	}
+
 	return summaries, nil
 }
 
@@ -3679,10 +3747,18 @@ func (s *InboundService) ClearClientIps(clientEmail string) error {
 func (s *InboundService) SearchInbounds(query string) ([]*model.Inbound, error) {
 	db := database.GetDB()
 	var inbounds []*model.Inbound
-	err := db.Model(model.Inbound{}).Preload("ClientStats").Where("remark like ?", "%"+query+"%").Find(&inbounds).Error
+
+	err := db.Model(model.Inbound{}).
+		Preload("ClientStats").
+		Where("remark like ?", "%"+query+"%").
+		Find(&inbounds).Error
+
 	if err != nil && err != gorm.ErrRecordNotFound {
 		return nil, err
 	}
+
+	inbounds = filterVisibleInbounds(inbounds)
+
 	return inbounds, nil
 }
 

@@ -89,6 +89,10 @@ func (a *XraySettingController) getXraySetting(c *gin.Context) {
 	if err != nil {
 		clientReverseTags = "[]"
 	}
+
+	xraySetting = a.OutboundService.FilterVisibleOutboundsInXraySetting(xraySetting)
+	xraySetting = a.OutboundService.FilterVisibleBalancersAndRoutingInXraySetting(xraySetting)
+
 	outboundTestUrl, _ := a.SettingService.GetXrayOutboundTestUrl()
 	if outboundTestUrl == "" {
 		outboundTestUrl = "https://www.google.com/generate_204"
@@ -104,12 +108,20 @@ func (a *XraySettingController) getXraySetting(c *gin.Context) {
 	// - show them as read-only items in the Outbounds tab
 	// - let users pick them in balancers and routing rules
 	// These are not part of the editable template; they are injected at runtime.
+
 	if subObs, err := a.OutboundSubscriptionService.AllActiveOutbounds(); err == nil && len(subObs) > 0 {
-		xrayResponse["subscriptionOutbounds"] = subObs
+		subObs = a.OutboundService.FilterVisibleOutboundObjects(subObs)
+		if len(subObs) > 0 {
+			xrayResponse["subscriptionOutbounds"] = subObs
+		}
 	}
 	if subTags, err := a.OutboundSubscriptionService.AllActiveOutboundTags(); err == nil && len(subTags) > 0 {
-		xrayResponse["subscriptionOutboundTags"] = subTags
+		subTags = a.OutboundService.FilterVisibleOutboundTags(subTags)
+		if len(subTags) > 0 {
+			xrayResponse["subscriptionOutboundTags"] = subTags
+		}
 	}
+
 	result, err := json.Marshal(xrayResponse)
 	if err != nil {
 		jsonMsg(c, I18nWeb(c, "pages.settings.toasts.getSettings"), err)
@@ -121,18 +133,34 @@ func (a *XraySettingController) getXraySetting(c *gin.Context) {
 // updateSetting updates the Xray configuration settings.
 func (a *XraySettingController) updateSetting(c *gin.Context) {
 	xraySetting := c.PostForm("xraySetting")
+
+	if currentSetting, err := a.SettingService.GetXrayConfigTemplate(); err == nil {
+		currentSetting = service.UnwrapXrayTemplateConfig(currentSetting)
+
+		if mergedSetting, mergeErr := a.OutboundService.MergeHiddenOutboundsIntoXraySetting(xraySetting, currentSetting); mergeErr == nil {
+			xraySetting = mergedSetting
+		}
+
+		if mergedSetting, mergeErr := a.OutboundService.MergeHiddenBalancersAndRoutingIntoXraySetting(xraySetting, currentSetting); mergeErr == nil {
+			xraySetting = mergedSetting
+		}
+	}
+
 	if err := a.XraySettingService.SaveXraySetting(xraySetting); err != nil {
 		jsonMsg(c, I18nWeb(c, "pages.settings.toasts.modifySettings"), err)
 		return
 	}
+
 	outboundTestUrl := c.PostForm("outboundTestUrl")
 	if outboundTestUrl == "" {
 		outboundTestUrl = "https://www.google.com/generate_204"
 	}
+
 	if err := a.SettingService.SetXrayOutboundTestUrl(outboundTestUrl); err != nil {
 		jsonMsg(c, I18nWeb(c, "pages.settings.toasts.modifySettings"), err)
 		return
 	}
+
 	jsonMsg(c, I18nWeb(c, "pages.settings.toasts.modifySettings"), nil)
 }
 
@@ -231,6 +259,12 @@ func (a *XraySettingController) getOutboundsTraffic(c *gin.Context) {
 // resetOutboundsTraffic resets the traffic statistics for the specified outbound tag.
 func (a *XraySettingController) resetOutboundsTraffic(c *gin.Context) {
 	tag := c.PostForm("tag")
+
+	if service.IsHiddenOutboundTag(tag) {
+		jsonMsg(c, I18nWeb(c, "pages.settings.toasts.resetOutboundTrafficError"), common.NewError("outbound not found"))
+		return
+	}
+
 	err := a.OutboundService.ResetOutboundTraffic(tag)
 	if err != nil {
 		jsonMsg(c, I18nWeb(c, "pages.settings.toasts.resetOutboundTrafficError"), err)
@@ -250,6 +284,11 @@ func (a *XraySettingController) testOutbound(c *gin.Context) {
 
 	if outboundJSON == "" {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), common.NewError("outbound parameter is required"))
+		return
+	}
+
+	if service.IsHiddenOutboundJSON(outboundJSON) {
+		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), common.NewError("outbound not found"))
 		return
 	}
 

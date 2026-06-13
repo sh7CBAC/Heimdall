@@ -316,9 +316,7 @@ export default function InboundInfoModal({
           {clientSettings?.comment && (
             <tr><td>{t('comment')}</td><td><Tag className="info-large-tag">{clientSettings.comment}</Tag></td></tr>
           )}
-          {ipLimitEnable && (
-            <tr><td>{t('pages.inbounds.IPLimit')}</td><td><Tag>{clientSettings?.limitIp ?? 0}</Tag></td></tr>
-          )}
+          <tr><td>{t('pages.inbounds.IPLimit')}</td><td><Tag>{clientSettings?.limitIp ?? 0}</Tag></td></tr>
           {ipLimitEnable && (clientSettings?.limitIp ?? 0) > 0 && (
             <tr>
               <td>{t('pages.inbounds.IPLimitlog')}</td>

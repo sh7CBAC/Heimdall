@@ -92,6 +92,8 @@ func (s *OutboundService) GetOutboundsTraffic() ([]*model.OutboundTraffics, erro
 		return nil, err
 	}
 
+	traffics = filterVisibleOutboundTraffics(traffics)
+
 	return traffics, nil
 }
 

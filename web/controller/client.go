@@ -40,6 +40,16 @@ type ClientController struct {
 	settingService service.SettingService
 }
 
+func (a *ClientController) requireVisibleClient(c *gin.Context, email string) (*model.ClientRecord, bool) {
+	rec, err := a.clientService.RequireVisibleClientByEmail(email)
+	if err != nil {
+		jsonMsg(c, I18nWeb(c, "get"), err)
+		return nil, false
+	}
+
+	return rec, true
+}
+
 func NewClientController(g *gin.RouterGroup) *ClientController {
 	a := &ClientController{}
 	a.initRouter(g)
@@ -102,21 +112,24 @@ func (a *ClientController) listPaged(c *gin.Context) {
 
 func (a *ClientController) get(c *gin.Context) {
 	email := c.Param("email")
-	rec, err := a.clientService.GetRecordByEmail(nil, email)
-	if err != nil {
-		jsonMsg(c, I18nWeb(c, "get"), err)
+
+	rec, ok := a.requireVisibleClient(c, email)
+	if !ok {
 		return
 	}
+
 	inboundIds, err := a.clientService.GetInboundIdsForRecord(rec.Id)
 	if err != nil {
 		jsonMsg(c, I18nWeb(c, "get"), err)
 		return
 	}
+
 	flow, err := a.clientService.EffectiveFlow(nil, rec.Id)
 	if err != nil {
 		jsonMsg(c, I18nWeb(c, "get"), err)
 		return
 	}
+
 	rec.Flow = flow
 	jsonObj(c, gin.H{"client": rec, "inboundIds": inboundIds}, nil)
 }
@@ -125,6 +138,10 @@ func (a *ClientController) create(c *gin.Context) {
 	var payload service.ClientCreatePayload
 	if err := c.ShouldBindJSON(&payload); err != nil {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
+		return
+	}
+	if service.IsHiddenClientEmail(payload.Client.Email) {
+		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), fmt.Errorf("client not found"))
 		return
 	}
 	needRestart, err := a.clientService.Create(&a.inboundService, &payload)
@@ -141,9 +158,16 @@ func (a *ClientController) create(c *gin.Context) {
 
 func (a *ClientController) update(c *gin.Context) {
 	email := c.Param("email")
+	if _, ok := a.requireVisibleClient(c, email); !ok {
+		return
+	}
 	var updated model.Client
 	if err := c.ShouldBindJSON(&updated); err != nil {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
+		return
+	}
+	if service.IsHiddenClientEmail(updated.Email) {
+		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), fmt.Errorf("client not found"))
 		return
 	}
 	inboundFilter := parseInboundIdsQuery(c.Query("inboundIds"))
@@ -161,6 +185,9 @@ func (a *ClientController) update(c *gin.Context) {
 
 func (a *ClientController) delete(c *gin.Context) {
 	email := c.Param("email")
+	if _, ok := a.requireVisibleClient(c, email); !ok {
+		return
+	}
 	keepTraffic := c.Query("keepTraffic") == "1"
 	needRestart, err := a.clientService.DeleteByEmail(&a.inboundService, email, keepTraffic)
 	if err != nil {
@@ -180,6 +207,9 @@ type attachDetachBody struct {
 
 func (a *ClientController) attach(c *gin.Context) {
 	email := c.Param("email")
+	if _, ok := a.requireVisibleClient(c, email); !ok {
+		return
+	}
 	var body attachDetachBody
 	if err := c.ShouldBindJSON(&body); err != nil {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
@@ -222,6 +252,7 @@ func (a *ClientController) bulkAdjust(c *gin.Context) {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
 		return
 	}
+	req.Emails = service.FilterVisibleClientEmails(req.Emails)
 	result, needRestart, err := a.clientService.BulkAdjust(&a.inboundService, req.Emails, req.AddDays, req.AddBytes)
 	if err != nil {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
@@ -250,6 +281,7 @@ func (a *ClientController) bulkAttach(c *gin.Context) {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
 		return
 	}
+	req.Emails = service.FilterVisibleClientEmails(req.Emails)
 	result, needRestart, err := a.clientService.BulkAttach(&a.inboundService, req.Emails, req.InboundIds)
 	if err != nil {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
@@ -273,6 +305,7 @@ func (a *ClientController) bulkDetach(c *gin.Context) {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
 		return
 	}
+	req.Emails = service.FilterVisibleClientEmails(req.Emails)
 	result, needRestart, err := a.clientService.BulkDetach(&a.inboundService, req.Emails, req.InboundIds)
 	if err != nil {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
@@ -291,6 +324,7 @@ func (a *ClientController) bulkDelete(c *gin.Context) {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
 		return
 	}
+	req.Emails = service.FilterVisibleClientEmails(req.Emails)
 	result, needRestart, err := a.clientService.BulkDelete(&a.inboundService, req.Emails, req.KeepTraffic)
 	if err != nil {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
@@ -309,15 +343,29 @@ func (a *ClientController) bulkCreate(c *gin.Context) {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
 		return
 	}
+
+	visiblePayloads := make([]service.ClientCreatePayload, 0, len(payloads))
+	for _, payload := range payloads {
+		if service.IsHiddenClientEmail(payload.Client.Email) {
+			continue
+		}
+
+		visiblePayloads = append(visiblePayloads, payload)
+	}
+	payloads = visiblePayloads
+
 	result, needRestart, err := a.clientService.BulkCreate(&a.inboundService, payloads)
 	if err != nil {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
 		return
 	}
+
 	jsonObj(c, result, nil)
+
 	if needRestart {
 		a.xrayService.SetToNeedRestart()
 	}
+
 	notifyClientsChanged()
 }
 
@@ -336,6 +384,9 @@ func (a *ClientController) delDepleted(c *gin.Context) {
 
 func (a *ClientController) resetTrafficByEmail(c *gin.Context) {
 	email := c.Param("email")
+	if _, ok := a.requireVisibleClient(c, email); !ok {
+		return
+	}
 	needRestart, err := a.clientService.ResetTrafficByEmail(&a.inboundService, email)
 	if err != nil {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
@@ -355,21 +406,31 @@ type trafficUpdateRequest struct {
 
 func (a *ClientController) updateTrafficByEmail(c *gin.Context) {
 	email := c.Param("email")
+
+	if _, ok := a.requireVisibleClient(c, email); !ok {
+		return
+	}
+
 	var req trafficUpdateRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
 		return
 	}
+
 	if err := a.inboundService.UpdateClientTrafficByEmail(email, req.Upload, req.Download); err != nil {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
 		return
 	}
+
 	jsonMsg(c, I18nWeb(c, "pages.inbounds.toasts.inboundClientUpdateSuccess"), nil)
 	notifyClientsChanged()
 }
 
 func (a *ClientController) getIps(c *gin.Context) {
 	email := c.Param("email")
+	if _, ok := a.requireVisibleClient(c, email); !ok {
+		return
+	}
 	ips, err := a.inboundService.GetInboundClientIps(email)
 	if err != nil || ips == "" {
 		jsonObj(c, "No IP Record", nil)
@@ -406,6 +467,9 @@ func (a *ClientController) getIps(c *gin.Context) {
 
 func (a *ClientController) clearIps(c *gin.Context) {
 	email := c.Param("email")
+	if _, ok := a.requireVisibleClient(c, email); !ok {
+		return
+	}
 	if err := a.inboundService.ClearClientIps(email); err != nil {
 		jsonMsg(c, I18nWeb(c, "pages.inbounds.toasts.updateSuccess"), err)
 		return
@@ -414,11 +478,25 @@ func (a *ClientController) clearIps(c *gin.Context) {
 }
 
 func (a *ClientController) onlines(c *gin.Context) {
-	jsonObj(c, a.inboundService.GetOnlineClients(), nil)
+	emails := a.inboundService.GetOnlineClients()
+	jsonObj(c, service.FilterVisibleClientEmails(emails), nil)
 }
 
 func (a *ClientController) onlinesByGuid(c *gin.Context) {
-	jsonObj(c, a.inboundService.GetOnlineClientsByGuid(), nil)
+	data := a.inboundService.GetOnlineClientsByGuid()
+
+	for guid, emails := range data {
+		visible := service.FilterVisibleClientEmails(emails)
+
+		if len(visible) == 0 {
+			delete(data, guid)
+			continue
+		}
+
+		data[guid] = visible
+	}
+
+	jsonObj(c, data, nil)
 }
 
 func (a *ClientController) activeInbounds(c *gin.Context) {
@@ -427,11 +505,25 @@ func (a *ClientController) activeInbounds(c *gin.Context) {
 
 func (a *ClientController) lastOnline(c *gin.Context) {
 	data, err := a.inboundService.GetClientsLastOnline()
-	jsonObj(c, data, err)
+	if err != nil {
+		jsonObj(c, nil, err)
+		return
+	}
+
+	for email := range data {
+		if service.IsHiddenClientEmail(email) {
+			delete(data, email)
+		}
+	}
+
+	jsonObj(c, data, nil)
 }
 
 func (a *ClientController) getTrafficByEmail(c *gin.Context) {
 	email := c.Param("email")
+	if _, ok := a.requireVisibleClient(c, email); !ok {
+		return
+	}
 	traffic, err := a.inboundService.GetClientTrafficByEmail(email)
 	if err != nil {
 		jsonMsg(c, I18nWeb(c, "pages.inbounds.toasts.trafficGetError"), err)
@@ -441,25 +533,43 @@ func (a *ClientController) getTrafficByEmail(c *gin.Context) {
 }
 
 func (a *ClientController) getSubLinks(c *gin.Context) {
-	links, err := a.inboundService.GetSubLinks(resolveHost(c), c.Param("subId"))
+	subID := c.Param("subId")
+
+	if _, err := a.clientService.RequireVisibleClientBySubID(subID); err != nil {
+		jsonMsg(c, I18nWeb(c, "pages.inbounds.toasts.obtain"), err)
+		return
+	}
+
+	links, err := a.inboundService.GetSubLinks(resolveHost(c), subID)
 	if err != nil {
 		jsonMsg(c, I18nWeb(c, "pages.inbounds.toasts.obtain"), err)
 		return
 	}
+
 	jsonObj(c, links, nil)
 }
 
 func (a *ClientController) getClientLinks(c *gin.Context) {
-	links, err := a.inboundService.GetAllClientLinks(resolveHost(c), c.Param("email"))
+	email := c.Param("email")
+
+	if _, ok := a.requireVisibleClient(c, email); !ok {
+		return
+	}
+
+	links, err := a.inboundService.GetAllClientLinks(resolveHost(c), email)
 	if err != nil {
 		jsonMsg(c, I18nWeb(c, "pages.inbounds.toasts.obtain"), err)
 		return
 	}
+
 	jsonObj(c, links, nil)
 }
 
 func (a *ClientController) detach(c *gin.Context) {
 	email := c.Param("email")
+	if _, ok := a.requireVisibleClient(c, email); !ok {
+		return
+	}
 	var body attachDetachBody
 	if err := c.ShouldBindJSON(&body); err != nil {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
@@ -487,6 +597,7 @@ func (a *ClientController) bulkResetTraffic(c *gin.Context) {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
 		return
 	}
+	req.Emails = service.FilterVisibleClientEmails(req.Emails)
 	affected, err := a.clientService.BulkResetTraffic(&a.inboundService, req.Emails)
 	if err != nil {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)

@@ -258,6 +258,12 @@ func (s *Server) initRouter() (*gin.Engine, error) {
 // jobs) which the panel relies on for periodic maintenance and monitoring.
 func (s *Server) startTask(restartXray bool) {
 	s.customGeoService.EnsureOnStartup()
+
+	// Generate the core-level client IP-limit file before Xray starts. The
+	// same job keeps it synchronized after client create/update/delete actions.
+	clientIPLimitsJob := job.NewSyncClientIPLimitsJob()
+	clientIPLimitsJob.Run()
+
 	if restartXray {
 		err := s.xrayService.RestartXray(true)
 		if err != nil {
@@ -287,8 +293,9 @@ func (s *Server) startTask(restartXray bool) {
 	s.cron.AddJob("@every 10s", mtJob)
 	go mtJob.Run()
 
-	// check client ips from log file every 10 sec
-	s.cron.AddJob("@every 10s", job.NewCheckClientIpJob())
+	// Keep Xray's core-level client IP limits synchronized with the database.
+	// Xray watches the generated JSON file and applies changes without restart.
+	s.cron.AddJob("@every 2s", clientIPLimitsJob)
 
 	s.cron.AddJob("@every 5s", job.NewNodeHeartbeatJob())
 
@@ -297,8 +304,8 @@ func (s *Server) startTask(restartXray bool) {
 	// Outbound subscription auto-refresh (respects per-sub updateInterval)
 	s.cron.AddJob("@every 5m", job.NewOutboundSubscriptionJob())
 
-	// check client ips from log file every day
-	s.cron.AddJob("@daily", job.NewClearLogsJob())
+	// The legacy access-log/Fail2ban IP-limit jobs are intentionally not
+	// scheduled. Enforcement now happens synchronously inside Xray core.
 	s.cron.AddJob("@hourly", job.NewWarpIpJob())
 
 	// Inbound traffic reset jobs

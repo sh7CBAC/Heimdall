@@ -700,7 +700,7 @@
       "totalGB": "Total Sent/Received (GB)",
       "expiryTime": "Expiry",
       "addClients": "Add Clients",
-      "limitIp": "IP Limit",
+      "limitIp": "Concurrent IP Limit",
       "password": "Password",
       "subId": "Subscription ID",
       "online": "Online",

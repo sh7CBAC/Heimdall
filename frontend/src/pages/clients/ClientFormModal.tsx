@@ -472,20 +472,18 @@ export default function ClientFormModal({
                 </Space.Compact>
               </Form.Item>
             </Col>
-            <Col xs={24} md={ipLimitEnable ? 8 : 12}>
+            <Col xs={24} md={8}>
               <Form.Item label={t('pages.clients.totalGB')}>
                 <InputNumber value={form.totalGB} min={0} step={1} style={{ width: '100%' }}
                   onChange={(v) => update('totalGB', Number(v) || 0)} />
               </Form.Item>
             </Col>
-            {ipLimitEnable && (
-              <Col xs={24} md={4}>
-                <Form.Item label={t('pages.clients.limitIp')}>
-                  <InputNumber value={form.limitIp} min={0} style={{ width: '100%' }}
-                    onChange={(v) => update('limitIp', Number(v) || 0)} />
-                </Form.Item>
-              </Col>
-            )}
+            <Col xs={24} md={4}>
+              <Form.Item label={t('pages.clients.limitIp')}>
+                <InputNumber value={form.limitIp} min={0} style={{ width: '100%' }}
+                  onChange={(v) => update('limitIp', Number(v) || 0)} />
+              </Form.Item>
+            </Col>
           </Row>
 
           <Row gutter={16}>
