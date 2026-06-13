@@ -1,4 +1,4 @@
-# 3x-ui-custom
+# SECX-Ui
 
 A custom build of **3X-UI** focused on cleaner panel access, hidden internal configurations, and a fast concurrent IP limit system built directly into Xray Core.
 
