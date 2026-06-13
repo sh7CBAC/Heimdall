@@ -1,3 +1,6 @@
+<img width="2172" height="724" alt="ChatGPT Image Jun 13, 2026, 05_00_19 AM" src="https://github.com/user-attachments/assets/a923de2f-b1d4-4179-97b7-e7b9c829f80e" />
+
+
 # SECX-Ui
 
 A custom build of **3X-UI** focused on cleaner panel access, hidden internal configurations, and a fast concurrent IP limit system built directly into Xray Core.
