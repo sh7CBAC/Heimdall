@@ -1,60 +1,158 @@
-بزودی این بخش راهنما رو آپدیت میکنم :)
+# 3x-ui-custom
 
+A custom build of **3X-UI** focused on cleaner panel access, hidden internal configurations, and a fast concurrent IP limit system built directly into Xray Core.
 
-## Quick Start
+> This is an unofficial fork and is not affiliated with the original 3X-UI project.
 
-Run the following command to install or update the panel:
+## What does this version add?
+
+### Core-level IP limit
+
+Starting from `v1.3.0`, client IP limits are handled directly inside Xray Core.
+
+Unlike the usual Fail2ban-based method, this system does not wait for logs to be parsed or an IP to be banned later. Extra IPs are rejected immediately before their traffic reaches an outbound.
+
+For example, with an IP limit of `1`:
+
+```text
+First public IP  → Allowed
+Same IP again    → Allowed
+Second IP        → Rejected
+```
+
+The first accepted IP stays connected. New devices cannot replace or disconnect it.
+
+The limit can be set directly when creating or editing a client:
+
+```text
+0 = Unlimited
+1 = One public IP
+2 = Two public IPs
+N = Up to N public IPs
+```
+
+No Fail2ban, Access Log, firewall ban, or extra setup is required.
+
+### Hidden panel items
+
+This build can hide internal or sensitive parts of the panel, including:
+
+* Inbounds
+* Outbounds
+* Balancers
+* Clients
+* Routing rules
+
+Prefix wildcards are also supported:
+
+```text
+system-*
+```
+
+This can match values such as:
+
+```text
+system-client
+system-tunnel
+system-outbound
+```
+
+### Correct client statistics
+
+Hidden clients are also removed from:
+
+* Total client count
+* Online client count
+* Active client count
+
+So the dashboard statistics match what the panel user can actually see.
+
+### y-ui manager
+
+The custom `y-ui` command makes it easier to manage hidden items without editing environment files manually.
+
+```bash
+y-ui
+```
+
+You can use it to view, add, or remove hidden inbounds, outbounds, balancers, clients, and other supported items.
+
+## Installation
+
+Install the latest release with:
 
 ```bash
 bash <(curl -Ls https://raw.githubusercontent.com/sh7CBAC/3x-ui-custom/main/install.sh)
 ```
 
----
-
-## Hidden Inbound Remarks
-
-This custom version allows you to hide specific inbound entries from the panel by defining their remarks in the x-ui environment configuration file.
-
-To edit the configuration file, run:
+Main panel menu:
 
 ```bash
-nano /etc/default/x-ui
+x-ui
 ```
 
-Add or update the following values:
+Custom management menu:
 
 ```bash
-XUI_HIDDEN_INBOUND_REMARKS=s1,s2,s3,s4,s5,s6
-XRAY_VMESS_AEAD_FORCED=false
+y-ui
 ```
 
-In this example, the inbounds with the following remarks will be hidden:
+## Current version
 
 ```text
-s1, s2, s3, s4, s5, s6
+Custom Release: v1.3.0
+Panel Base:     3X-UI 3.3.0
+Xray Core:      26.6.1 Custom
 ```
 
-After saving the file, restart the x-ui service:
+## Release history
 
-```bash
-systemctl restart x-ui
+### v1.0.0
+
+* Added inbound hiding
+
+### v1.1.0
+
+* Added outbound hiding
+* Kept inbound hiding
+
+### v1.2.0
+
+* Added balancer hiding
+* Added client hiding
+* Added routing rule hiding
+* Added wildcard support
+
+### v1.2.1
+
+* Fixed hidden client counts
+* Fixed online and active statistics
+* Added the `y-ui` management panel
+
+### v1.3.0
+
+* Added concurrent IP limits directly inside Xray Core
+* Added First IP Wins behavior
+* Removed the need for Fail2ban and Access Log
+* Added automatic synchronization between the panel and Xray
+* Added automatic IP slot release after inactivity
+* Reduced repeated rejection logs
+
+## Important paths
+
+```text
+Panel:          /usr/local/x-ui/x-ui
+Xray:           /usr/local/x-ui/bin/xray-linux-amd64
+Database:       /etc/x-ui/x-ui.db
+Environment:    /etc/default/x-ui
+IP limit file:  /usr/local/x-ui/bin/client-ip-limits.json
 ```
 
----
+## Credits
 
-## Disable Hidden Inbounds
+This project is built on top of:
 
-To disable this feature, set `XUI_HIDDEN_INBOUND_REMARKS` to a value that does not match any real inbound remark.
+* [MHSanaei/3x-ui](https://github.com/MHSanaei/3x-ui)
+* [XTLS/Xray-core](https://github.com/XTLS/Xray-core)
 
-Example:
-
-```bash
-XUI_HIDDEN_INBOUND_REMARKS=disable
-XRAY_VMESS_AEAD_FORCED=false
-```
-
-Then restart the service:
-
-```bash
-systemctl restart x-ui
-```
+Thanks to all developers and contributors behind these projects.
