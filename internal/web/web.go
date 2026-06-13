@@ -255,10 +255,13 @@ func (s *Server) initRouter() (*gin.Engine, error) {
 // startTask schedules background jobs (Xray checks, traffic jobs, cron
 // jobs) which the panel relies on for periodic maintenance and monitoring.
 func (s *Server) startTask(restartXray bool) {
-	// Generate core-level limits before Xray starts, then keep the file in
-	// sync while the panel is running.
+	// Generate Core-level client limits before Xray starts, then keep the
+	// files synchronized while the panel is running.
 	clientIPLimitsJob := job.NewSyncClientIPLimitsJob()
+	clientSpeedLimitsJob := job.NewSyncClientSpeedLimitsJob()
+
 	clientIPLimitsJob.Run()
+	clientSpeedLimitsJob.Run()
 
 	if restartXray {
 		err := s.xrayService.RestartXray(true)
@@ -289,8 +292,9 @@ func (s *Server) startTask(restartXray bool) {
 	s.cron.AddJob("@every 10s", mtJob)
 	go mtJob.Run()
 
-	// Xray watches this file and applies limit changes without a restart.
+	// Xray watches these files and applies limit changes without a restart.
 	s.cron.AddJob("@every 2s", clientIPLimitsJob)
+	s.cron.AddJob("@every 2s", clientSpeedLimitsJob)
 
 	s.cron.AddJob("@every 5s", job.NewNodeHeartbeatJob())
 
