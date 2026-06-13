@@ -1,7 +1,13 @@
-import { z } from 'zod';
+import { z } from "zod";
 
-const nullableStringArray = z.array(z.string()).nullable().transform((v) => v ?? []);
-const nullableNumberArray = z.array(z.number()).nullable().transform((v) => v ?? []);
+const nullableStringArray = z
+  .array(z.string())
+  .nullable()
+  .transform((v) => v ?? []);
+const nullableNumberArray = z
+  .array(z.number())
+  .nullable()
+  .transform((v) => v ?? []);
 
 export const ClientTrafficSchema = z.object({
   up: z.number().optional(),
@@ -12,41 +18,51 @@ export const ClientTrafficSchema = z.object({
   lastOnline: z.number().optional(),
 });
 
-export const ClientRecordSchema = z.object({
-  id: z.number().optional(),
-  email: z.string(),
-  subId: z.string().optional(),
-  uuid: z.string().optional(),
-  password: z.string().optional(),
-  auth: z.string().optional(),
-  flow: z.string().optional(),
-  security: z.string().optional(),
-  totalGB: z.number().optional(),
-  expiryTime: z.number().optional(),
-  limitIp: z.number().optional(),
-  tgId: z.union([z.number(), z.string()]).optional(),
-  group: z.string().optional(),
-  comment: z.string().optional(),
-  enable: z.boolean().optional(),
-  reset: z.number().optional(),
-  inboundIds: nullableNumberArray.optional(),
-  traffic: ClientTrafficSchema.nullable().optional(),
-  reverse: z.object({ tag: z.string().optional() }).loose().nullable().optional(),
-  createdAt: z.number().optional(),
-  updatedAt: z.number().optional(),
-}).loose();
+export const ClientRecordSchema = z
+  .object({
+    id: z.number().optional(),
+    email: z.string(),
+    subId: z.string().optional(),
+    uuid: z.string().optional(),
+    password: z.string().optional(),
+    auth: z.string().optional(),
+    flow: z.string().optional(),
+    security: z.string().optional(),
+    totalGB: z.number().optional(),
+    expiryTime: z.number().optional(),
+    limitIp: z.number().optional(),
+    uploadMbps: z.number().optional(),
+    downloadMbps: z.number().optional(),
+    tgId: z.union([z.number(), z.string()]).optional(),
+    group: z.string().optional(),
+    comment: z.string().optional(),
+    enable: z.boolean().optional(),
+    reset: z.number().optional(),
+    inboundIds: nullableNumberArray.optional(),
+    traffic: ClientTrafficSchema.nullable().optional(),
+    reverse: z
+      .object({ tag: z.string().optional() })
+      .loose()
+      .nullable()
+      .optional(),
+    createdAt: z.number().optional(),
+    updatedAt: z.number().optional(),
+  })
+  .loose();
 
-export const InboundOptionSchema = z.object({
-  id: z.number(),
-  remark: z.string().optional(),
-  tag: z.string().optional(),
-  protocol: z.string().optional(),
-  port: z.number().optional(),
-  tlsFlowCapable: z.boolean().optional(),
-  ssMethod: z.string().optional(),
-  // Hosting node id; absent/null for this panel's own inbounds (#4997).
-  nodeId: z.number().nullable().optional(),
-}).loose();
+export const InboundOptionSchema = z
+  .object({
+    id: z.number(),
+    remark: z.string().optional(),
+    tag: z.string().optional(),
+    protocol: z.string().optional(),
+    port: z.number().optional(),
+    tlsFlowCapable: z.boolean().optional(),
+    ssMethod: z.string().optional(),
+    // Hosting node id; absent/null for this panel's own inbounds (#4997).
+    nodeId: z.number().nullable().optional(),
+  })
+  .loose();
 
 export const InboundOptionsSchema = z.array(InboundOptionSchema);
 
@@ -59,7 +75,10 @@ export const ClientsSummarySchema = z.object({
   deactive: nullableStringArray,
 });
 
-const nullableClientArray = z.array(ClientRecordSchema).nullable().transform((v) => v ?? []);
+const nullableClientArray = z
+  .array(ClientRecordSchema)
+  .nullable()
+  .transform((v) => v ?? []);
 
 export const ClientPageResponseSchema = z.object({
   items: nullableClientArray,
@@ -102,15 +121,33 @@ export const DelDepletedResultSchema = z.object({
 });
 
 export const BulkAttachResultSchema = z.object({
-  attached: z.array(z.string()).nullable().transform((v) => v ?? []),
-  skipped: z.array(z.string()).nullable().transform((v) => v ?? []),
-  errors: z.array(z.string()).nullable().transform((v) => v ?? []),
+  attached: z
+    .array(z.string())
+    .nullable()
+    .transform((v) => v ?? []),
+  skipped: z
+    .array(z.string())
+    .nullable()
+    .transform((v) => v ?? []),
+  errors: z
+    .array(z.string())
+    .nullable()
+    .transform((v) => v ?? []),
 });
 
 export const BulkDetachResultSchema = z.object({
-  detached: z.array(z.string()).nullable().transform((v) => v ?? []),
-  skipped: z.array(z.string()).nullable().transform((v) => v ?? []),
-  errors: z.array(z.string()).nullable().transform((v) => v ?? []),
+  detached: z
+    .array(z.string())
+    .nullable()
+    .transform((v) => v ?? []),
+  skipped: z
+    .array(z.string())
+    .nullable()
+    .transform((v) => v ?? []),
+  errors: z
+    .array(z.string())
+    .nullable()
+    .transform((v) => v ?? []),
 });
 
 export const OnlinesSchema = nullableStringArray;
@@ -128,15 +165,28 @@ export const ActiveInboundsByNodeSchema = z
 export const GroupSummarySchema = z.object({
   name: z.string(),
   clientCount: z.number(),
-  trafficUsed: z.number().nullable().transform((v) => v ?? 0),
-  up: z.number().nullable().transform((v) => v ?? 0),
-  down: z.number().nullable().transform((v) => v ?? 0),
+  trafficUsed: z
+    .number()
+    .nullable()
+    .transform((v) => v ?? 0),
+  up: z
+    .number()
+    .nullable()
+    .transform((v) => v ?? 0),
+  down: z
+    .number()
+    .nullable()
+    .transform((v) => v ?? 0),
 });
 
-export const GroupSummaryListSchema = z.array(GroupSummarySchema).nullable().transform((v) => v ?? []);
+export const GroupSummaryListSchema = z
+  .array(GroupSummarySchema)
+  .nullable()
+  .transform((v) => v ?? []);
 
 export function hasForbiddenClientChars(value: string): boolean {
-  if (value.includes('/') || value.includes('\\') || value.includes(' ')) return true;
+  if (value.includes("/") || value.includes("\\") || value.includes(" "))
+    return true;
   for (let i = 0; i < value.length; i++) {
     const code = value.charCodeAt(i);
     if (code < 0x20 || code === 0x7f) return true;
@@ -148,9 +198,17 @@ export const ClientFormSchema = z.object({
   email: z
     .string()
     .trim()
-    .min(1, 'pages.clients.email')
-    .refine((v) => !hasForbiddenClientChars(v), 'pages.clients.emailInvalidChars'),
-  subId: z.string().refine((v) => !hasForbiddenClientChars(v), 'pages.clients.subIdInvalidChars'),
+    .min(1, "pages.clients.email")
+    .refine(
+      (v) => !hasForbiddenClientChars(v),
+      "pages.clients.emailInvalidChars",
+    ),
+  subId: z
+    .string()
+    .refine(
+      (v) => !hasForbiddenClientChars(v),
+      "pages.clients.subIdInvalidChars",
+    ),
   uuid: z.string(),
   password: z.string(),
   auth: z.string(),
@@ -162,6 +220,8 @@ export const ClientFormSchema = z.object({
   delayedDays: z.number().int().min(0),
   reset: z.number().int().min(0),
   limitIp: z.number().int().min(0),
+  uploadMbps: z.number().int().min(0),
+  downloadMbps: z.number().int().min(0),
   tgId: z.number().int().min(0),
   group: z.string(),
   comment: z.string(),
@@ -170,7 +230,7 @@ export const ClientFormSchema = z.object({
 });
 
 export const ClientCreateFormSchema = ClientFormSchema.extend({
-  inboundIds: z.array(z.number()).min(1, 'pages.clients.selectInbound'),
+  inboundIds: z.array(z.number()).min(1, "pages.clients.selectInbound"),
 });
 
 export const ClientBulkAdjustFormSchema = z
@@ -179,7 +239,7 @@ export const ClientBulkAdjustFormSchema = z
     addGB: z.number(),
   })
   .refine((v) => v.addDays !== 0 || v.addGB !== 0, {
-    message: 'pages.clients.bulkAdjustNothing',
+    message: "pages.clients.bulkAdjustNothing",
   });
 
 export const ClientBulkAddFormSchema = z.object({
@@ -194,10 +254,12 @@ export const ClientBulkAddFormSchema = z.object({
   comment: z.string(),
   flow: z.string(),
   limitIp: z.number().int().min(0),
+  uploadMbps: z.number().int().min(0),
+  downloadMbps: z.number().int().min(0),
   totalGB: z.number().min(0),
   expiryTime: z.number(),
   reset: z.number().int().min(0),
-  inboundIds: z.array(z.number()).min(1, 'pages.clients.selectInbound'),
+  inboundIds: z.array(z.number()).min(1, "pages.clients.selectInbound"),
 });
 
 export type ClientRecord = z.infer<typeof ClientRecordSchema>;
@@ -212,6 +274,8 @@ export type BulkCreateResult = z.infer<typeof BulkCreateResultSchema>;
 export type BulkAttachResult = z.infer<typeof BulkAttachResultSchema>;
 export type BulkDetachResult = z.infer<typeof BulkDetachResultSchema>;
 export type ClientBulkAddFormValues = z.infer<typeof ClientBulkAddFormSchema>;
-export type ClientBulkAdjustFormValues = z.infer<typeof ClientBulkAdjustFormSchema>;
+export type ClientBulkAdjustFormValues = z.infer<
+  typeof ClientBulkAdjustFormSchema
+>;
 export type ClientFormValues = z.infer<typeof ClientFormSchema>;
 export type GroupSummary = z.infer<typeof GroupSummarySchema>;
