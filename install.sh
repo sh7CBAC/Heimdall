@@ -1149,7 +1149,7 @@ install_x-ui() {
     else
         tag_version=$1
         tag_version_numeric=${tag_version#v}
-        min_version="1.0.0"
+        min_version="2.3.5"
 
         if [[ "$(printf '%s\n' "$min_version" "$tag_version_numeric" | sort -V | head -n1)" != "$min_version" ]]; then
             echo -e "${red}Please use a newer version (at least v2.3.5). Exiting installation.${plain}"
@@ -1164,22 +1164,11 @@ install_x-ui() {
             exit 1
         fi
     fi
-curl -4fLRo /usr/bin/x-ui-temp https://raw.githubusercontent.com/sh7CBAC/3x-ui-custom/main/x-ui.sh
-if [[ $? -ne 0 ]]; then
-    echo -e "${red}Failed to download x-ui.sh${plain}"
-    exit 1
-fi
-
-# Install custom visibility management command
-curl -4fLRo /usr/bin/y-ui \
-    https://raw.githubusercontent.com/sh7CBAC/3x-ui-custom/main/y-ui.sh
-
-if [[ $? -ne 0 ]]; then
-    echo -e "${red}Failed to download y-ui.sh${plain}"
-    exit 1
-fi
-
-chmod +x /usr/bin/y-ui
+    curl -4fLRo /usr/bin/x-ui-temp https://raw.githubusercontent.com/sh7CBAC/3x-ui-custom/main/x-ui.sh
+    if [[ $? -ne 0 ]]; then
+        echo -e "${red}Failed to download x-ui.sh${plain}"
+        exit 1
+    fi
 
     # Stop x-ui service and remove old resources
     if [[ -e ${xui_folder}/ ]]; then
@@ -1382,19 +1371,22 @@ set_xui_env_default() {
 
 # Hidden-item rules:
 #
-# Hide one exact value:
-# XUI_HIDDEN_INBOUND_REMARKS=inbound-1
+# 1) Hide one exact value:
+#    XUI_HIDDEN_INBOUND_REMARKS=inbound-1
 #
-# Hide multiple exact values:
-# XUI_HIDDEN_OUTBOUND_TAGS=outbound-1,outbound-2,outbound-3
+# 2) Hide multiple exact values (comma-separated):
+#    XUI_HIDDEN_OUTBOUND_TAGS=outbound-1,outbound-2,outbound-3
 #
-# Hide every value starting with a prefix:
-# XUI_HIDDEN_CLIENT_EMAILS=system-*,tunnel-*
+# 3) Hide every value starting with a prefix (put * at the end):
+#    XUI_HIDDEN_CLIENT_EMAILS=system-*,tunnel-*
 #
-# Combine exact and prefix rules:
-# XUI_HIDDEN_CLIENT_EMAILS=admin,system-*,tunnel-*
+# 4) Combine exact and prefix rules:
+#    XUI_HIDDEN_CLIENT_EMAILS=admin,system-*,tunnel-*
 #
-# Leave a value empty to disable hiding for that item type.
+# Spaces around comma-separated values are trimmed, but values without spaces
+# are recommended. Leave a value empty to disable hiding for that item type.
+# Suffix rules such as *-internal and contains rules such as *internal* are not
+# supported by the current implementation.
 
 set_xui_env_default "XUI_HIDDEN_INBOUND_REMARKS" ""
 set_xui_env_default "XUI_HIDDEN_OUTBOUND_TAGS" ""
