@@ -212,8 +212,8 @@ journalctl -u x-ui -f | grep --line-buffered '\[IP_LIMIT\]'
 ## 📦 Current Version
 
 ```text
-SECX-Ui Release: v1.3.0
-Panel Base:      3X-UI 3.3.0
+SECX-Ui Release: v1.3.1
+Panel Base:      3X-UI 3.3.1
 Xray Core:       26.6.1 Custom
 ```
 
@@ -255,6 +255,19 @@ Xray Core:       26.6.1 Custom
 - Added automatic slot release after inactivity
 - Added throttling for repeated rejection logs
 - Preserved all hiding features from previous releases
+
+### v1.3.1
+
+- Updated the panel base from 3X-UI 3.3.0 to 3X-UI 3.3.1
+- Migrated SECX customizations to the new `internal/` backend architecture
+- Preserved inbound, outbound, balancer, routing rule, and client hiding
+- Preserved hidden-client total, online, and active statistics
+- Preserved wildcard matching for hidden values
+- Preserved the `y-ui` visibility management tool
+- Preserved Core-level concurrent IP limits
+- Preserved First IP Wins behavior and automatic slot release
+- Integrated with the new connection-based online statistics API
+- Kept the tested Xray 26.6.1 Custom core
 
 ---
 
