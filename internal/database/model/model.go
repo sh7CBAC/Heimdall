@@ -536,46 +536,50 @@ type ClientReverse struct {
 
 // Client represents a client configuration for Xray inbounds with traffic limits and settings.
 type Client struct {
-	ID         string         `json:"id,omitempty"`                 // Unique client identifier
-	Security   string         `json:"security"`                     // Security method (e.g., "auto", "aes-128-gcm")
-	Password   string         `json:"password,omitempty"`           // Client password
-	Flow       string         `json:"flow,omitempty"`               // Flow control (XTLS)
-	Reverse    *ClientReverse `json:"reverse,omitempty"`            // VLESS simple reverse proxy settings
-	Auth       string         `json:"auth,omitempty"`               // Auth password (Hysteria)
-	Email      string         `json:"email"`                        // Client email identifier
-	LimitIP    int            `json:"limitIp"`                      // IP limit for this client
-	TotalGB    int64          `json:"totalGB" form:"totalGB"`       // Total traffic limit in GB
-	ExpiryTime int64          `json:"expiryTime" form:"expiryTime"` // Expiration timestamp
-	Enable     bool           `json:"enable" form:"enable"`         // Whether the client is enabled
-	TgID       int64          `json:"tgId" form:"tgId"`             // Telegram user ID for notifications
-	SubID      string         `json:"subId" form:"subId"`           // Subscription identifier
-	Group      string         `json:"group,omitempty" form:"group"` // Logical grouping label
-	Comment    string         `json:"comment" form:"comment"`       // Client comment
-	Reset      int            `json:"reset" form:"reset"`           // Reset period in days
-	CreatedAt  int64          `json:"created_at,omitempty"`         // Creation timestamp
-	UpdatedAt  int64          `json:"updated_at,omitempty"`         // Last update timestamp
+	ID           string         `json:"id,omitempty"`                 // Unique client identifier
+	Security     string         `json:"security"`                     // Security method (e.g., "auto", "aes-128-gcm")
+	Password     string         `json:"password,omitempty"`           // Client password
+	Flow         string         `json:"flow,omitempty"`               // Flow control (XTLS)
+	Reverse      *ClientReverse `json:"reverse,omitempty"`            // VLESS simple reverse proxy settings
+	Auth         string         `json:"auth,omitempty"`               // Auth password (Hysteria)
+	Email        string         `json:"email"`                        // Client email identifier
+	LimitIP      int            `json:"limitIp"`                      // Concurrent IP limit; 0 means unlimited
+	UploadMbps   int            `json:"uploadMbps"`                   // Aggregate upload limit in Mbps; 0 means unlimited
+	DownloadMbps int            `json:"downloadMbps"`                 // Aggregate download limit in Mbps; 0 means unlimited
+	TotalGB      int64          `json:"totalGB" form:"totalGB"`       // Total traffic limit in GB
+	ExpiryTime   int64          `json:"expiryTime" form:"expiryTime"` // Expiration timestamp
+	Enable       bool           `json:"enable" form:"enable"`         // Whether the client is enabled
+	TgID         int64          `json:"tgId" form:"tgId"`             // Telegram user ID for notifications
+	SubID        string         `json:"subId" form:"subId"`           // Subscription identifier
+	Group        string         `json:"group,omitempty" form:"group"` // Logical grouping label
+	Comment      string         `json:"comment" form:"comment"`       // Client comment
+	Reset        int            `json:"reset" form:"reset"`           // Reset period in days
+	CreatedAt    int64          `json:"created_at,omitempty"`         // Creation timestamp
+	UpdatedAt    int64          `json:"updated_at,omitempty"`         // Last update timestamp
 }
 
 type ClientRecord struct {
-	Id         int    `json:"id" gorm:"primaryKey;autoIncrement"`
-	Email      string `json:"email" gorm:"uniqueIndex;not null"`
-	SubID      string `json:"subId" gorm:"index;column:sub_id"`
-	UUID       string `json:"uuid" gorm:"column:uuid"`
-	Password   string `json:"password"`
-	Auth       string `json:"auth"`
-	Flow       string `json:"flow"`
-	Security   string `json:"security"`
-	Reverse    string `json:"reverse" gorm:"column:reverse"`
-	LimitIP    int    `json:"limitIp" gorm:"column:limit_ip"`
-	TotalGB    int64  `json:"totalGB" gorm:"column:total_gb"`
-	ExpiryTime int64  `json:"expiryTime" gorm:"column:expiry_time"`
-	Enable     bool   `json:"enable" gorm:"default:true"`
-	TgID       int64  `json:"tgId" gorm:"column:tg_id"`
-	Group      string `json:"group" gorm:"column:group_name;default:''"`
-	Comment    string `json:"comment"`
-	Reset      int    `json:"reset" gorm:"default:0"`
-	CreatedAt  int64  `json:"createdAt" gorm:"autoCreateTime:milli"`
-	UpdatedAt  int64  `json:"updatedAt" gorm:"autoUpdateTime:milli"`
+	Id           int    `json:"id" gorm:"primaryKey;autoIncrement"`
+	Email        string `json:"email" gorm:"uniqueIndex;not null"`
+	SubID        string `json:"subId" gorm:"index;column:sub_id"`
+	UUID         string `json:"uuid" gorm:"column:uuid"`
+	Password     string `json:"password"`
+	Auth         string `json:"auth"`
+	Flow         string `json:"flow"`
+	Security     string `json:"security"`
+	Reverse      string `json:"reverse" gorm:"column:reverse"`
+	LimitIP      int    `json:"limitIp" gorm:"column:limit_ip"`
+	UploadMbps   int    `json:"uploadMbps" gorm:"column:upload_mbps;default:0"`
+	DownloadMbps int    `json:"downloadMbps" gorm:"column:download_mbps;default:0"`
+	TotalGB      int64  `json:"totalGB" gorm:"column:total_gb"`
+	ExpiryTime   int64  `json:"expiryTime" gorm:"column:expiry_time"`
+	Enable       bool   `json:"enable" gorm:"default:true"`
+	TgID         int64  `json:"tgId" gorm:"column:tg_id"`
+	Group        string `json:"group" gorm:"column:group_name;default:''"`
+	Comment      string `json:"comment"`
+	Reset        int    `json:"reset" gorm:"default:0"`
+	CreatedAt    int64  `json:"createdAt" gorm:"autoCreateTime:milli"`
+	UpdatedAt    int64  `json:"updatedAt" gorm:"autoUpdateTime:milli"`
 }
 
 func (ClientRecord) TableName() string { return "clients" }
@@ -645,23 +649,25 @@ func (InboundFallback) TableName() string { return "inbound_fallbacks" }
 
 func (c *Client) ToRecord() *ClientRecord {
 	rec := &ClientRecord{
-		Email:      c.Email,
-		SubID:      c.SubID,
-		UUID:       c.ID,
-		Password:   c.Password,
-		Auth:       c.Auth,
-		Flow:       c.Flow,
-		Security:   c.Security,
-		LimitIP:    c.LimitIP,
-		TotalGB:    c.TotalGB,
-		ExpiryTime: c.ExpiryTime,
-		Enable:     c.Enable,
-		TgID:       c.TgID,
-		Group:      c.Group,
-		Comment:    c.Comment,
-		Reset:      c.Reset,
-		CreatedAt:  c.CreatedAt,
-		UpdatedAt:  c.UpdatedAt,
+		Email:        c.Email,
+		SubID:        c.SubID,
+		UUID:         c.ID,
+		Password:     c.Password,
+		Auth:         c.Auth,
+		Flow:         c.Flow,
+		Security:     c.Security,
+		LimitIP:      c.LimitIP,
+		UploadMbps:   c.UploadMbps,
+		DownloadMbps: c.DownloadMbps,
+		TotalGB:      c.TotalGB,
+		ExpiryTime:   c.ExpiryTime,
+		Enable:       c.Enable,
+		TgID:         c.TgID,
+		Group:        c.Group,
+		Comment:      c.Comment,
+		Reset:        c.Reset,
+		CreatedAt:    c.CreatedAt,
+		UpdatedAt:    c.UpdatedAt,
 	}
 	if c.Reverse != nil {
 		if b, err := json.Marshal(c.Reverse); err == nil {
@@ -673,23 +679,25 @@ func (c *Client) ToRecord() *ClientRecord {
 
 func (r *ClientRecord) ToClient() *Client {
 	c := &Client{
-		ID:         r.UUID,
-		Email:      r.Email,
-		SubID:      r.SubID,
-		Password:   r.Password,
-		Auth:       r.Auth,
-		Flow:       r.Flow,
-		Security:   r.Security,
-		LimitIP:    r.LimitIP,
-		TotalGB:    r.TotalGB,
-		ExpiryTime: r.ExpiryTime,
-		Enable:     r.Enable,
-		TgID:       r.TgID,
-		Group:      r.Group,
-		Comment:    r.Comment,
-		Reset:      r.Reset,
-		CreatedAt:  r.CreatedAt,
-		UpdatedAt:  r.UpdatedAt,
+		ID:           r.UUID,
+		Email:        r.Email,
+		SubID:        r.SubID,
+		Password:     r.Password,
+		Auth:         r.Auth,
+		Flow:         r.Flow,
+		Security:     r.Security,
+		LimitIP:      r.LimitIP,
+		UploadMbps:   r.UploadMbps,
+		DownloadMbps: r.DownloadMbps,
+		TotalGB:      r.TotalGB,
+		ExpiryTime:   r.ExpiryTime,
+		Enable:       r.Enable,
+		TgID:         r.TgID,
+		Group:        r.Group,
+		Comment:      r.Comment,
+		Reset:        r.Reset,
+		CreatedAt:    r.CreatedAt,
+		UpdatedAt:    r.UpdatedAt,
 	}
 	if r.Reverse != "" {
 		var rev ClientReverse
@@ -803,6 +811,26 @@ func MergeClientRecord(existing *ClientRecord, incoming *ClientRecord) []ClientM
 		if picked != existing.LimitIP {
 			keep("limitIp", existing.LimitIP, incoming.LimitIP, picked)
 			existing.LimitIP = picked
+		}
+	}
+	if existing.UploadMbps != incoming.UploadMbps && incoming.UploadMbps != 0 {
+		picked := existing.UploadMbps
+		if existing.UploadMbps == 0 || incoming.UploadMbps < existing.UploadMbps {
+			picked = incoming.UploadMbps
+		}
+		if picked != existing.UploadMbps {
+			keep("uploadMbps", existing.UploadMbps, incoming.UploadMbps, picked)
+			existing.UploadMbps = picked
+		}
+	}
+	if existing.DownloadMbps != incoming.DownloadMbps && incoming.DownloadMbps != 0 {
+		picked := existing.DownloadMbps
+		if existing.DownloadMbps == 0 || incoming.DownloadMbps < existing.DownloadMbps {
+			picked = incoming.DownloadMbps
+		}
+		if picked != existing.DownloadMbps {
+			keep("downloadMbps", existing.DownloadMbps, incoming.DownloadMbps, picked)
+			existing.DownloadMbps = picked
 		}
 	}
 	if existing.TgID != incoming.TgID && incoming.TgID != 0 {
