@@ -122,53 +122,23 @@ func fallbackProxyName(proxy map[string]any, idx int) string {
 }
 
 func (s *SubClashService) getProxies(inbound *model.Inbound, client model.Client, host string) []map[string]any {
-	stream := s.streamData(inbound.StreamSettings)
-	// For node-managed inbounds the Clash proxy "server" must be the
-	// node's address, not the request host. resolveInboundAddress handles
-	// the node→subscriber-host fallback chain.
+	baseStream := unmarshalStreamSettings(inbound.StreamSettings)
 	defaultDest := s.SubService.resolveInboundAddress(inbound)
 	if defaultDest == "" {
 		defaultDest = host
 	}
-	externalProxies, ok := stream["externalProxy"].([]any)
-	hasExternalProxy := ok && len(externalProxies) > 0
-	if !hasExternalProxy {
-		externalProxies = []any{map[string]any{
-			"forceTls": "same",
-			"dest":     defaultDest,
-			"port":     float64(inbound.Port),
-			"remark":   "",
-		}}
-	}
-	delete(stream, "externalProxy")
+	endpoints := expandSubscriptionEndpoints(baseStream, defaultDest, inbound.Port)
+	proxies := make([]map[string]any, 0, len(endpoints))
 
-	proxies := make([]map[string]any, 0, len(externalProxies))
-	for _, ep := range externalProxies {
-		extPrxy := ep.(map[string]any)
+	for _, endpoint := range endpoints {
 		workingInbound := *inbound
-		workingInbound.Listen = extPrxy["dest"].(string)
-		workingInbound.Port = int(extPrxy["port"].(float64))
-		workingStream := cloneStreamForExternalProxy(stream)
+		workingInbound.Listen = endpoint.Address
+		workingInbound.Port = endpoint.Port
+		rawStream, _ := json.Marshal(endpoint.Stream)
+		workingInbound.StreamSettings = string(rawStream)
+		workingStream := s.streamData(workingInbound.StreamSettings)
 
-		switch extPrxy["forceTls"].(string) {
-		case "tls":
-			if workingStream["security"] != "tls" {
-				workingStream["security"] = "tls"
-				workingStream["tlsSettings"] = map[string]any{}
-			}
-		case "none":
-			if workingStream["security"] != "none" {
-				workingStream["security"] = "none"
-				delete(workingStream, "tlsSettings")
-				delete(workingStream, "realitySettings")
-			}
-		}
-		security, _ := workingStream["security"].(string)
-		if hasExternalProxy {
-			applyExternalProxyTLSToStream(extPrxy, workingStream, security)
-		}
-
-		proxy := s.buildProxy(&workingInbound, client, workingStream, extPrxy["remark"].(string))
+		proxy := s.buildProxy(&workingInbound, client, workingStream, endpoint.Remark)
 		if len(proxy) > 0 {
 			proxies = append(proxies, proxy)
 		}
@@ -452,6 +422,9 @@ func (s *SubClashService) applySecurity(proxy map[string]any, security string, s
 			if fingerprint, ok := tlsSettings["fingerprint"].(string); ok && fingerprint != "" {
 				proxy["client-fingerprint"] = fingerprint
 			}
+			if allowInsecure, ok := tlsSettings["allowInsecure"].(bool); ok && allowInsecure {
+				proxy["skip-cert-verify"] = true
+			}
 			if alpn, ok := externalProxyALPNList(tlsSettings["alpn"]); ok {
 				out := make([]string, 0, len(alpn))
 				for _, item := range alpn {
@@ -521,6 +494,9 @@ func (s *SubClashService) tlsData(tData map[string]any) map[string]any {
 	}
 	if pins, ok := tlsClientSettings["pinnedPeerCertSha256"].([]any); ok && len(pins) > 0 {
 		tlsData["pin-sha256"] = pins
+	}
+	if allowInsecure, ok := tlsClientSettings["allowInsecure"].(bool); ok {
+		tlsData["allowInsecure"] = allowInsecure
 	}
 	return tlsData
 }

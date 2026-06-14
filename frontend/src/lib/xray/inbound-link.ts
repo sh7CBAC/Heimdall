@@ -12,6 +12,7 @@ import type { FinalMaskStreamSettings } from '@/schemas/protocols/stream/finalma
 import type { XHttpStreamSettings } from '@/schemas/protocols/stream/xhttp';
 
 import { getHeaderValue } from './headers';
+import { expandSubscriptionProfileEndpoints } from './subscription-profile';
 
 // Share-link generators. Each per-protocol fn takes a typed inbound plus
 // client overrides and returns a URL (or '' when the protocol doesn't
@@ -244,6 +245,9 @@ export function genVmessLink(input: GenVmessLinkInput): string {
     if (tlsSettings.settings.pinnedPeerCertSha256.length > 0) {
       obj.pcs = tlsSettings.settings.pinnedPeerCertSha256.join(',');
     }
+    if ((tlsSettings.settings as typeof tlsSettings.settings & { allowInsecure?: boolean }).allowInsecure === true) {
+      obj.allowInsecure = true;
+    }
   }
 
   applyExternalProxyTLSObj(externalProxy, obj, tls);
@@ -374,6 +378,9 @@ export function genVlessLink(input: GenVlessLinkInput): string {
       if (tls.settings.pinnedPeerCertSha256.length > 0) {
         params.set('pcs', tls.settings.pinnedPeerCertSha256.join(','));
       }
+      if ((tls.settings as typeof tls.settings & { allowInsecure?: boolean }).allowInsecure === true) {
+        params.set('allowInsecure', '1');
+      }
       if (stream.network === 'tcp' && flow.length > 0) params.set('flow', flow);
     }
     applyExternalProxyTLSParams(externalProxy, params, security);
@@ -455,6 +462,9 @@ function writeTlsParams(stream: NonNullable<Inbound['streamSettings']>, params: 
   if (tls.serverName.length > 0) params.set('sni', tls.serverName);
   if (tls.settings.pinnedPeerCertSha256.length > 0) {
     params.set('pcs', tls.settings.pinnedPeerCertSha256.join(','));
+  }
+  if ((tls.settings as typeof tls.settings & { allowInsecure?: boolean }).allowInsecure === true) {
+    params.set('allowInsecure', '1');
   }
 }
 
@@ -655,6 +665,9 @@ export function genHysteriaLink(input: GenHysteriaLinkInput): string {
   if (tls.serverName.length > 0) params.set('sni', tls.serverName);
   if (tls.settings.pinnedPeerCertSha256.length > 0) {
     params.set('pinSHA256', tls.settings.pinnedPeerCertSha256.map(hysteriaPinHex).join(','));
+  }
+  if ((tls.settings as typeof tls.settings & { allowInsecure?: boolean }).allowInsecure === true) {
+    params.set('insecure', '1');
   }
   // An external-proxy entry can pin a different endpoint's certificate.
   // Hysteria carries it as hex `pinSHA256` (not the `pcs` other protocols
@@ -1000,23 +1013,24 @@ export function genAllLinks(input: GenAllLinksInput): GenAllLinksEntry[] {
       .join(separationChar);
   };
 
-  const externals = inbound.streamSettings?.externalProxy;
-  if (!externals || externals.length === 0) {
-    const r = composeRemark('');
-    return [{ remark: r, link: genLink({ inbound, address: addr, port, forceTls: 'same', remark: r, client }) }];
-  }
-  return externals.map((ep) => {
-    const r = composeRemark(ep.remark);
+  if (!inbound.streamSettings) return [];
+  const endpoints = expandSubscriptionProfileEndpoints(inbound.streamSettings, addr, port);
+  return endpoints.map((endpoint) => {
+    const r = composeRemark(endpoint.remark);
+    const profileInbound: Inbound = {
+      ...inbound,
+      streamSettings: endpoint.streamSettings,
+    };
     return {
       remark: r,
       link: genLink({
-        inbound,
-        address: ep.dest,
-        port: ep.port,
-        forceTls: ep.forceTls,
+        inbound: profileInbound,
+        address: endpoint.address,
+        port: endpoint.port,
+        forceTls: 'same',
         remark: r,
         client,
-        externalProxy: ep,
+        externalProxy: null,
       }),
     };
   });

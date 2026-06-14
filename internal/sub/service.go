@@ -436,38 +436,39 @@ func (s *SubService) genVmessLink(inbound *model.Inbound, email string) string {
 	if inbound.Protocol != model.VMESS {
 		return ""
 	}
-	address := s.resolveInboundAddress(inbound)
-	obj := map[string]any{
-		"v":    "2",
-		"add":  address,
-		"port": inbound.Port,
-		"type": "none",
-	}
-	stream := unmarshalStreamSettings(inbound.StreamSettings)
-	network, _ := stream["network"].(string)
-	applyVmessNetworkParams(stream, network, obj)
-	if finalmask, ok := stream["finalmask"].(map[string]any); ok {
-		applyFinalMaskObj(finalmask, obj)
-	}
-	security, _ := stream["security"].(string)
-	obj["tls"] = security
-	if security == "tls" {
-		applyVmessTLSParams(stream, obj)
-	}
-
 	clients, _ := s.inboundService.GetClients(inbound)
 	clientIndex := findClientIndex(clients, email)
-	obj["id"] = clients[clientIndex].ID
-	obj["scy"] = clients[clientIndex].Security
-
-	externalProxies, _ := stream["externalProxy"].([]any)
-
-	if len(externalProxies) > 0 {
-		return s.buildVmessExternalProxyLinks(externalProxies, obj, inbound, email)
+	if clientIndex < 0 {
+		return ""
 	}
 
-	obj["ps"] = s.genRemark(inbound, email, "")
-	return buildVmessLink(obj)
+	baseStream := unmarshalStreamSettings(inbound.StreamSettings)
+	endpoints := expandSubscriptionEndpoints(baseStream, s.resolveInboundAddress(inbound), inbound.Port)
+	links := make([]string, 0, len(endpoints))
+	for _, endpoint := range endpoints {
+		stream := endpoint.Stream
+		network, _ := stream["network"].(string)
+		obj := map[string]any{
+			"v":    "2",
+			"add":  endpoint.Address,
+			"port": endpoint.Port,
+			"type": "none",
+			"id":   clients[clientIndex].ID,
+			"scy":  clients[clientIndex].Security,
+			"ps":   s.genRemark(inbound, email, endpoint.Remark),
+		}
+		applyVmessNetworkParams(stream, network, obj)
+		if finalmask, ok := stream["finalmask"].(map[string]any); ok {
+			applyFinalMaskObj(finalmask, obj)
+		}
+		security, _ := stream["security"].(string)
+		obj["tls"] = security
+		if security == "tls" {
+			applyVmessTLSParams(stream, obj)
+		}
+		links = append(links, buildVmessLink(obj))
+	}
+	return strings.Join(links, "\n")
 }
 
 // vlessEncryptionEnabled reports whether the VLESS inbound settings enable
@@ -488,117 +489,95 @@ func (s *SubService) genVlessLink(inbound *model.Inbound, email string) string {
 	if inbound.Protocol != model.VLESS {
 		return ""
 	}
-	address := s.resolveInboundAddress(inbound)
-	stream := unmarshalStreamSettings(inbound.StreamSettings)
 	clients, _ := s.inboundService.GetClients(inbound)
 	clientIndex := findClientIndex(clients, email)
+	if clientIndex < 0 {
+		return ""
+	}
 	uuid := clients[clientIndex].ID
-	port := inbound.Port
-	streamNetwork := stream["network"].(string)
-	params := make(map[string]string)
-	params["type"] = streamNetwork
 
-	// Add encryption parameter for VLESS from inbound settings
 	var settings map[string]any
 	json.Unmarshal([]byte(inbound.Settings), &settings)
-	if encryption, ok := settings["encryption"].(string); ok {
-		params["encryption"] = encryption
-	}
 
-	applyShareNetworkParams(stream, streamNetwork, params)
-	if finalmask, ok := stream["finalmask"].(map[string]any); ok {
-		applyFinalMaskParams(finalmask, params)
-	}
-	security, _ := stream["security"].(string)
-	switch security {
-	case "tls":
-		applyShareTLSParams(stream, params)
-		if streamNetwork == "tcp" && len(clients[clientIndex].Flow) > 0 {
-			params["flow"] = clients[clientIndex].Flow
+	baseStream := unmarshalStreamSettings(inbound.StreamSettings)
+	endpoints := expandSubscriptionEndpoints(baseStream, s.resolveInboundAddress(inbound), inbound.Port)
+	links := make([]string, 0, len(endpoints))
+	for _, endpoint := range endpoints {
+		stream := endpoint.Stream
+		streamNetwork, _ := stream["network"].(string)
+		params := map[string]string{"type": streamNetwork}
+		if encryption, ok := settings["encryption"].(string); ok {
+			params["encryption"] = encryption
 		}
-	case "reality":
-		applyShareRealityParams(stream, params)
-		if streamNetwork == "tcp" && len(clients[clientIndex].Flow) > 0 {
-			params["flow"] = clients[clientIndex].Flow
+		applyShareNetworkParams(stream, streamNetwork, params)
+		if finalmask, ok := stream["finalmask"].(map[string]any); ok {
+			applyFinalMaskParams(finalmask, params)
 		}
-	default:
-		params["security"] = "none"
-		// VLESS encryption (vlessenc / ML-KEM) carries XTLS Vision over XHTTP
-		// without transport TLS.
-		if streamNetwork == "xhttp" && len(clients[clientIndex].Flow) > 0 && vlessEncryptionEnabled(settings) {
-			params["flow"] = clients[clientIndex].Flow
+
+		security, _ := stream["security"].(string)
+		switch security {
+		case "tls":
+			applyShareTLSParams(stream, params)
+			if streamNetwork == "tcp" && len(clients[clientIndex].Flow) > 0 {
+				params["flow"] = clients[clientIndex].Flow
+			}
+		case "reality":
+			applyShareRealityParams(stream, params)
+			if streamNetwork == "tcp" && len(clients[clientIndex].Flow) > 0 {
+				params["flow"] = clients[clientIndex].Flow
+			}
+		default:
+			params["security"] = "none"
+			if streamNetwork == "xhttp" && len(clients[clientIndex].Flow) > 0 && vlessEncryptionEnabled(settings) {
+				params["flow"] = clients[clientIndex].Flow
+			}
 		}
+
+		link := fmt.Sprintf("vless://%s@%s:%d", uuid, endpoint.Address, endpoint.Port)
+		links = append(links, buildLinkWithParams(link, params, s.genRemark(inbound, email, endpoint.Remark)))
 	}
-
-	externalProxies, _ := stream["externalProxy"].([]any)
-
-	if len(externalProxies) > 0 {
-		return s.buildExternalProxyURLLinks(
-			externalProxies,
-			params,
-			security,
-			func(dest string, port int) string {
-				return fmt.Sprintf("vless://%s@%s:%d", uuid, dest, port)
-			},
-			func(ep map[string]any) string {
-				return s.genRemark(inbound, email, ep["remark"].(string))
-			},
-		)
-	}
-
-	link := fmt.Sprintf("vless://%s@%s:%d", uuid, address, port)
-	return buildLinkWithParams(link, params, s.genRemark(inbound, email, ""))
+	return strings.Join(links, "\n")
 }
 
 func (s *SubService) genTrojanLink(inbound *model.Inbound, email string) string {
 	if inbound.Protocol != model.Trojan {
 		return ""
 	}
-	address := s.resolveInboundAddress(inbound)
-	stream := unmarshalStreamSettings(inbound.StreamSettings)
 	clients, _ := s.inboundService.GetClients(inbound)
 	clientIndex := findClientIndex(clients, email)
+	if clientIndex < 0 {
+		return ""
+	}
 	password := encodeUserinfo(clients[clientIndex].Password)
-	port := inbound.Port
-	streamNetwork := stream["network"].(string)
-	params := make(map[string]string)
-	params["type"] = streamNetwork
 
-	applyShareNetworkParams(stream, streamNetwork, params)
-	if finalmask, ok := stream["finalmask"].(map[string]any); ok {
-		applyFinalMaskParams(finalmask, params)
-	}
-	security, _ := stream["security"].(string)
-	switch security {
-	case "tls":
-		applyShareTLSParams(stream, params)
-	case "reality":
-		applyShareRealityParams(stream, params)
-		if streamNetwork == "tcp" && len(clients[clientIndex].Flow) > 0 {
-			params["flow"] = clients[clientIndex].Flow
+	baseStream := unmarshalStreamSettings(inbound.StreamSettings)
+	endpoints := expandSubscriptionEndpoints(baseStream, s.resolveInboundAddress(inbound), inbound.Port)
+	links := make([]string, 0, len(endpoints))
+	for _, endpoint := range endpoints {
+		stream := endpoint.Stream
+		streamNetwork, _ := stream["network"].(string)
+		params := map[string]string{"type": streamNetwork}
+		applyShareNetworkParams(stream, streamNetwork, params)
+		if finalmask, ok := stream["finalmask"].(map[string]any); ok {
+			applyFinalMaskParams(finalmask, params)
 		}
-	default:
-		params["security"] = "none"
+		security, _ := stream["security"].(string)
+		switch security {
+		case "tls":
+			applyShareTLSParams(stream, params)
+		case "reality":
+			applyShareRealityParams(stream, params)
+			if streamNetwork == "tcp" && len(clients[clientIndex].Flow) > 0 {
+				params["flow"] = clients[clientIndex].Flow
+			}
+		default:
+			params["security"] = "none"
+		}
+
+		link := fmt.Sprintf("trojan://%s@%s:%d", password, endpoint.Address, endpoint.Port)
+		links = append(links, buildLinkWithParams(link, params, s.genRemark(inbound, email, endpoint.Remark)))
 	}
-
-	externalProxies, _ := stream["externalProxy"].([]any)
-
-	if len(externalProxies) > 0 {
-		return s.buildExternalProxyURLLinks(
-			externalProxies,
-			params,
-			security,
-			func(dest string, port int) string {
-				return fmt.Sprintf("trojan://%s@%s:%d", password, dest, port)
-			},
-			func(ep map[string]any) string {
-				return s.genRemark(inbound, email, ep["remark"].(string))
-			},
-		)
-	}
-
-	link := fmt.Sprintf("trojan://%s@%s:%d", password, address, port)
-	return buildLinkWithParams(link, params, s.genRemark(inbound, email, ""))
+	return strings.Join(links, "\n")
 }
 
 // encodeUserinfo percent-encodes a userinfo (password/auth) value so it
@@ -616,125 +595,62 @@ func (s *SubService) genShadowsocksLink(inbound *model.Inbound, email string) st
 	if inbound.Protocol != model.Shadowsocks {
 		return ""
 	}
-	address := s.resolveInboundAddress(inbound)
-	stream := unmarshalStreamSettings(inbound.StreamSettings)
 	clients, _ := s.inboundService.GetClients(inbound)
+	clientIndex := findClientIndex(clients, email)
+	if clientIndex < 0 {
+		return ""
+	}
 
 	var settings map[string]any
 	json.Unmarshal([]byte(inbound.Settings), &settings)
-	inboundPassword := settings["password"].(string)
-	method := settings["method"].(string)
-	clientIndex := findClientIndex(clients, email)
-	streamNetwork := stream["network"].(string)
-	params := make(map[string]string)
-	params["type"] = streamNetwork
-
-	applyShareNetworkParams(stream, streamNetwork, params)
-	if finalmask, ok := stream["finalmask"].(map[string]any); ok {
-		applyFinalMaskParams(finalmask, params)
+	inboundPassword, _ := settings["password"].(string)
+	method, _ := settings["method"].(string)
+	if method == "" {
+		return ""
 	}
-
-	security, _ := stream["security"].(string)
-	if security == "tls" {
-		applyShareTLSParams(stream, params)
-	}
-
 	encPart := fmt.Sprintf("%s:%s", method, clients[clientIndex].Password)
-	if method[0] == '2' {
+	if strings.HasPrefix(method, "2022") {
 		encPart = fmt.Sprintf("%s:%s:%s", method, inboundPassword, clients[clientIndex].Password)
 	}
+	encodedCredential := base64.RawURLEncoding.EncodeToString([]byte(encPart))
 
-	externalProxies, _ := stream["externalProxy"].([]any)
+	baseStream := unmarshalStreamSettings(inbound.StreamSettings)
+	endpoints := expandSubscriptionEndpoints(baseStream, s.resolveInboundAddress(inbound), inbound.Port)
+	links := make([]string, 0, len(endpoints))
+	for _, endpoint := range endpoints {
+		stream := endpoint.Stream
+		streamNetwork, _ := stream["network"].(string)
+		params := map[string]string{"type": streamNetwork}
+		applyShareNetworkParams(stream, streamNetwork, params)
+		if finalmask, ok := stream["finalmask"].(map[string]any); ok {
+			applyFinalMaskParams(finalmask, params)
+		}
+		security, _ := stream["security"].(string)
+		switch security {
+		case "tls":
+			applyShareTLSParams(stream, params)
+		case "reality":
+			applyShareRealityParams(stream, params)
+		default:
+			params["security"] = "none"
+		}
 
-	if len(externalProxies) > 0 {
-		proxyParams := cloneStringMap(params)
-		proxyParams["security"] = security
-		return s.buildExternalProxyURLLinks(
-			externalProxies,
-			proxyParams,
-			security,
-			func(dest string, port int) string {
-				return fmt.Sprintf("ss://%s@%s:%d", base64.RawURLEncoding.EncodeToString([]byte(encPart)), dest, port)
-			},
-			func(ep map[string]any) string {
-				return s.genRemark(inbound, email, ep["remark"].(string))
-			},
-		)
+		link := fmt.Sprintf("ss://%s@%s:%d", encodedCredential, endpoint.Address, endpoint.Port)
+		links = append(links, buildLinkWithParams(link, params, s.genRemark(inbound, email, endpoint.Remark)))
 	}
-
-	link := fmt.Sprintf("ss://%s@%s:%d", base64.RawURLEncoding.EncodeToString([]byte(encPart)), address, inbound.Port)
-	return buildLinkWithParams(link, params, s.genRemark(inbound, email, ""))
+	return strings.Join(links, "\n")
 }
 
 func (s *SubService) genHysteriaLink(inbound *model.Inbound, email string) string {
 	if inbound.Protocol != model.Hysteria {
 		return ""
 	}
-	var stream map[string]any
-	json.Unmarshal([]byte(inbound.StreamSettings), &stream)
 	clients, _ := s.inboundService.GetClients(inbound)
-	clientIndex := -1
-	for i, client := range clients {
-		if client.Email == email {
-			clientIndex = i
-			break
-		}
+	clientIndex := findClientIndex(clients, email)
+	if clientIndex < 0 {
+		return ""
 	}
 	auth := encodeUserinfo(clients[clientIndex].Auth)
-	params := make(map[string]string)
-
-	params["security"] = "tls"
-	tlsSetting, _ := stream["tlsSettings"].(map[string]any)
-	alpns, _ := tlsSetting["alpn"].([]any)
-	var alpn []string
-	for _, a := range alpns {
-		alpn = append(alpn, a.(string))
-	}
-	if len(alpn) > 0 {
-		params["alpn"] = strings.Join(alpn, ",")
-	}
-	if sniValue, ok := searchKey(tlsSetting, "serverName"); ok {
-		params["sni"], _ = sniValue.(string)
-	}
-
-	tlsSettings, _ := searchKey(tlsSetting, "settings")
-	if tlsSetting != nil {
-		if fpValue, ok := searchKey(tlsSettings, "fingerprint"); ok {
-			params["fp"], _ = fpValue.(string)
-		}
-		if echValue, ok := searchKey(tlsSettings, "echConfigList"); ok {
-			if ech, _ := echValue.(string); ech != "" {
-				params["ech"] = ech
-			}
-		}
-		if pins, ok := pinnedSha256List(tlsSettings); ok {
-			for i, p := range pins {
-				pins[i] = hysteriaPinHex(p)
-			}
-			params["pinSHA256"] = strings.Join(pins, ",")
-		}
-	}
-
-	// salamander obfs (Hysteria2). The panel-side link generator already
-	// emits these; keep the subscription output in sync so a client has
-	// the obfs password to match the server.
-	if finalmask, ok := stream["finalmask"].(map[string]any); ok {
-		applyFinalMaskParams(finalmask, params)
-		if udpMasks, ok := finalmask["udp"].([]any); ok {
-			for _, m := range udpMasks {
-				mask, _ := m.(map[string]any)
-				if mask == nil || mask["type"] != "salamander" {
-					continue
-				}
-				settings, _ := mask["settings"].(map[string]any)
-				if pw, ok := settings["password"].(string); ok && pw != "" {
-					params["obfs"] = "salamander"
-					params["obfs-password"] = pw
-					break
-				}
-			}
-		}
-	}
 
 	var settings map[string]any
 	json.Unmarshal([]byte(inbound.Settings), &settings)
@@ -744,42 +660,52 @@ func (s *SubService) genHysteriaLink(inbound *model.Inbound, email string) strin
 		protocol = "hysteria"
 	}
 
-	// Fan out one link per External Proxy entry if any. Previously this
-	// generator ignored `externalProxy` entirely, so the link kept the
-	// server's own IP/port even when the admin configured an alternate
-	// endpoint (e.g. a CDN hostname + port that forwards to the node).
-	// Matches the behaviour of genVlessLink / genTrojanLink / ….
-	externalProxies, _ := stream["externalProxy"].([]any)
-	if len(externalProxies) > 0 {
-		links := make([]string, 0, len(externalProxies))
-		for _, externalProxy := range externalProxies {
-			ep, ok := externalProxy.(map[string]any)
-			if !ok {
-				continue
-			}
-			dest, _ := ep["dest"].(string)
-			portF, okPort := ep["port"].(float64)
-			if dest == "" || !okPort {
-				continue
-			}
-			epRemark, _ := ep["remark"].(string)
-
-			epParams := cloneStringMap(params)
-			applyExternalProxyHysteriaParams(ep, epParams)
-
-			link := fmt.Sprintf("%s://%s@%s:%d", protocol, auth, dest, int(portF))
-			links = append(links, buildLinkWithParams(link, epParams, s.genRemark(inbound, email, epRemark)))
+	baseStream := unmarshalStreamSettings(inbound.StreamSettings)
+	endpoints := expandSubscriptionEndpoints(baseStream, s.resolveInboundAddress(inbound), inbound.Port)
+	links := make([]string, 0, len(endpoints))
+	for _, endpoint := range endpoints {
+		stream := endpoint.Stream
+		params := make(map[string]string)
+		params["security"] = "tls"
+		applyShareTLSParams(stream, params)
+		if params["allowInsecure"] == "1" {
+			params["insecure"] = "1"
+			delete(params, "allowInsecure")
 		}
-		return strings.Join(links, "\n")
-	}
+		if pins := params["pcs"]; pins != "" {
+			parts := strings.Split(pins, ",")
+			for i, pin := range parts {
+				parts[i] = hysteriaPinHex(pin)
+			}
+			params["pinSHA256"] = strings.Join(parts, ",")
+			delete(params, "pcs")
+		}
 
-	// No external proxy configured — use the inbound's resolved address so
-	// node-managed inbounds get the node's host instead of the central panel's.
-	if hopPorts := hysteriaHopPorts(stream); hopPorts != "" {
-		params["mport"] = hopPorts
+		if finalmask, ok := stream["finalmask"].(map[string]any); ok {
+			applyFinalMaskParams(finalmask, params)
+			if udpMasks, ok := finalmask["udp"].([]any); ok {
+				for _, rawMask := range udpMasks {
+					mask, _ := rawMask.(map[string]any)
+					if mask == nil || mask["type"] != "salamander" {
+						continue
+					}
+					maskSettings, _ := mask["settings"].(map[string]any)
+					if password, ok := maskSettings["password"].(string); ok && password != "" {
+						params["obfs"] = "salamander"
+						params["obfs-password"] = password
+						break
+					}
+				}
+			}
+		}
+		if hopPorts := hysteriaHopPorts(stream); hopPorts != "" {
+			params["mport"] = hopPorts
+		}
+
+		link := fmt.Sprintf("%s://%s@%s:%d", protocol, auth, endpoint.Address, endpoint.Port)
+		links = append(links, buildLinkWithParams(link, params, s.genRemark(inbound, email, endpoint.Remark)))
 	}
-	link := fmt.Sprintf("%s://%s@%s:%d", protocol, auth, s.resolveInboundAddress(inbound), inbound.Port)
-	return buildLinkWithParams(link, params, s.genRemark(inbound, email, ""))
+	return strings.Join(links, "\n")
 }
 
 // hysteriaHopPorts returns the configured Hysteria2 UDP port-hopping range
@@ -1019,6 +945,11 @@ func applyShareTLSParams(stream map[string]any, params map[string]string) {
 		if pins, ok := pinnedSha256List(tlsSettings); ok {
 			params["pcs"] = strings.Join(pins, ",")
 		}
+		if allowInsecure, ok := searchKey(tlsSettings, "allowInsecure"); ok {
+			if insecure, _ := allowInsecure.(bool); insecure {
+				params["allowInsecure"] = "1"
+			}
+		}
 	}
 }
 
@@ -1048,6 +979,11 @@ func applyVmessTLSParams(stream map[string]any, obj map[string]any) {
 		}
 		if pins, ok := pinnedSha256List(tlsSettings); ok {
 			obj["pcs"] = strings.Join(pins, ",")
+		}
+		if allowInsecure, ok := searchKey(tlsSettings, "allowInsecure"); ok {
+			if insecure, _ := allowInsecure.(bool); insecure {
+				obj["allowInsecure"] = true
+			}
 		}
 	}
 }

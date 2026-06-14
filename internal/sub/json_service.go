@@ -107,76 +107,44 @@ func (s *SubJsonService) GetJson(subId string, host string) (string, string, err
 }
 
 func (s *SubJsonService) getConfig(inbound *model.Inbound, client model.Client, host string) []json_util.RawMessage {
-	var newJsonArray []json_util.RawMessage
-	stream := s.streamData(inbound.StreamSettings)
-
-	// When externalProxy is empty the JSON config falls back to a
-	// synthetic one whose `dest` is the host the client connects to.
-	// For node-managed inbounds we want the node's address — request
-	// host won't reach the right xray. resolveInboundAddress already
-	// implements the node→subscriber-host fallback chain.
+	baseStream := unmarshalStreamSettings(inbound.StreamSettings)
 	defaultDest := s.SubService.resolveInboundAddress(inbound)
 	if defaultDest == "" {
 		defaultDest = host
 	}
+	endpoints := expandSubscriptionEndpoints(baseStream, defaultDest, inbound.Port)
+	newJsonArray := make([]json_util.RawMessage, 0, len(endpoints))
 
-	externalProxies, ok := stream["externalProxy"].([]any)
-	hasExternalProxy := ok && len(externalProxies) > 0
-	if !hasExternalProxy {
-		externalProxies = []any{
-			map[string]any{
-				"forceTls": "same",
-				"dest":     defaultDest,
-				"port":     float64(inbound.Port),
-				"remark":   "",
-			},
-		}
-	}
+	for _, endpoint := range endpoints {
+		workingInbound := *inbound
+		workingInbound.Listen = endpoint.Address
+		workingInbound.Port = endpoint.Port
+		rawStream, _ := json.Marshal(endpoint.Stream)
+		workingInbound.StreamSettings = string(rawStream)
 
-	delete(stream, "externalProxy")
-
-	for _, ep := range externalProxies {
-		extPrxy := ep.(map[string]any)
-		inbound.Listen = extPrxy["dest"].(string)
-		inbound.Port = int(extPrxy["port"].(float64))
-		newStream := cloneStreamForExternalProxy(stream)
-		switch extPrxy["forceTls"].(string) {
-		case "tls":
-			if newStream["security"] != "tls" {
-				newStream["security"] = "tls"
-				newStream["tlsSettings"] = map[string]any{}
-			}
-		case "none":
-			if newStream["security"] != "none" {
-				newStream["security"] = "none"
-				delete(newStream, "tlsSettings")
-			}
-		}
-		security, _ := newStream["security"].(string)
-		if hasExternalProxy {
-			applyExternalProxyTLSToStream(extPrxy, newStream, security)
-		}
+		newStream := s.streamData(workingInbound.StreamSettings)
 		streamSettings, _ := json.MarshalIndent(newStream, "", "  ")
 
 		var newOutbounds []json_util.RawMessage
-
-		switch inbound.Protocol {
+		switch workingInbound.Protocol {
 		case "vmess":
-			newOutbounds = append(newOutbounds, s.genVnext(inbound, streamSettings, client))
+			newOutbounds = append(newOutbounds, s.genVnext(&workingInbound, streamSettings, client))
 		case "vless":
-			newOutbounds = append(newOutbounds, s.genVless(inbound, streamSettings, client))
+			newOutbounds = append(newOutbounds, s.genVless(&workingInbound, streamSettings, client))
 		case "trojan", "shadowsocks":
-			newOutbounds = append(newOutbounds, s.genServer(inbound, streamSettings, client))
+			newOutbounds = append(newOutbounds, s.genServer(&workingInbound, streamSettings, client))
 		case "hysteria":
-			newOutbounds = append(newOutbounds, s.genHy(inbound, newStream, client))
+			newOutbounds = append(newOutbounds, s.genHy(&workingInbound, newStream, client))
+		}
+		if len(newOutbounds) == 0 {
+			continue
 		}
 
 		newOutbounds = append(newOutbounds, s.defaultOutbounds...)
 		newConfigJson := make(map[string]any)
 		maps.Copy(newConfigJson, s.configJson)
-
 		newConfigJson["outbounds"] = newOutbounds
-		newConfigJson["remarks"] = s.SubService.genRemark(inbound, client.Email, extPrxy["remark"].(string))
+		newConfigJson["remarks"] = s.SubService.genRemark(inbound, client.Email, endpoint.Remark)
 
 		newConfig, _ := json.MarshalIndent(newConfigJson, "", "  ")
 		newJsonArray = append(newJsonArray, newConfig)
@@ -264,6 +232,9 @@ func (s *SubJsonService) tlsData(tData map[string]any) map[string]any {
 	}
 	if pins, ok := tlsClientSettings["pinnedPeerCertSha256"].([]any); ok && len(pins) > 0 {
 		tlsData["pinnedPeerCertSha256"] = pins
+	}
+	if allowInsecure, ok := tlsClientSettings["allowInsecure"].(bool); ok {
+		tlsData["allowInsecure"] = allowInsecure
 	}
 	return tlsData
 }

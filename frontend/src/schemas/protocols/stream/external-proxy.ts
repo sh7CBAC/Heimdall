@@ -1,21 +1,102 @@
 import { z } from 'zod';
 
 import { PortSchema } from '@/schemas/primitives';
+import { RealityClientSettingsSchema } from '@/schemas/protocols/security/reality';
+import {
+  AlpnSchema,
+  TlsClientSettingsSchema,
+  UtlsFingerprintSchema,
+} from '@/schemas/protocols/security/tls';
 
-import { AlpnSchema, UtlsFingerprintSchema } from '@/schemas/protocols/security/tls';
+import { FinalMaskStreamSettingsSchema } from './finalmask';
+import { GrpcStreamSettingsSchema } from './grpc';
+import { HttpUpgradeStreamSettingsSchema } from './httpupgrade';
+import { KcpStreamSettingsSchema } from './kcp';
+import { TcpStreamSettingsSchema } from './tcp';
+import { WsStreamSettingsSchema } from './ws';
+import { XHttpStreamSettingsSchema } from './xhttp';
 
+// `forceTls` is the historical External Proxy switch. It remains on the wire
+// so existing rows and older nodes keep working. New subscription profiles use
+// `security`; generators fall back to forceTls when security is absent/same.
 export const ExternalProxyForceTlsSchema = z.enum(['same', 'tls', 'none']);
 export type ExternalProxyForceTls = z.infer<typeof ExternalProxyForceTlsSchema>;
 
-// An inbound can advertise external proxy fronts (CDN edges, mirror nodes)
-// that share its config but vary the dest+port+SNI for the share link. The
-// panel form ships rows of this shape; link generators iterate them when
-// stream.externalProxy is non-empty.
+export const SubscriptionProfileNetworkSchema = z.enum([
+  'same',
+  'tcp',
+  'kcp',
+  'ws',
+  'grpc',
+  'httpupgrade',
+  'xhttp',
+]);
+export type SubscriptionProfileNetwork = z.infer<typeof SubscriptionProfileNetworkSchema>;
+
+export const SubscriptionProfileSecuritySchema = z.enum([
+  'same',
+  'none',
+  'tls',
+  'reality',
+]);
+export type SubscriptionProfileSecurity = z.infer<typeof SubscriptionProfileSecuritySchema>;
+
+// Client-only TLS shape. Server certificates/private keys are deliberately not
+// accepted here because subscription profiles never become Xray inbounds.
+export const SubscriptionProfileTlsSettingsSchema = z.object({
+  serverName: z.string().default(''),
+  alpn: z.array(AlpnSchema).default([]),
+  settings: TlsClientSettingsSchema.extend({
+    allowInsecure: z.boolean().default(false),
+  }).default({
+    fingerprint: 'chrome',
+    echConfigList: '',
+    pinnedPeerCertSha256: [],
+    allowInsecure: false,
+  }),
+});
+export type SubscriptionProfileTlsSettings = z.infer<typeof SubscriptionProfileTlsSettingsSchema>;
+
+// Client-only Reality shape. Private key/seed/target are server-side values and
+// are intentionally excluded from a virtual subscription profile.
+export const SubscriptionProfileRealitySettingsSchema = z.object({
+  serverNames: z.array(z.string()).default([]),
+  shortIds: z.array(z.string()).default([]),
+  settings: RealityClientSettingsSchema.default({
+    publicKey: '',
+    fingerprint: 'chrome',
+    serverName: '',
+    spiderX: '/',
+    mldsa65Verify: '',
+  }),
+});
+export type SubscriptionProfileRealitySettings = z.infer<typeof SubscriptionProfileRealitySettingsSchema>;
+
+// One inbound can advertise several complete client-side connection profiles.
+// Protocol and client identity remain owned by the parent inbound; address,
+// port, transport, security and client-only stream settings can be overridden.
 export const ExternalProxyEntrySchema = z.object({
-  forceTls: ExternalProxyForceTlsSchema.default('same'),
+  enabled: z.boolean().optional(),
+  remark: z.string().default(''),
   dest: z.string().default(''),
   port: PortSchema.default(443),
-  remark: z.string().default(''),
+
+  network: SubscriptionProfileNetworkSchema.optional(),
+  security: SubscriptionProfileSecuritySchema.optional(),
+
+  tcpSettings: TcpStreamSettingsSchema.optional(),
+  kcpSettings: KcpStreamSettingsSchema.optional(),
+  wsSettings: WsStreamSettingsSchema.optional(),
+  grpcSettings: GrpcStreamSettingsSchema.optional(),
+  httpupgradeSettings: HttpUpgradeStreamSettingsSchema.optional(),
+  xhttpSettings: XHttpStreamSettingsSchema.optional(),
+  tlsSettings: SubscriptionProfileTlsSettingsSchema.optional(),
+  realitySettings: SubscriptionProfileRealitySettingsSchema.optional(),
+  finalmask: FinalMaskStreamSettingsSchema.optional(),
+
+  // Legacy External Proxy fields. They are still read and emitted so old
+  // configurations remain byte-compatible until a later explicit migration.
+  forceTls: ExternalProxyForceTlsSchema.default('same'),
   sni: z.string().optional(),
   fingerprint: z.preprocess(
     (val) => (val === '' ? undefined : val),
@@ -24,5 +105,6 @@ export const ExternalProxyEntrySchema = z.object({
   alpn: z.array(AlpnSchema).optional(),
   pinnedPeerCertSha256: z.array(z.string()).optional(),
   echConfigList: z.string().optional(),
+  allowInsecure: z.boolean().optional(),
 });
 export type ExternalProxyEntry = z.infer<typeof ExternalProxyEntrySchema>;
