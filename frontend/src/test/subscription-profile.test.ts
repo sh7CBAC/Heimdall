@@ -100,6 +100,56 @@ describe('subscription profile expansion', () => {
     expect(endpoints[0].streamSettings.tlsSettings.serverName).toBe('sni.example.com');
   });
 
+  it('preserves a profile-specific Mux override for JSON subscription generation', () => {
+    const stream: StreamSettings = {
+      ...baseStream(),
+      externalProxy: [
+        {
+          enabled: true,
+          remark: 'mux',
+          dest: 'mux.example.com',
+          port: 443,
+          network: 'same',
+          security: 'same',
+          forceTls: 'same',
+          mux: {
+            enabled: true,
+            concurrency: 4,
+            xudpConcurrency: 8,
+            xudpProxyUDP443: 'allow',
+          },
+        },
+      ],
+    };
+
+    const [endpoint] = expandSubscriptionProfileEndpoints(stream, 'node.example.com', 27543);
+    expect(endpoint.profile?.mux).toEqual({
+      enabled: true,
+      concurrency: 4,
+      xudpConcurrency: 8,
+      xudpProxyUDP443: 'allow',
+    });
+  });
+
+  it('expands two inbounds with three profiles into exactly six endpoints', () => {
+    const withProfiles = (prefix: string): StreamSettings => ({
+      ...baseStream(),
+      externalProxy: [1, 2, 3].map((index) => ({
+        enabled: true,
+        remark: `${prefix}${index}`,
+        dest: `${prefix}${index}.example.com`,
+        port: 443,
+        network: 'same' as const,
+        security: 'same' as const,
+        forceTls: 'same' as const,
+      })),
+    });
+
+    const total = [withProfiles('a'), withProfiles('b')]
+      .flatMap((stream) => expandSubscriptionProfileEndpoints(stream, 'node.example.com', 27543));
+    expect(total).toHaveLength(6);
+  });
+
   it('returns no configurations when a configured profile list is fully disabled', () => {
     const stream: StreamSettings = {
       ...baseStream(),

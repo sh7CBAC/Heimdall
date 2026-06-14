@@ -629,7 +629,13 @@
           "node": "آدرس نود",
           "listen": "آدرس شنود ورودی",
           "custom": "سفارشی"
-        }
+        },
+        "profileMuxMode": "مالتی‌پلکس (Mux)",
+        "profileMuxHint": "فقط در اشتراک JSON: تنظیم سراسری Mux را به ارث ببرید، برای این پروفایل مقدار مستقل فعال کنید یا Mux را صریحاً غیرفعال کنید.",
+        "profileMuxInherit": "استفاده از Mux سراسری اشتراک",
+        "profileMuxEnabled": "فعال برای این پروفایل",
+        "profileMuxDisabled": "غیرفعال برای این پروفایل",
+        "xudpProxyUDP443": "سیاست XUDP برای UDP/443"
       },
       "info": {
         "mode": "حالت",

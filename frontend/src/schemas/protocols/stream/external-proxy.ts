@@ -72,6 +72,17 @@ export const SubscriptionProfileRealitySettingsSchema = z.object({
 });
 export type SubscriptionProfileRealitySettings = z.infer<typeof SubscriptionProfileRealitySettingsSchema>;
 
+// Per-profile outbound Mux override used by JSON subscriptions. Absence means
+// inherit the global subscription Mux setting; enabled=false explicitly turns
+// Mux off for this profile.
+export const SubscriptionProfileMuxSchema = z.object({
+  enabled: z.boolean().default(true),
+  concurrency: z.number().int().default(8),
+  xudpConcurrency: z.number().int().default(16),
+  xudpProxyUDP443: z.enum(['reject', 'allow', 'skip']).default('reject'),
+});
+export type SubscriptionProfileMux = z.infer<typeof SubscriptionProfileMuxSchema>;
+
 // One inbound can advertise several complete client-side connection profiles.
 // Protocol and client identity remain owned by the parent inbound; address,
 // port, transport, security and client-only stream settings can be overridden.
@@ -93,6 +104,7 @@ export const ExternalProxyEntrySchema = z.object({
   tlsSettings: SubscriptionProfileTlsSettingsSchema.optional(),
   realitySettings: SubscriptionProfileRealitySettingsSchema.optional(),
   finalmask: FinalMaskStreamSettingsSchema.optional(),
+  mux: SubscriptionProfileMuxSchema.optional(),
 
   // Legacy External Proxy fields. They are still read and emitted so old
   // configurations remain byte-compatible until a later explicit migration.

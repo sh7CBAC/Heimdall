@@ -630,7 +630,13 @@
           "node": "Node address",
           "listen": "Inbound listen",
           "custom": "Custom"
-        }
+        },
+        "profileMuxMode": "Mux",
+        "profileMuxHint": "JSON subscriptions only: inherit the global Mux setting, enable a profile-specific value, or explicitly disable Mux for this profile.",
+        "profileMuxInherit": "Use global subscription Mux",
+        "profileMuxEnabled": "Enable for this profile",
+        "profileMuxDisabled": "Disable for this profile",
+        "xudpProxyUDP443": "XUDP UDP/443 policy"
       },
       "info": {
         "mode": "Mode",

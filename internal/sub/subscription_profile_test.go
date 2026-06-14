@@ -141,3 +141,63 @@ func TestExpandSubscriptionEndpoints_LegacyTLSFieldsRemainCompatible(t *testing.
 		t.Fatalf("fingerprint = %v, want firefox", clientSettings["fingerprint"])
 	}
 }
+
+func TestExpandSubscriptionEndpoints_CarriesPerProfileMuxOverride(t *testing.T) {
+	base := map[string]any{
+		"network":  "tcp",
+		"security": "none",
+		"tcpSettings": map[string]any{
+			"header": map[string]any{"type": "none"},
+		},
+		"externalProxy": []any{
+			map[string]any{
+				"enabled": true,
+				"dest":    "mux.example.com",
+				"port":    float64(443),
+				"mux": map[string]any{
+					"enabled":         true,
+					"concurrency":     float64(4),
+					"xudpConcurrency": float64(8),
+					"xudpProxyUDP443": "allow",
+				},
+			},
+		},
+	}
+
+	endpoints := expandSubscriptionEndpoints(base, "node.example.com", 27543)
+	if len(endpoints) != 1 || !endpoints[0].HasMuxOverride {
+		t.Fatalf("unexpected endpoints/mux override: %#v", endpoints)
+	}
+	mux, ok := endpoints[0].MuxOverride.(map[string]any)
+	if !ok || mux["enabled"] != true || mux["concurrency"] != float64(4) {
+		t.Fatalf("unexpected mux override: %#v", endpoints[0].MuxOverride)
+	}
+}
+
+func TestExpandSubscriptionEndpoints_TwoInboundsWithThreeProfilesProduceSixConfigurations(t *testing.T) {
+	makeStream := func(prefix string) map[string]any {
+		profiles := make([]any, 0, 3)
+		for i := 1; i <= 3; i++ {
+			profiles = append(profiles, map[string]any{
+				"enabled": true,
+				"remark":  prefix + string(rune('0'+i)),
+				"dest":    prefix + string(rune('0'+i)) + ".example.com",
+				"port":    float64(443),
+			})
+		}
+		return map[string]any{
+			"network":       "tcp",
+			"security":      "none",
+			"tcpSettings":   map[string]any{"header": map[string]any{"type": "none"}},
+			"externalProxy": profiles,
+		}
+	}
+
+	total := 0
+	for _, stream := range []map[string]any{makeStream("a"), makeStream("b")} {
+		total += len(expandSubscriptionEndpoints(stream, "node.example.com", 27543))
+	}
+	if total != 6 {
+		t.Fatalf("total configurations = %d, want exactly 6", total)
+	}
+}

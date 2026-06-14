@@ -139,6 +139,7 @@ func (s *SubJsonService) getConfig(inbound *model.Inbound, client model.Client, 
 		if len(newOutbounds) == 0 {
 			continue
 		}
+		newOutbounds[0] = applySubscriptionProfileMuxOverride(newOutbounds[0], endpoint)
 
 		newOutbounds = append(newOutbounds, s.defaultOutbounds...)
 		newConfigJson := make(map[string]any)
@@ -151,6 +152,32 @@ func (s *SubJsonService) getConfig(inbound *model.Inbound, client model.Client, 
 	}
 
 	return newJsonArray
+}
+
+func applySubscriptionProfileMuxOverride(raw json_util.RawMessage, endpoint subscriptionEndpoint) json_util.RawMessage {
+	if !endpoint.HasMuxOverride {
+		return raw
+	}
+
+	var outbound map[string]any
+	if err := json.Unmarshal(raw, &outbound); err != nil {
+		return raw
+	}
+
+	mux, ok := endpoint.MuxOverride.(map[string]any)
+	if !ok {
+		delete(outbound, "mux")
+	} else if enabled, present := mux["enabled"].(bool); present && !enabled {
+		delete(outbound, "mux")
+	} else {
+		outbound["mux"] = mux
+	}
+
+	updated, err := json.Marshal(outbound)
+	if err != nil {
+		return raw
+	}
+	return updated
 }
 
 func (s *SubJsonService) streamData(stream string) map[string]any {

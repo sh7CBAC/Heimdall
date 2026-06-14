@@ -11,10 +11,12 @@ import (
 // but SECX treats each entry as a complete subscription profile: address/port
 // plus optional transport, security and client-side stream overrides.
 type subscriptionEndpoint struct {
-	Address string
-	Port    int
-	Remark  string
-	Stream  map[string]any
+	Address        string
+	Port           int
+	Remark         string
+	Stream         map[string]any
+	MuxOverride    any
+	HasMuxOverride bool
 }
 
 var subscriptionTransportKeys = []string{
@@ -61,12 +63,17 @@ func expandSubscriptionEndpoints(baseStream map[string]any, defaultAddress strin
 			port = defaultPort
 		}
 
-		out = append(out, subscriptionEndpoint{
+		endpoint := subscriptionEndpoint{
 			Address: address,
 			Port:    port,
 			Remark:  stringValue(profile["remark"]),
 			Stream:  effectiveSubscriptionProfileStream(baseStream, profile),
-		})
+		}
+		if mux, exists := profile["mux"]; exists {
+			endpoint.HasMuxOverride = true
+			endpoint.MuxOverride = deepCloneJSON(mux)
+		}
+		out = append(out, endpoint)
 	}
 	return out
 }

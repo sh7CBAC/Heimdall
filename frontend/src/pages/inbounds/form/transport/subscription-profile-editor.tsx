@@ -26,6 +26,7 @@ import { FinalMaskForm } from '@/lib/xray/forms/transport';
 import { canEnableReality, canEnableTls } from '@/lib/xray/protocol-capabilities';
 import { ALPN_OPTION, UTLS_FINGERPRINT } from '@/schemas/primitives';
 import {
+  SubscriptionProfileMuxSchema,
   SubscriptionProfileRealitySettingsSchema,
   SubscriptionProfileTlsSettingsSchema,
 } from '@/schemas/protocols/stream/external-proxy';
@@ -118,6 +119,10 @@ export default function SubscriptionProfileEditor({
   const selectedSecurity = (Form.useWatch([...base, 'security'], form) ?? 'same') as string;
   const legacyForceTls = (Form.useWatch([...base, 'forceTls'], form) ?? 'same') as string;
   const finalMask = Form.useWatch([...base, 'finalmask'], { form, preserve: true });
+  const mux = Form.useWatch([...base, 'mux'], { form, preserve: true }) as
+    | { enabled?: boolean; concurrency?: number; xudpConcurrency?: number; xudpProxyUDP443?: string }
+    | undefined;
+  const muxMode = mux === undefined ? 'same' : (mux.enabled === false ? 'disabled' : 'enabled');
 
   const effectiveNetwork = selectedNetwork === 'same' ? parentNetwork : selectedNetwork;
   const effectiveSecurity = selectedSecurity === 'same' ? parentSecurity : selectedSecurity;
@@ -385,6 +390,56 @@ export default function SubscriptionProfileEditor({
               protocol={protocol}
               form={form}
             />
+          )}
+
+          <Field
+            label={t('pages.inbounds.form.profileMuxMode')}
+            hint={t('pages.inbounds.form.profileMuxHint')}
+          >
+            <Select
+              value={muxMode}
+              onChange={(mode) => {
+                if (mode === 'same') {
+                  form.setFieldValue([...base, 'mux'], undefined);
+                  return;
+                }
+                if (mode === 'disabled') {
+                  form.setFieldValue([...base, 'mux'], { enabled: false });
+                  return;
+                }
+                form.setFieldValue(
+                  [...base, 'mux'],
+                  SubscriptionProfileMuxSchema.parse({ enabled: true }),
+                );
+              }}
+              options={[
+                { value: 'same', label: t('pages.inbounds.form.profileMuxInherit') },
+                { value: 'enabled', label: t('pages.inbounds.form.profileMuxEnabled') },
+                { value: 'disabled', label: t('pages.inbounds.form.profileMuxDisabled') },
+              ]}
+            />
+          </Field>
+
+          {muxMode === 'enabled' && (
+            <div className="ext-proxy-grid ext-proxy-grid--three">
+              <Field label={t('pages.xray.outboundForm.concurrency')}>
+                <Form.Item name={[fieldName, 'mux', 'concurrency']} noStyle>
+                  <InputNumber min={-1} style={{ width: '100%' }} />
+                </Form.Item>
+              </Field>
+              <Field label={t('pages.xray.outboundForm.xudpConcurrency')}>
+                <Form.Item name={[fieldName, 'mux', 'xudpConcurrency']} noStyle>
+                  <InputNumber min={-1} style={{ width: '100%' }} />
+                </Form.Item>
+              </Field>
+              <Field label={t('pages.inbounds.form.xudpProxyUDP443')}>
+                <Form.Item name={[fieldName, 'mux', 'xudpProxyUDP443']} noStyle>
+                  <Select
+                    options={['reject', 'allow', 'skip'].map((value) => ({ value, label: value }))}
+                  />
+                </Form.Item>
+              </Field>
+            </div>
           )}
         </div>
       </details>

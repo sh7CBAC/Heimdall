@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/mhsanaei/3x-ui/v3/internal/database/model"
+	"github.com/mhsanaei/3x-ui/v3/internal/util/json_util"
 )
 
 func hasDirectOutOutbound(svc *SubJsonService) bool {
@@ -144,5 +145,59 @@ func TestSubJsonServiceServerFlattened(t *testing.T) {
 	ssSettings := outboundSettings(t, NewSubJsonService("", "", "", nil).genServer(ss, nil, client))
 	if ssSettings["method"] != "aes-256-gcm" {
 		t.Fatalf("flat shadowsocks must carry method: %#v", ssSettings)
+	}
+}
+
+func TestApplySubscriptionProfileMuxOverride(t *testing.T) {
+	global := json_util.RawMessage(`{"protocol":"vless","mux":{"enabled":true,"concurrency":8}}`)
+
+	disabled := applySubscriptionProfileMuxOverride(global, subscriptionEndpoint{
+		HasMuxOverride: true,
+		MuxOverride:    map[string]any{"enabled": false},
+	})
+	var disabledOutbound map[string]any
+	if err := json.Unmarshal(disabled, &disabledOutbound); err != nil {
+		t.Fatal(err)
+	}
+	if _, exists := disabledOutbound["mux"]; exists {
+		t.Fatalf("profile-level disabled mux must remove global mux: %#v", disabledOutbound)
+	}
+
+	enabled := applySubscriptionProfileMuxOverride(global, subscriptionEndpoint{
+		HasMuxOverride: true,
+		MuxOverride: map[string]any{
+			"enabled":         true,
+			"concurrency":     float64(4),
+			"xudpConcurrency": float64(8),
+			"xudpProxyUDP443": "allow",
+		},
+	})
+	var enabledOutbound map[string]any
+	if err := json.Unmarshal(enabled, &enabledOutbound); err != nil {
+		t.Fatal(err)
+	}
+	mux, _ := enabledOutbound["mux"].(map[string]any)
+	if mux["concurrency"] != float64(4) || mux["xudpProxyUDP443"] != "allow" {
+		t.Fatalf("profile mux override not applied: %#v", enabledOutbound["mux"])
+	}
+}
+
+func TestSubJsonServiceTwoInboundsWithThreeProfilesProduceSixConfigs(t *testing.T) {
+	profiles := `[
+		{"enabled":true,"remark":"one","dest":"one.example.com","port":443},
+		{"enabled":true,"remark":"two","dest":"two.example.com","port":443},
+		{"enabled":true,"remark":"three","dest":"three.example.com","port":443}
+	]`
+	stream := `{"network":"tcp","security":"none","tcpSettings":{"header":{"type":"none"}},"externalProxy":` + profiles + `}`
+	client := model.Client{ID: "11111111-2222-4333-8444-555555555555", Email: "client@example.com"}
+	subService := &SubService{address: "sub.example.com", remarkModel: "-io"}
+	svc := NewSubJsonService("", "", "", subService)
+
+	inboundA := &model.Inbound{Port: 27543, Protocol: model.VLESS, Remark: "A", Settings: `{"encryption":"none"}`, StreamSettings: stream}
+	inboundB := &model.Inbound{Port: 54897, Protocol: model.VLESS, Remark: "B", Settings: `{"encryption":"none"}`, StreamSettings: stream}
+
+	configs := append(svc.getConfig(inboundA, client, "sub.example.com"), svc.getConfig(inboundB, client, "sub.example.com")...)
+	if len(configs) != 6 {
+		t.Fatalf("JSON subscription configs = %d, want exactly 6", len(configs))
 	}
 }
