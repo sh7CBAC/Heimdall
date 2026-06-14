@@ -11,6 +11,100 @@ cur_dir=$(pwd)
 xui_folder="${XUI_MAIN_FOLDER:=/usr/local/x-ui}"
 xui_service="${XUI_SERVICE:=/etc/systemd/system}"
 
+
+# GitHub source configuration. The default repository may remain private.
+SECX_GITHUB_REPO="${SECX_GITHUB_REPO:-sh7CBAC/SECX-Ui}"
+SECX_GITHUB_REF="${SECX_GITHUB_REF:-main}"
+
+secx_has_github_access() {
+    command -v gh >/dev/null 2>&1 \
+        && gh api "repos/${SECX_GITHUB_REPO}" >/dev/null 2>&1
+}
+
+secx_private_access_error() {
+    cat >&2 <<EOF
+Unable to access ${SECX_GITHUB_REPO}.
+
+For a private repository, authenticate this server first:
+  gh auth login
+
+Then start the installer with:
+  gh api -H "Accept: application/vnd.github.raw+json" \\
+    "repos/${SECX_GITHUB_REPO}/contents/install.sh?ref=${SECX_GITHUB_REF}" | bash
+EOF
+}
+
+secx_latest_release_tag() {
+    if secx_has_github_access; then
+        gh api "repos/${SECX_GITHUB_REPO}/releases/latest" --jq '.tag_name'
+        return
+    fi
+
+    curl -4fsSL --retry 3 --connect-timeout 15 \
+        "https://api.github.com/repos/${SECX_GITHUB_REPO}/releases/latest" \
+        | grep '"tag_name":' \
+        | sed -E 's/.*"([^"]+)".*/\1/'
+}
+
+secx_download_repo_file() {
+    local repo_path="$1"
+    local output_path="$2"
+
+    rm -f "$output_path"
+
+    if secx_has_github_access; then
+        if gh api \
+            -H "Accept: application/vnd.github.raw+json" \
+            "repos/${SECX_GITHUB_REPO}/contents/${repo_path}?ref=${SECX_GITHUB_REF}" \
+            > "$output_path"; then
+            [[ -s "$output_path" ]] && return 0
+        fi
+    else
+        if curl -4fL --retry 3 --connect-timeout 15 \
+            -o "$output_path" \
+            "https://raw.githubusercontent.com/${SECX_GITHUB_REPO}/${SECX_GITHUB_REF}/${repo_path}"; then
+            [[ -s "$output_path" ]] && return 0
+        fi
+    fi
+
+    rm -f "$output_path"
+    return 1
+}
+
+secx_download_release_asset() {
+    local tag="$1"
+    local asset_name="$2"
+    local output_path="$3"
+    local asset_id=""
+
+    rm -f "$output_path"
+
+    if secx_has_github_access; then
+        asset_id=$(
+            gh api "repos/${SECX_GITHUB_REPO}/releases/tags/${tag}" \
+                --jq '.assets[] | [.name, (.id | tostring)] | @tsv' 2>/dev/null \
+                | awk -F '\t' -v target="$asset_name" '$1 == target {print $2; exit}'
+        )
+
+        if [[ -n "$asset_id" ]] \
+            && gh api \
+                -H "Accept: application/octet-stream" \
+                "repos/${SECX_GITHUB_REPO}/releases/assets/${asset_id}" \
+                > "$output_path"; then
+            [[ -s "$output_path" ]] && return 0
+        fi
+    else
+        if curl -4fL --retry 3 --connect-timeout 15 \
+            -o "$output_path" \
+            "https://github.com/${SECX_GITHUB_REPO}/releases/download/${tag}/${asset_name}"; then
+            [[ -s "$output_path" ]] && return 0
+        fi
+    fi
+
+    rm -f "$output_path"
+    return 1
+}
+
 # check root
 [[ $EUID -ne 0 ]] && echo -e "${red}Fatal error: ${plain} Please run this script with root privilege \n " && exit 1
 
@@ -1129,44 +1223,54 @@ EOF
 install_x-ui() {
     cd ${xui_folder%/x-ui}/
 
-    # Download resources
-    if [ $# == 0 ]; then
-        tag_version=$(curl -Ls "https://api.github.com/repos/sh7CBAC/SECX-Ui/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
-        if [[ ! -n "$tag_version" ]]; then
-            echo -e "${yellow}Trying to fetch version with IPv4...${plain}"
-            tag_version=$(curl -4 -Ls "https://api.github.com/repos/sh7CBAC/SECX-Ui/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
-            if [[ ! -n "$tag_version" ]]; then
-                echo -e "${red}Failed to fetch x-ui version, it may be due to GitHub API restrictions, please try it later${plain}"
-                exit 1
-            fi
-        fi
-        echo -e "Got x-ui latest version: ${tag_version}, beginning the installation..."
-        curl -4fLRo ${xui_folder}-linux-$(arch).tar.gz https://github.com/sh7CBAC/SECX-Ui/releases/download/${tag_version}/x-ui-linux-$(arch).tar.gz
-        if [[ $? -ne 0 ]]; then
-            echo -e "${red}Downloading x-ui failed, please be sure that your server can access GitHub ${plain}"
+    # Download resources. Authenticated GitHub API access is used for
+    # private repositories; public curl URLs remain available as a fallback.
+    local target_arch asset_name archive_path checksum_name checksum_path
+    target_arch="$(arch)"
+    asset_name="x-ui-linux-${target_arch}.tar.gz"
+    archive_path="${xui_folder}-linux-${target_arch}.tar.gz"
+    checksum_name="${asset_name}.sha256"
+    checksum_path="${archive_path}.sha256"
+
+    if [[ $# -eq 0 || -z "${1:-}" ]]; then
+        if ! tag_version="$(secx_latest_release_tag)" || [[ -z "$tag_version" ]]; then
+            secx_private_access_error
+            echo -e "${red}Failed to fetch the latest SECX-Ui release.${plain}"
             exit 1
         fi
+        echo -e "Got SECX-Ui latest version: ${tag_version}, beginning the installation..."
     else
-        tag_version=$1
-        tag_version_numeric=${tag_version#v}
-        min_version="2.3.5"
+        tag_version="$1"
+        tag_version_numeric="${tag_version#v}"
+        min_version="1.0.0"
 
         if [[ "$(printf '%s\n' "$min_version" "$tag_version_numeric" | sort -V | head -n1)" != "$min_version" ]]; then
-            echo -e "${red}Please use a newer version (at least v2.3.5). Exiting installation.${plain}"
+            echo -e "${red}Please use SECX-Ui ${min_version} or newer.${plain}"
             exit 1
         fi
-
-        url="https://github.com/sh7CBAC/SECX-Ui/releases/download/${tag_version}/x-ui-linux-$(arch).tar.gz"
-        echo -e "Beginning to install x-ui $1"
-        curl -4fLRo ${xui_folder}-linux-$(arch).tar.gz ${url}
-        if [[ $? -ne 0 ]]; then
-            echo -e "${red}Download x-ui $1 failed, please check if the version exists ${plain}"
-            exit 1
-        fi
+        echo -e "Beginning to install SECX-Ui ${tag_version}"
     fi
-    curl -4fLRo /usr/bin/x-ui-temp https://raw.githubusercontent.com/sh7CBAC/SECX-Ui/main/x-ui.sh
-    if [[ $? -ne 0 ]]; then
-        echo -e "${red}Failed to download x-ui.sh${plain}"
+
+    if ! secx_download_release_asset "$tag_version" "$asset_name" "$archive_path"; then
+        secx_private_access_error
+        echo -e "${red}Failed to download ${asset_name} from release ${tag_version}.${plain}"
+        exit 1
+    fi
+
+    if secx_download_release_asset "$tag_version" "$checksum_name" "$checksum_path"; then
+        if ! (cd "$(dirname "$archive_path")" && sha256sum -c "$(basename "$checksum_path")"); then
+            echo -e "${red}SHA256 verification failed for ${asset_name}.${plain}"
+            rm -f "$archive_path" "$checksum_path"
+            exit 1
+        fi
+        rm -f "$checksum_path"
+    else
+        echo -e "${yellow}Checksum asset not found; continuing without SHA256 verification.${plain}"
+    fi
+
+    if ! secx_download_repo_file "x-ui.sh" "/usr/bin/x-ui-temp"; then
+        secx_private_access_error
+        echo -e "${red}Failed to download x-ui.sh.${plain}"
         exit 1
     fi
 
@@ -1230,9 +1334,9 @@ install_x-ui() {
     fi
 
     if [[ $release == "alpine" ]]; then
-        curl -4fLRo /etc/init.d/x-ui https://raw.githubusercontent.com/sh7CBAC/SECX-Ui/main/x-ui.rc
-        if [[ $? -ne 0 ]]; then
-            echo -e "${red}Failed to download x-ui.rc${plain}"
+        if ! secx_download_repo_file "x-ui.rc" "/etc/init.d/x-ui"; then
+            secx_private_access_error
+            echo -e "${red}Failed to download x-ui.rc.${plain}"
             exit 1
         fi
         chmod +x /etc/init.d/x-ui
@@ -1287,13 +1391,13 @@ install_x-ui() {
             echo -e "${yellow}Service files not found in tar.gz, downloading from GitHub...${plain}"
             case "${release}" in
                 ubuntu | debian | armbian)
-                    curl -4fLRo ${xui_service}/x-ui.service https://raw.githubusercontent.com/sh7CBAC/SECX-Ui/main/x-ui.service.debian > /dev/null 2>&1
+                    secx_download_repo_file "x-ui.service.debian" "${xui_service}/x-ui.service"
                     ;;
                 arch | manjaro | parch)
-                    curl -4fLRo ${xui_service}/x-ui.service https://raw.githubusercontent.com/sh7CBAC/SECX-Ui/main/x-ui.service.arch > /dev/null 2>&1
+                    secx_download_repo_file "x-ui.service.arch" "${xui_service}/x-ui.service"
                     ;;
                 *)
-                    curl -4fLRo ${xui_service}/x-ui.service https://raw.githubusercontent.com/sh7CBAC/SECX-Ui/main/x-ui.service.rhel > /dev/null 2>&1
+                    secx_download_repo_file "x-ui.service.rhel" "${xui_service}/x-ui.service"
                     ;;
             esac
 
@@ -1341,7 +1445,7 @@ install_x-ui() {
 
 echo -e "${green}Running...${plain}"
 install_base
-install_x-ui $1
+install_x-ui "$@"
 
 # ---- custom visibility config ----
 
