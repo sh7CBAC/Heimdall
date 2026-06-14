@@ -33,6 +33,14 @@ y-ui
 
 ## 🚀 What Does SECX-Ui Add?
 
+### 🔗 Per-Inbound Subscription Profiles
+
+Starting with `v1.4.0`, each inbound can publish multiple independently configured subscription entries without creating duplicate Xray inbounds or duplicate client identities.
+
+Profiles can override the address, port, transport, security, TLS/REALITY settings, headers, SNI, ALPN, fingerprint, ECH/pinning, XHTTP/XMUX, and Mux configuration while continuing to use the original client's shared credentials and account limits.
+
+Inbounds without profiles retain the existing subscription behavior, and disabled profiles are excluded from generated subscriptions.
+
 ### 🔐 Core-Level Concurrent IP Limit
 
 Starting with `v1.3.0`, client IP limits are enforced directly inside **Xray Core**.
@@ -211,13 +219,9 @@ journalctl -u x-ui -f | grep --line-buffered '\[IP_LIMIT\]'
 
 ## 📦 Current Version
 
-```text
-SECX-Ui Release: v1.3.1
-Panel Base:      3X-UI 3.3.1
-Xray Core:       26.6.1 Custom
-```
-
----
+- SECX-Ui Release: `v1.4.0`
+- Panel Base: `3x-ui v3.3.1`
+- Xray Core: `26.6.1 Custom`
 
 ## 🧬 Release History
 
@@ -270,6 +274,18 @@ Xray Core:       26.6.1 Custom
 - Kept the tested Xray 26.6.1 Custom core
 
 ---
+
+### v1.3.2
+
+- Added aggregate per-client upload and download speed limits shared across connections using the same client email.
+- Added live speed-limit updates without restarting Xray.
+
+### v1.4.0
+
+- Added per-inbound Subscription Profiles for publishing multiple virtual connection configurations from one inbound.
+- Added independent per-profile connection, transport, security, TLS/REALITY, XHTTP/XMUX, and Mux settings.
+- Preserved legacy subscription behavior for inbounds without profiles.
+- Excluded disabled profiles from generated subscription output.
 
 ## 📁 Important Paths
 
