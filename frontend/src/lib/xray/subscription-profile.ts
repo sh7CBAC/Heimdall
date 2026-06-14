@@ -1,6 +1,26 @@
 import type { StreamSettings } from '@/schemas/api/inbound';
 import type { ExternalProxyEntry } from '@/schemas/protocols/stream/external-proxy';
 
+
+export function createSubscriptionProfileDraft(
+  defaultAddress = '',
+  defaultPort = 443,
+): ExternalProxyEntry {
+  const safePort = Number.isInteger(defaultPort) && defaultPort > 0 && defaultPort <= 65535
+    ? defaultPort
+    : 443;
+
+  return {
+    enabled: true,
+    remark: '',
+    dest: defaultAddress,
+    port: safePort,
+    network: 'same',
+    security: 'same',
+    forceTls: 'same',
+  };
+}
+
 export interface SubscriptionProfileEndpoint {
   address: string;
   port: number;

@@ -69,10 +69,13 @@ describe('inbound transport forms', () => {
 
   it('ExternalProxyForm field structure is stable (one TLS entry)', () => {
     renderInForm(
-      () => <ExternalProxyForm toggleExternalProxy={noop} />,
+      () => <ExternalProxyForm />,
       {
         streamSettings: {
           externalProxy: [{
+            enabled: true,
+            network: 'same',
+            security: 'tls',
             forceTls: 'tls',
             dest: '',
             port: 443,

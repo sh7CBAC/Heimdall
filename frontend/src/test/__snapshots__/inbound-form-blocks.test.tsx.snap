@@ -38,7 +38,7 @@ exports[`inbound security forms > TlsForm field structure is stable 1`] = `
 
 exports[`inbound transport forms > ExternalProxyForm field structure is stable (one TLS entry) 1`] = `
 [
-  "External Proxy",
+  "Subscription Profiles",
 ]
 `;
 

@@ -240,24 +240,6 @@ export default function InboundFormModal({
     onSecurityChange,
   } = useSecurityActions({ form, setSaving, messageApi, nodeId: typeof wNodeId === 'number' ? wNodeId : null });
 
-  const toggleExternalProxy = (on: boolean) => {
-    if (on) {
-      const port = (form.getFieldValue('port') as number) ?? 443;
-      form.setFieldValue(['streamSettings', 'externalProxy'], [{
-        forceTls: 'same',
-        dest: typeof window !== 'undefined' ? window.location.hostname : '',
-        port,
-        remark: '',
-        sni: '',
-        fingerprint: '',
-        alpn: [],
-        pinnedPeerCertSha256: [],
-      }]);
-    } else {
-      form.setFieldValue(['streamSettings', 'externalProxy'], []);
-    }
-  };
-
   const toggleSockopt = (on: boolean) => {
     if (on) {
       form.setFieldValue(
@@ -808,7 +790,7 @@ export default function InboundFormModal({
           .conf fanout resolves its host elsewhere, and tunnel (dokodemo-door)
           has no clients at all — the section is dead weight on both. */}
       {protocol !== Protocols.WIREGUARD && protocol !== Protocols.TUNNEL && (
-        <ExternalProxyForm toggleExternalProxy={toggleExternalProxy} />
+        <ExternalProxyForm />
       )}
 
       <SockoptForm toggleSockopt={toggleSockopt} />

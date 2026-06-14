@@ -1,72 +1,132 @@
 .ext-proxy-list {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 14px;
 }
 
 .ext-proxy-card {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 12px;
+  gap: 12px;
+  padding: 14px;
   border: 1px solid var(--ant-color-border-secondary);
-  border-radius: 10px;
+  border-radius: 12px;
   background: var(--ant-color-fill-quaternary);
+  transition: opacity 0.2s ease, border-color 0.2s ease;
+}
+
+.ext-proxy-card--disabled {
+  opacity: 0.62;
 }
 
 .ext-proxy-card__head {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 10px;
+}
+
+.ext-proxy-card__identity {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
 }
 
 .ext-proxy-card__title {
+  overflow: hidden;
   font-weight: 600;
   font-size: 13px;
-  opacity: 0.85;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .ext-proxy-field {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 5px;
+  min-width: 0;
 }
 
 .ext-proxy-flabel {
   font-size: 12px;
   line-height: 1.2;
-  opacity: 0.65;
+  opacity: 0.72;
+}
+
+.ext-proxy-fhint {
+  font-size: 11px;
+  line-height: 1.35;
+  opacity: 0.55;
 }
 
 .ext-proxy-grid {
   display: grid;
-  gap: 8px;
+  gap: 10px;
 }
 
-.ext-proxy-grid--dest {
-  grid-template-columns: 1fr 1.7fr 0.9fr;
+.ext-proxy-grid--common {
+  grid-template-columns: minmax(180px, 1fr) minmax(220px, 1.5fr) minmax(120px, 0.55fr);
 }
 
-.ext-proxy-grid--tls {
-  grid-template-columns: 1fr 1fr 1fr;
+.ext-proxy-grid--selectors,
+.ext-proxy-grid--two {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
-.ext-proxy-tls {
+.ext-proxy-grid--three {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.ext-proxy-section {
+  overflow: hidden;
+  border: 1px solid var(--ant-color-border-secondary);
+  border-radius: 10px;
+  background: var(--ant-color-bg-container);
+}
+
+.ext-proxy-section > summary {
+  padding: 10px 12px;
+  cursor: pointer;
+  font-weight: 600;
+  user-select: none;
+}
+
+.ext-proxy-section[open] > summary {
+  border-bottom: 1px solid var(--ant-color-border-secondary);
+}
+
+.ext-proxy-section__body {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  margin-top: 2px;
-  padding-top: 10px;
-  border-top: 1px dashed var(--ant-color-border-secondary);
+  gap: 12px;
+  padding: 12px;
 }
 
 .ext-proxy-add {
-  margin-top: 10px;
+  margin-top: 12px;
+}
+
+@media (max-width: 991px) {
+  .ext-proxy-grid--common,
+  .ext-proxy-grid--three {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 575px) {
-  .ext-proxy-grid--dest,
-  .ext-proxy-grid--tls {
+  .ext-proxy-card__head {
+    align-items: flex-start;
+  }
+
+  .ext-proxy-card__identity {
+    flex-wrap: wrap;
+  }
+
+  .ext-proxy-grid--common,
+  .ext-proxy-grid--selectors,
+  .ext-proxy-grid--two,
+  .ext-proxy-grid--three {
     grid-template-columns: 1fr;
   }
 }

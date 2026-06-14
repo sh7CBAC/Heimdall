@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
 import type { StreamSettings } from '@/schemas/api/inbound';
-import { expandSubscriptionProfileEndpoints } from '@/lib/xray/subscription-profile';
+import {
+  createSubscriptionProfileDraft,
+  expandSubscriptionProfileEndpoints,
+} from '@/lib/xray/subscription-profile';
 
 function baseStream(): StreamSettings {
   return {
@@ -15,6 +18,19 @@ function baseStream(): StreamSettings {
 }
 
 describe('subscription profile expansion', () => {
+  it('creates a safe editable profile draft', () => {
+    expect(createSubscriptionProfileDraft('edge.example.com', 8443)).toEqual({
+      enabled: true,
+      remark: '',
+      dest: 'edge.example.com',
+      port: 8443,
+      network: 'same',
+      security: 'same',
+      forceTls: 'same',
+    });
+    expect(createSubscriptionProfileDraft('', 0).port).toBe(443);
+  });
+
   it('keeps the legacy single default configuration when profiles are absent', () => {
     const endpoints = expandSubscriptionProfileEndpoints(baseStream(), 'node.example.com', 27543);
 
