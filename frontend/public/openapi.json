@@ -4195,6 +4195,286 @@
         }
       }
     },
+    "/panel/api/clients/{email}/activity": {
+      "get": {
+        "tags": [
+          "Clients"
+        ],
+        "summary": "Return the current Activity epoch as a paginated list ordered by most recently observed destination. Only observed destination, source IP, logical upload bytes, and logical download bytes are exposed.",
+        "operationId": "get_panel_api_clients_email_activity",
+        "parameters": [
+          {
+            "name": "email",
+            "in": "path",
+            "required": true,
+            "description": "Client email.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "description": "Page number starting at 1.",
+            "schema": {
+              "type": "integer",
+              "default": 1
+            }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "required": false,
+            "description": "Rows per page. Maximum 200.",
+            "schema": {
+              "type": "integer",
+              "default": 100
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    },
+                    "obj": {}
+                  }
+                },
+                "example": {
+                  "success": true,
+                  "obj": {
+                    "enabled": true,
+                    "generation": 3,
+                    "dataEpoch": 2,
+                    "items": [
+                      {
+                        "destination": "example.com",
+                        "sourceIp": "203.0.113.10",
+                        "uploadBytes": 1024,
+                        "downloadBytes": 4096
+                      }
+                    ],
+                    "total": 1,
+                    "page": 1,
+                    "pageSize": 100
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/panel/api/clients/{email}/activity/status": {
+      "get": {
+        "tags": [
+          "Clients"
+        ],
+        "summary": "Return the opt-in Activity monitoring state for one client. A client that has never enabled monitoring is returned as disabled with generation 0 and dataEpoch 1.",
+        "operationId": "get_panel_api_clients_email_activity_status",
+        "parameters": [
+          {
+            "name": "email",
+            "in": "path",
+            "required": true,
+            "description": "Client email.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    },
+                    "obj": {}
+                  }
+                },
+                "example": {
+                  "success": true,
+                  "obj": {
+                    "clientId": 12,
+                    "enabled": false,
+                    "generation": 0,
+                    "dataEpoch": 1
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/panel/api/clients/{email}/activity/start": {
+      "post": {
+        "tags": [
+          "Clients"
+        ],
+        "summary": "Enable destination Activity monitoring for one client. The monitored-client allowlist is updated without restarting Xray. Repeated Start requests are idempotent.",
+        "operationId": "post_panel_api_clients_email_activity_start",
+        "parameters": [
+          {
+            "name": "email",
+            "in": "path",
+            "required": true,
+            "description": "Client email.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    },
+                    "obj": {}
+                  }
+                },
+                "example": {
+                  "success": true,
+                  "obj": {
+                    "clientId": 12,
+                    "enabled": true,
+                    "generation": 1,
+                    "dataEpoch": 1
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/panel/api/clients/{email}/activity/stop": {
+      "post": {
+        "tags": [
+          "Clients"
+        ],
+        "summary": "Stop collecting new Activity events while preserving existing destination history. Repeated Stop requests are idempotent and do not restart Xray.",
+        "operationId": "post_panel_api_clients_email_activity_stop",
+        "parameters": [
+          {
+            "name": "email",
+            "in": "path",
+            "required": true,
+            "description": "Client email.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    },
+                    "obj": {}
+                  }
+                },
+                "example": {
+                  "success": true,
+                  "obj": {
+                    "clientId": 12,
+                    "enabled": false,
+                    "generation": 2,
+                    "dataEpoch": 1
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/panel/api/clients/{email}/activity/reset": {
+      "post": {
+        "tags": [
+          "Clients"
+        ],
+        "summary": "Permanently delete the client Activity destination history. The current enabled or disabled monitoring state is preserved; generation and dataEpoch are advanced to reject delayed pre-reset events.",
+        "operationId": "post_panel_api_clients_email_activity_reset",
+        "parameters": [
+          {
+            "name": "email",
+            "in": "path",
+            "required": true,
+            "description": "Client email.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    },
+                    "obj": {}
+                  }
+                },
+                "example": {
+                  "success": true,
+                  "obj": {
+                    "clientId": 12,
+                    "enabled": true,
+                    "generation": 3,
+                    "dataEpoch": 2
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/panel/api/clients/list": {
       "get": {
         "tags": [
