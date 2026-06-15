@@ -68,6 +68,8 @@ func initModels() error {
 		&model.Node{},
 		&model.ApiToken{},
 		&model.ClientRecord{},
+		&model.ClientActivitySetting{},
+		&model.ClientActivityDestination{},
 		&model.ClientInbound{},
 		&model.ClientGroup{},
 		&model.InboundFallback{},
