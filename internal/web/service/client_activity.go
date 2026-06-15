@@ -153,27 +153,18 @@ func (s *ClientActivityService) SetMonitoringByClientID(
 			return err
 		}
 
-		var current model.ClientActivitySetting
-		if err := tx.
-			Where("client_id = ?", clientID).
-			First(&current).
-			Error; err != nil {
-			return err
-		}
-
-		// Repeating Start while already enabled, or Stop while already disabled,
-		// is a no-op. This makes retries and accidental double submissions safe
-		// without invalidating active trackers unnecessarily.
-		if current.Enabled == enabled {
-			status = statusFromActivitySetting(&current)
-			return nil
-		}
-
 		now := time.Now().UnixMilli()
 
+		// The state predicate makes this transition atomic and idempotent on
+		// both SQLite and PostgreSQL. Concurrent duplicate Start/Stop requests
+		// cannot increment Generation more than once.
 		result := tx.
 			Model(&model.ClientActivitySetting{}).
-			Where("client_id = ?", clientID).
+			Where(
+				"client_id = ? AND enabled <> ?",
+				clientID,
+				enabled,
+			).
 			Updates(map[string]any{
 				"enabled":    enabled,
 				"generation": gorm.Expr("generation + ?", 1),
@@ -181,9 +172,6 @@ func (s *ClientActivityService) SetMonitoringByClientID(
 			})
 		if result.Error != nil {
 			return result.Error
-		}
-		if result.RowsAffected != 1 {
-			return gorm.ErrRecordNotFound
 		}
 
 		var row model.ClientActivitySetting
