@@ -474,6 +474,9 @@ func (s *Server) start(restartXray bool, startTgBot bool) (err error) {
 
 // Stop gracefully shuts down the web server, stops Xray, cron jobs, and Telegram bot.
 func (s *Server) Stop() error {
+	// Release the Activity Unix socket and background workers.
+	job.StopClientActivityCollector()
+
 	return s.stop(true, true)
 }
 

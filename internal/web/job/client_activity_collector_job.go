@@ -617,30 +617,7 @@ func (c *ClientActivityCollector) persist(
 			batch := rows[start:end]
 
 			err := tx.Clauses(
-				clause.OnConflict{
-					Columns: []clause.Column{
-						{Name: "client_id"},
-						{Name: "data_epoch"},
-						{Name: "source_ip"},
-						{Name: "destination"},
-					},
-					DoUpdates: clause.Assignments(
-						map[string]any{
-							"upload_bytes": gorm.Expr(
-								"upload_bytes + excluded.upload_bytes",
-							),
-							"download_bytes": gorm.Expr(
-								"download_bytes + excluded.download_bytes",
-							),
-							"last_seen": gorm.Expr(
-								"CASE WHEN last_seen > excluded.last_seen THEN last_seen ELSE excluded.last_seen END",
-							),
-							"updated_at": gorm.Expr(
-								"excluded.updated_at",
-							),
-						},
-					),
-				},
+				clientActivityUpsertClause(tx),
 			).Create(&batch).Error
 
 			if err != nil {
@@ -657,6 +634,52 @@ func (c *ClientActivityCollector) persist(
 
 		return c.runRetentionIfDue(tx, now)
 	})
+}
+
+func clientActivityUpsertClause(
+	tx *gorm.DB,
+) clause.OnConflict {
+	targetPrefix := ""
+
+	// PostgreSQL exposes both the target row and excluded row inside
+	// ON CONFLICT. Qualifying the target columns avoids dialect ambiguity.
+	// SQLite keeps the original unqualified target-column syntax.
+	if tx != nil &&
+		tx.Dialector != nil &&
+		tx.Dialector.Name() == "postgres" {
+		targetPrefix = "client_activity_destinations."
+	}
+
+	return clause.OnConflict{
+		Columns: []clause.Column{
+			{Name: "client_id"},
+			{Name: "data_epoch"},
+			{Name: "source_ip"},
+			{Name: "destination"},
+		},
+		DoUpdates: clause.Assignments(
+			map[string]any{
+				"upload_bytes": gorm.Expr(
+					targetPrefix +
+						"upload_bytes + excluded.upload_bytes",
+				),
+				"download_bytes": gorm.Expr(
+					targetPrefix +
+						"download_bytes + excluded.download_bytes",
+				),
+				"last_seen": gorm.Expr(
+					"CASE WHEN " +
+						targetPrefix +
+						"last_seen > excluded.last_seen THEN " +
+						targetPrefix +
+						"last_seen ELSE excluded.last_seen END",
+				),
+				"updated_at": gorm.Expr(
+					"excluded.updated_at",
+				),
+			},
+		),
+	}
 }
 
 func capClientActivityRows(
@@ -741,6 +764,19 @@ var (
 
 func NewClientActivityCollectorJob() *ClientActivityCollectorJob {
 	return &ClientActivityCollectorJob{}
+}
+
+// StopClientActivityCollector stops the process-wide collector and
+// releases its Unix datagram socket. Calling it repeatedly is safe.
+func StopClientActivityCollector() {
+	clientActivityCollectorMu.Lock()
+	collector := activeActivityCollector
+	activeActivityCollector = nil
+	clientActivityCollectorMu.Unlock()
+
+	if collector != nil {
+		collector.Stop()
+	}
 }
 
 func (j *ClientActivityCollectorJob) Run() {
