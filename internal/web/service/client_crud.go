@@ -292,9 +292,21 @@ func (s *ClientService) Update(inboundSvc *InboundService, id int, updated model
 		if collisionCount > 0 {
 			return false, common.NewError("Duplicate email:", updated.Email)
 		}
-		if err := database.GetDB().Model(&model.ClientRecord{}).
-			Where("id = ?", id).
-			Update("email", updated.Email).Error; err != nil {
+		// Change the database identity and invalidate trackers for the previous
+		// email atomically. Activity history remains attached to the stable
+		// client_id and is therefore preserved across the rename.
+		if err := database.GetDB().Transaction(func(tx *gorm.DB) error {
+			if err := tx.
+				Model(&model.ClientRecord{}).
+				Where("id = ?", id).
+				Update("email", updated.Email).
+				Error; err != nil {
+				return err
+			}
+
+			return (&ClientActivityService{}).
+				BumpGenerationForClientID(tx, id)
+		}); err != nil {
 			return false, err
 		}
 	}
@@ -413,23 +425,47 @@ func (s *ClientService) Delete(inboundSvc *InboundService, id int, keepTraffic b
 	}
 
 	db := database.GetDB()
-	if err := db.Where("client_id = ?", id).Delete(&model.ClientInbound{}).Error; err != nil {
+
+	if err := db.Transaction(func(tx *gorm.DB) error {
+		// Activity belongs to the client identity and is always removed,
+		// independently from the keepTraffic option.
+		if err := (&ClientActivityService{}).
+			DeleteForClientID(tx, id); err != nil {
+			return err
+		}
+
+		if err := tx.
+			Where("client_id = ?", id).
+			Delete(&model.ClientInbound{}).
+			Error; err != nil {
+			return err
+		}
+
+		if !keepTraffic && existing.Email != "" {
+			if err := tx.
+				Where("email = ?", existing.Email).
+				Delete(&xray.ClientTraffic{}).
+				Error; err != nil {
+				return err
+			}
+
+			if err := clearGlobalTraffic(tx, existing.Email); err != nil {
+				return err
+			}
+
+			if err := tx.
+				Where("client_email = ?", existing.Email).
+				Delete(&model.InboundClientIps{}).
+				Error; err != nil {
+				return err
+			}
+		}
+
+		return tx.Delete(&model.ClientRecord{}, id).Error
+	}); err != nil {
 		return needRestart, err
 	}
-	if !keepTraffic && existing.Email != "" {
-		if err := db.Where("email = ?", existing.Email).Delete(&xray.ClientTraffic{}).Error; err != nil {
-			return needRestart, err
-		}
-		if err := clearGlobalTraffic(db, existing.Email); err != nil {
-			return needRestart, err
-		}
-		if err := db.Where("client_email = ?", existing.Email).Delete(&model.InboundClientIps{}).Error; err != nil {
-			return needRestart, err
-		}
-	}
-	if err := db.Delete(&model.ClientRecord{}, id).Error; err != nil {
-		return needRestart, err
-	}
+
 	return needRestart, nil
 }
 

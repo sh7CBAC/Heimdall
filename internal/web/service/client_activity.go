@@ -296,22 +296,62 @@ func (s *ClientActivityService) DeleteForClientID(
 	tx *gorm.DB,
 	clientID int,
 ) error {
-	if clientID <= 0 {
+	return s.DeleteForClientIDs(tx, []int{clientID})
+}
+
+// DeleteForClientIDs performs a bounded, batch-oriented cleanup for permanent
+// client deletion. Activity data is removed regardless of keepTraffic because
+// it belongs to the deleted client identity, not to retained traffic totals.
+func (s *ClientActivityService) DeleteForClientIDs(
+	tx *gorm.DB,
+	clientIDs []int,
+) error {
+	const batchSize = 500
+
+	seen := make(map[int]struct{}, len(clientIDs))
+	ids := make([]int, 0, len(clientIDs))
+
+	for _, clientID := range clientIDs {
+		if clientID <= 0 {
+			continue
+		}
+		if _, duplicate := seen[clientID]; duplicate {
+			continue
+		}
+
+		seen[clientID] = struct{}{}
+		ids = append(ids, clientID)
+	}
+
+	if len(ids) == 0 {
 		return nil
 	}
 
 	deleteRows := func(db *gorm.DB) error {
-		if err := db.
-			Where("client_id = ?", clientID).
-			Delete(&model.ClientActivityDestination{}).
-			Error; err != nil {
-			return err
+		for start := 0; start < len(ids); start += batchSize {
+			end := start + batchSize
+			if end > len(ids) {
+				end = len(ids)
+			}
+
+			batch := ids[start:end]
+
+			if err := db.
+				Where("client_id IN ?", batch).
+				Delete(&model.ClientActivityDestination{}).
+				Error; err != nil {
+				return err
+			}
+
+			if err := db.
+				Where("client_id IN ?", batch).
+				Delete(&model.ClientActivitySetting{}).
+				Error; err != nil {
+				return err
+			}
 		}
 
-		return db.
-			Where("client_id = ?", clientID).
-			Delete(&model.ClientActivitySetting{}).
-			Error
+		return nil
 	}
 
 	if tx != nil {
