@@ -10,6 +10,7 @@ import type { ClientRecord, InboundOption } from '@/hooks/useClients';
 import { isPostQuantumLink } from '@/lib/xray/inbound-link';
 import { LinkTags, linkMetaText, parseLinkParts } from '@/lib/xray/link-label';
 import { QrPanel } from '@/pages/inbounds/qr';
+import ClientActivityControl from './ClientActivityControl';
 import './ClientInfoModal.css';
 
 const INBOUND_PROTOCOL_COLORS: Record<string, string> = {
@@ -196,6 +197,19 @@ export default function ClientInfoModal({
                     <Tag color={client.enable ? 'green' : 'default'}>
                       {client.enable ? t('enabled') : t('disabled')}
                     </Tag>
+                  </td>
+                </tr>
+                <tr>
+                  <td>
+                    {t('pages.clients.activity.monitoring', {
+                      defaultValue: 'Activity Monitoring',
+                    })}
+                  </td>
+                  <td>
+                    <ClientActivityControl
+                      email={client.email}
+                      active={open}
+                    />
                   </td>
                 </tr>
                 <tr>
