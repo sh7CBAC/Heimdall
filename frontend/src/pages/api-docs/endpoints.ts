@@ -479,6 +479,38 @@ export const sections: readonly Section[] = [
     endpoints: [
       {
         method: 'GET',
+        path: '/panel/api/clients/:email/activity',
+        summary:
+          'Return the current Activity epoch as a paginated list ordered by most recently observed destination. Only observed destination, source IP, logical upload bytes, and logical download bytes are exposed.',
+        params: [
+          {
+            name: 'email',
+            in: 'path',
+            type: 'string',
+            desc: 'Client email.',
+          },
+          {
+            name: 'page',
+            in: 'query',
+            type: 'integer',
+            desc: 'Page number starting at 1.',
+            optional: true,
+            defaultValue: 1,
+          },
+          {
+            name: 'pageSize',
+            in: 'query',
+            type: 'integer',
+            desc: 'Rows per page. Maximum 200.',
+            optional: true,
+            defaultValue: 100,
+          },
+        ],
+        response:
+          '{\n  "success": true,\n  "obj": {\n    "enabled": true,\n    "generation": 3,\n    "dataEpoch": 2,\n    "items": [\n      {\n        "destination": "example.com",\n        "sourceIp": "203.0.113.10",\n        "uploadBytes": 1024,\n        "downloadBytes": 4096\n      }\n    ],\n    "total": 1,\n    "page": 1,\n    "pageSize": 100\n  }\n}',
+      },
+      {
+        method: 'GET',
         path: '/panel/api/clients/:email/activity/status',
         summary:
           'Return the opt-in Activity monitoring state for one client. A client that has never enabled monitoring is returned as disabled with generation 0 and dataEpoch 1.',

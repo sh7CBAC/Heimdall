@@ -64,6 +64,7 @@ func (a *ClientController) initRouter(g *gin.RouterGroup) {
 	g.GET("/traffic/:email", a.getTrafficByEmail)
 	g.GET("/subLinks/:subId", a.getSubLinks)
 	g.GET("/links/:email", a.getClientLinks)
+	g.GET("/:email/activity", a.getActivity)
 	g.GET("/:email/activity/status", a.getActivityStatus)
 
 	g.POST("/add", a.create)
@@ -705,4 +706,34 @@ func (a *ClientController) resetActivityData(c *gin.Context) {
 
 	jsonObj(c, status, nil)
 	notifyClientsChanged()
+}
+
+// getActivity returns the current Activity epoch as a bounded paginated list.
+// The UI deliberately renders only destination, source IP, upload, and download.
+func (a *ClientController) getActivity(c *gin.Context) {
+	email := c.Param("email")
+
+	client, ok := a.requireVisibleClient(c, email)
+	if !ok {
+		return
+	}
+
+	page, _ := strconv.Atoi(
+		c.DefaultQuery("page", "1"),
+	)
+	pageSize, _ := strconv.Atoi(
+		c.DefaultQuery("pageSize", "100"),
+	)
+
+	result, err := a.activityService.ListByClientID(
+		client.Id,
+		page,
+		pageSize,
+	)
+	if err != nil {
+		jsonObj(c, nil, err)
+		return
+	}
+
+	jsonObj(c, result, nil)
 }
