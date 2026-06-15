@@ -259,9 +259,11 @@ func (s *Server) startTask(restartXray bool) {
 	// files synchronized while the panel is running.
 	clientIPLimitsJob := job.NewSyncClientIPLimitsJob()
 	clientSpeedLimitsJob := job.NewSyncClientSpeedLimitsJob()
+	clientActivityMonitoringJob := job.NewSyncClientActivityMonitoringJob()
 
 	clientIPLimitsJob.Run()
 	clientSpeedLimitsJob.Run()
+	clientActivityMonitoringJob.Run()
 
 	if restartXray {
 		err := s.xrayService.RestartXray(true)
@@ -295,6 +297,7 @@ func (s *Server) startTask(restartXray bool) {
 	// Xray watches these files and applies limit changes without a restart.
 	s.cron.AddJob("@every 2s", clientIPLimitsJob)
 	s.cron.AddJob("@every 2s", clientSpeedLimitsJob)
+	s.cron.AddJob("@every 2s", clientActivityMonitoringJob)
 
 	s.cron.AddJob("@every 5s", job.NewNodeHeartbeatJob())
 
