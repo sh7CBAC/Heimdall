@@ -479,6 +479,70 @@ export const sections: readonly Section[] = [
     endpoints: [
       {
         method: 'GET',
+        path: '/panel/api/clients/:email/activity/status',
+        summary:
+          'Return the opt-in Activity monitoring state for one client. A client that has never enabled monitoring is returned as disabled with generation 0 and dataEpoch 1.',
+        params: [
+          {
+            name: 'email',
+            in: 'path',
+            type: 'string',
+            desc: 'Client email.',
+          },
+        ],
+        response:
+          '{\n  "success": true,\n  "obj": {\n    "clientId": 12,\n    "enabled": false,\n    "generation": 0,\n    "dataEpoch": 1\n  }\n}',
+      },
+      {
+        method: 'POST',
+        path: '/panel/api/clients/:email/activity/start',
+        summary:
+          'Enable destination Activity monitoring for one client. The monitored-client allowlist is updated without restarting Xray. Repeated Start requests are idempotent.',
+        params: [
+          {
+            name: 'email',
+            in: 'path',
+            type: 'string',
+            desc: 'Client email.',
+          },
+        ],
+        response:
+          '{\n  "success": true,\n  "obj": {\n    "clientId": 12,\n    "enabled": true,\n    "generation": 1,\n    "dataEpoch": 1\n  }\n}',
+      },
+      {
+        method: 'POST',
+        path: '/panel/api/clients/:email/activity/stop',
+        summary:
+          'Stop collecting new Activity events while preserving existing destination history. Repeated Stop requests are idempotent and do not restart Xray.',
+        params: [
+          {
+            name: 'email',
+            in: 'path',
+            type: 'string',
+            desc: 'Client email.',
+          },
+        ],
+        response:
+          '{\n  "success": true,\n  "obj": {\n    "clientId": 12,\n    "enabled": false,\n    "generation": 2,\n    "dataEpoch": 1\n  }\n}',
+      },
+      {
+        method: 'POST',
+        path: '/panel/api/clients/:email/activity/reset',
+        summary:
+          'Permanently delete the client Activity destination history. The current enabled or disabled monitoring state is preserved; generation and dataEpoch are advanced to reject delayed pre-reset events.',
+        params: [
+          {
+            name: 'email',
+            in: 'path',
+            type: 'string',
+            desc: 'Client email.',
+          },
+        ],
+        response:
+          '{\n  "success": true,\n  "obj": {\n    "clientId": 12,\n    "enabled": true,\n    "generation": 3,\n    "dataEpoch": 2\n  }\n}',
+      },
+      {
+        method: 'GET',
         path: '/panel/api/clients/list',
         summary: 'List every client with its attached inbound IDs and traffic record. The reverse field, if set, is returned as a nested JSON object (legacy JSON-encoded-string form is still accepted on write).',
         response:

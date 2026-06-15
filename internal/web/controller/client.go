@@ -34,10 +34,11 @@ func parseInboundIdsQuery(raw string) []int {
 }
 
 type ClientController struct {
-	clientService  service.ClientService
-	inboundService service.InboundService
-	xrayService    service.XrayService
-	settingService service.SettingService
+	clientService   service.ClientService
+	activityService service.ClientActivityService
+	inboundService  service.InboundService
+	xrayService     service.XrayService
+	settingService  service.SettingService
 }
 
 func (a *ClientController) requireVisibleClient(c *gin.Context, email string) (*model.ClientRecord, bool) {
@@ -63,12 +64,16 @@ func (a *ClientController) initRouter(g *gin.RouterGroup) {
 	g.GET("/traffic/:email", a.getTrafficByEmail)
 	g.GET("/subLinks/:subId", a.getSubLinks)
 	g.GET("/links/:email", a.getClientLinks)
+	g.GET("/:email/activity/status", a.getActivityStatus)
 
 	g.POST("/add", a.create)
 	g.POST("/update/:email", a.update)
 	g.POST("/del/:email", a.delete)
 	g.POST("/:email/attach", a.attach)
 	g.POST("/:email/detach", a.detach)
+	g.POST("/:email/activity/start", a.startActivityMonitoring)
+	g.POST("/:email/activity/stop", a.stopActivityMonitoring)
+	g.POST("/:email/activity/reset", a.resetActivityData)
 	g.POST("/resetAllTraffics", a.resetAllTraffics)
 	g.POST("/delDepleted", a.delDepleted)
 	g.POST("/bulkAdjust", a.bulkAdjust)
@@ -612,5 +617,92 @@ func (a *ClientController) bulkResetTraffic(c *gin.Context) {
 	}
 	jsonObj(c, gin.H{"affected": affected}, nil)
 	a.xrayService.SetToNeedRestart()
+	notifyClientsChanged()
+}
+
+// getActivityStatus returns the current opt-in monitoring state for one visible
+// client. It does not create a settings row when monitoring has never been
+// enabled; the service returns the canonical disabled default instead.
+func (a *ClientController) getActivityStatus(c *gin.Context) {
+	email := c.Param("email")
+
+	client, ok := a.requireVisibleClient(c, email)
+	if !ok {
+		return
+	}
+
+	status, err := a.activityService.StatusByClientID(client.Id)
+	if err != nil {
+		jsonObj(c, nil, err)
+		return
+	}
+
+	jsonObj(c, status, nil)
+}
+
+// startActivityMonitoring enables destination Activity collection without
+// restarting Xray. The Core allowlist synchronization job publishes the new
+// generation during its next synchronization cycle.
+func (a *ClientController) startActivityMonitoring(c *gin.Context) {
+	email := c.Param("email")
+
+	client, ok := a.requireVisibleClient(c, email)
+	if !ok {
+		return
+	}
+
+	status, err := a.activityService.SetMonitoringByClientID(
+		client.Id,
+		true,
+	)
+	if err != nil {
+		jsonObj(c, nil, err)
+		return
+	}
+
+	jsonObj(c, status, nil)
+	notifyClientsChanged()
+}
+
+// stopActivityMonitoring stops accepting new Activity events while preserving
+// all existing destination history.
+func (a *ClientController) stopActivityMonitoring(c *gin.Context) {
+	email := c.Param("email")
+
+	client, ok := a.requireVisibleClient(c, email)
+	if !ok {
+		return
+	}
+
+	status, err := a.activityService.SetMonitoringByClientID(
+		client.Id,
+		false,
+	)
+	if err != nil {
+		jsonObj(c, nil, err)
+		return
+	}
+
+	jsonObj(c, status, nil)
+	notifyClientsChanged()
+}
+
+// resetActivityData clears destination history atomically while leaving the
+// current enabled or disabled monitoring state unchanged.
+func (a *ClientController) resetActivityData(c *gin.Context) {
+	email := c.Param("email")
+
+	client, ok := a.requireVisibleClient(c, email)
+	if !ok {
+		return
+	}
+
+	status, err := a.activityService.ResetByClientID(client.Id)
+	if err != nil {
+		jsonObj(c, nil, err)
+		return
+	}
+
+	jsonObj(c, status, nil)
 	notifyClientsChanged()
 }
