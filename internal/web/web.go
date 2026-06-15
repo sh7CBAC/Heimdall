@@ -255,6 +255,12 @@ func (s *Server) initRouter() (*gin.Engine, error) {
 // startTask schedules background jobs (Xray checks, traffic jobs, cron
 // jobs) which the panel relies on for periodic maintenance and monitoring.
 func (s *Server) startTask(restartXray bool) {
+	// Receive Core Activity datagrams through a local Unix socket. Run once
+	// immediately and retry periodically if socket setup initially fails.
+	clientActivityCollectorJob := job.NewClientActivityCollectorJob()
+	clientActivityCollectorJob.Run()
+	s.cron.AddJob("@every 10s", clientActivityCollectorJob)
+
 	// Generate Core-level client limits before Xray starts, then keep the
 	// files synchronized while the panel is running.
 	clientIPLimitsJob := job.NewSyncClientIPLimitsJob()
