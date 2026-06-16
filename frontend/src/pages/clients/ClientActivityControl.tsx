@@ -554,6 +554,7 @@ export default function ClientActivityControl({
       {statusContent}
 
       <Modal
+        className="client-activity-modal"
         open={activityOpen}
         destroyOnHidden
         width={isMobile ? 'calc(100vw - 24px)' : 900}

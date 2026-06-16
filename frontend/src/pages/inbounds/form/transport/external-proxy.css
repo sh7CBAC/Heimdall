@@ -130,3 +130,126 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* SECX UI POLISH: subscription profile responsive polish */
+.ext-proxy-card {
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.ext-proxy-card__head {
+  align-items: flex-start;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.ext-proxy-card__identity {
+  min-width: 0;
+  flex: 1 1 280px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.ext-proxy-card__title {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.ext-proxy-card__summary {
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ext-proxy-card__actions {
+  flex: 0 0 auto;
+  margin-inline-start: auto;
+}
+
+.ext-proxy-grid,
+.ext-proxy-field,
+.ext-proxy-section,
+.ext-proxy-section__body {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.ext-proxy-section {
+  overflow: hidden;
+}
+
+.ext-proxy-section summary {
+  cursor: pointer;
+  user-select: none;
+}
+
+.ext-proxy-section__body {
+  overflow-x: hidden;
+}
+
+.ext-proxy-field > * {
+  min-width: 0;
+}
+
+.ext-proxy-field .ant-switch {
+  width: auto !important;
+  min-width: 44px;
+  flex: 0 0 auto;
+  align-self: flex-start;
+}
+
+.ext-proxy-field:has(.ant-switch) {
+  align-items: flex-start;
+}
+
+.ext-proxy-field .ant-select,
+.ext-proxy-field .ant-input,
+.ext-proxy-field .ant-input-number,
+.ext-proxy-field .ant-input-number-affix-wrapper {
+  max-width: 100%;
+}
+
+@media (max-width: 768px) {
+  .ext-proxy-card {
+    padding: 12px;
+  }
+
+  .ext-proxy-card__head {
+    align-items: stretch;
+  }
+
+  .ext-proxy-card__identity {
+    flex-basis: 100%;
+  }
+
+  .ext-proxy-card__actions {
+    width: 100%;
+    margin-inline-start: 0;
+    justify-content: flex-end;
+  }
+
+  .ext-proxy-card__summary {
+    max-width: 120px;
+  }
+
+  .ext-proxy-grid,
+  .ext-proxy-grid--two,
+  .ext-proxy-grid--three,
+  .ext-proxy-grid--common,
+  .ext-proxy-grid--selectors {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+/* SECX UI POLISH: collapsed subscription profile body */
+.ext-proxy-card--collapsed > :not(.ext-proxy-card__head) {
+  display: none !important;
+}
+
+.ext-proxy-card--collapsed {
+  padding-bottom: 12px;
+}

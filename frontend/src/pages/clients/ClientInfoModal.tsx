@@ -172,6 +172,7 @@ export default function ClientInfoModal({
     <>
       {messageContextHolder}
       <Modal
+        className="client-info-modal"
         open={open}
         title={client ? `${t('pages.clients.clientInfo')} — ${client.email}` : t('pages.clients.clientInfo')}
         footer={null}

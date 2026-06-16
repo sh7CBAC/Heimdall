@@ -1,4 +1,4 @@
-import { useEffect, useMemo, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Alert,
@@ -18,6 +18,8 @@ import {
   ArrowUpOutlined,
   CopyOutlined,
   DeleteOutlined,
+  RightOutlined,
+  DownOutlined,
   ReloadOutlined,
 } from '@ant-design/icons';
 
@@ -128,6 +130,7 @@ export default function SubscriptionProfileEditor({
   const effectiveSecurity = selectedSecurity === 'same' ? parentSecurity : selectedSecurity;
   const title = remark.trim() || destination.trim()
     || `${t('pages.inbounds.form.subscriptionProfile')} ${displayIndex}`;
+  const [profileCollapsed, setProfileCollapsed] = useState(false);
 
   useEffect(() => {
     if (enabled === undefined) form.setFieldValue([...base, 'enabled'], true);
@@ -195,17 +198,27 @@ export default function SubscriptionProfileEditor({
   };
 
   return (
-    <div className={`ext-proxy-card${enabled === false ? ' ext-proxy-card--disabled' : ''}`}>
+    <div className={`ext-proxy-card${enabled === false ? ' ext-proxy-card--disabled' : ''}${profileCollapsed ? ' ext-proxy-card--collapsed' : ''}`}>
       <div className="ext-proxy-card__head">
         <div className="ext-proxy-card__identity">
           <Form.Item name={[fieldName, 'enabled']} valuePropName="checked" noStyle>
             <Switch size="small" />
           </Form.Item>
           <span className="ext-proxy-card__title">{title}</span>
+          <Tag className="ext-proxy-card__summary">{effectiveNetwork.toUpperCase()}</Tag>
+          <Tag className="ext-proxy-card__summary">{effectiveSecurity.toUpperCase()}</Tag>
           <Tag>{protocol ? protocol.toUpperCase() : '-'}</Tag>
         </div>
 
-        <Space size={2}>
+        <Space className="ext-proxy-card__actions" size={2}>
+          <Tooltip title={profileCollapsed ? 'Expand profile' : 'Collapse profile'}>
+            <Button
+              size="small"
+              type="text"
+              icon={profileCollapsed ? <RightOutlined /> : <DownOutlined />}
+              onClick={() => setProfileCollapsed((value) => !value)}
+            />
+          </Tooltip>
           <Tooltip title={t('pages.inbounds.form.moveProfileUp')}>
             <Button
               size="small"
@@ -327,7 +340,7 @@ export default function SubscriptionProfileEditor({
         </Field>
       </div>
 
-      <details className="ext-proxy-section" open>
+      <details className="ext-proxy-section">
         <summary>{t('pages.inbounds.form.profileTransportSettings')}</summary>
         <div className="ext-proxy-section__body">
           {selectedNetwork === 'same' ? (
@@ -349,7 +362,7 @@ export default function SubscriptionProfileEditor({
         </div>
       </details>
 
-      <details className="ext-proxy-section" open>
+      <details className="ext-proxy-section">
         <summary>{t('pages.inbounds.form.profileSecuritySettings')}</summary>
         <div className="ext-proxy-section__body">
           {selectedSecurity === 'same' ? (

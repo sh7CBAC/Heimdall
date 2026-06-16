@@ -16,7 +16,11 @@ setupAxios();
 
 const messageContainer = document.getElementById('message');
 if (messageContainer) {
-  message.config({ getContainer: () => messageContainer });
+  message.config({
+    getContainer: () => messageContainer,
+    duration: 1.8,
+    maxCount: 1,
+  });
 }
 
 readyI18n().then(() => {

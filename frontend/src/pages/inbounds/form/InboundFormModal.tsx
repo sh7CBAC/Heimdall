@@ -967,6 +967,7 @@ export default function InboundFormModal({
     <>
       {messageContextHolder}
       <Modal
+          className="inbound-form-modal"
         open={open}
         title={title}
         okText={okText}
