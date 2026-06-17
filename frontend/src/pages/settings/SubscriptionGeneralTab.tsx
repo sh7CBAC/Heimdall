@@ -7,6 +7,7 @@ import { SettingListItem } from '@/components/ui';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { catTabLabel } from './catTabLabel';
 import { sanitizePath, normalizePath } from './uriPath';
+import { SMART_IRAN_DIRECT_RULES_JSON, isSmartIranDirectRules } from './smartIranDirect';
 
 const REMARK_MODELS: Record<string, string> = { i: 'Inbound', e: 'Email', o: 'Other' };
 const REMARK_SAMPLES: Record<string, string> = { i: 'Germany', e: 'john', o: 'Relay' };
@@ -20,6 +21,13 @@ interface SubscriptionGeneralTabProps {
 export default function SubscriptionGeneralTab({ allSetting, updateSetting }: SubscriptionGeneralTabProps) {
   const { t } = useTranslation();
   const { isMobile } = useMediaQuery();
+
+  const smartIranDirectEnabled = isSmartIranDirectRules(allSetting.subJsonRules || '');
+
+  function setSmartIranDirectEnabled(enabled: boolean) {
+    updateSetting({ subJsonRules: enabled ? SMART_IRAN_DIRECT_RULES_JSON : '' });
+  }
+
 
   const remarkModel = useMemo(() => {
     const rm = allSetting.remarkModel || '';
@@ -57,6 +65,17 @@ export default function SubscriptionGeneralTab({ allSetting, updateSetting }: Su
             </SettingListItem>
             <SettingListItem paddings="small" title={t('pages.settings.subJsonEnableTitle')} description={t('pages.settings.subJsonEnable')}>
               <Switch checked={allSetting.subJsonEnable} onChange={(v) => updateSetting({ subJsonEnable: v })} />
+            </SettingListItem>
+            <SettingListItem
+              paddings="small"
+              title="Smart Iran Direct for JSON Subscription"
+              description="Bypass all .ir domains, 1000 selected Iranian non-.ir domains, geoip:ir and private IPs in JSON subscriptions. Supported subdomains are included automatically."
+            >
+              <Switch
+                checked={smartIranDirectEnabled}
+                disabled={!allSetting.subJsonEnable}
+                onChange={setSmartIranDirectEnabled}
+              />
             </SettingListItem>
             <SettingListItem paddings="small" title={t('pages.settings.subClashEnableTitle')}>
               <Switch checked={allSetting.subClashEnable} onChange={(v) => updateSetting({ subClashEnable: v })} />
