@@ -1,7 +1,6 @@
 import { createRoot } from 'react-dom/client';
 import { message } from 'antd';
 import 'antd/dist/reset.css';
-import '../styles/heimdall-light-theme.css';
 
 import { setupAxios } from '@/api/axios-init';
 import { applyDocumentTitle } from '@/utils';
