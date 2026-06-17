@@ -192,7 +192,7 @@ export default function SubscriptionGeneralTab({ allSetting, updateSetting }: Su
                 <>
                   {t('pages.settings.subThemeDirDesc')}{' '}
                   <a
-                    href="https://github.com/MHSanaei/3x-ui/blob/main/docs/custom-subscription-templates.md"
+                    href="https://github.com/sh7CBAC/Heimdall-Panel/blob/main/docs/custom-subscription-templates.md"
                     target="_blank"
                     rel="noopener noreferrer"
                   >
