@@ -1,35 +1,48 @@
 /*
-  HEIMDALL Cypress/Sand Light Theme
+  HEIMDALL Milky/Canopy Light Theme
+  Palette:
+  Milky        #FFFDF1
+  Sand         #F0EDE4
+  Lime Sprout  #E4FD97
+  Fresh Canopy #2D3E2C
+  Cyprus       #004741
+  Mantis       #59C749
+
   Light mode only. Dark and ultra-dark modes are intentionally untouched.
 */
 
 :root {
-  --heimdall-bg-page: #F0EDE4;
-  --heimdall-bg-sidebar: #F8F6F0;
+  --heimdall-bg-page: #FFFDF1;        /* Milky */
+  --heimdall-bg-sidebar: #FFFDF1;     /* Milky */
   --heimdall-bg-card: #FFFFFF;
-  --heimdall-bg-soft: #F8F6F0;
+  --heimdall-bg-soft: #F0EDE4;        /* Sand */
 
-  --heimdall-primary: #004741;
-  --heimdall-primary-hover: #0D504B;
-  --heimdall-primary-active: #003934;
+  --heimdall-primary: #2D3E2C;        /* Fresh Canopy */
+  --heimdall-primary-hover: #364C35;
+  --heimdall-primary-active: #223021;
 
-  --heimdall-sidebar-active: #DDE0D7;
-  --heimdall-sidebar-hover: #E8E7DD;
+  --heimdall-accent: #004741;         /* Cyprus */
+  --heimdall-accent-hover: #0A5A53;
 
-  --heimdall-text-primary: #002A26;
-  --heimdall-text-secondary: #476964;
-  --heimdall-text-muted: #6C928A;
+  --heimdall-sidebar-active: #E4FD97; /* Lime Sprout */
+  --heimdall-sidebar-hover: #F0EDE4;  /* Sand */
+  --heimdall-soft-highlight: rgba(228, 253, 151, 0.46);
 
-  --heimdall-border-light: #DDD8CB;
-  --heimdall-border-strong: #C5CFC7;
+  --heimdall-text-primary: #1F2A1F;
+  --heimdall-text-secondary: #4E5D4D;
+  --heimdall-text-muted: #7B8677;
 
-  --heimdall-success: #008771;
+  --heimdall-border-light: #E8E2D4;
+  --heimdall-border-strong: #D9D2C3;
+
+  --heimdall-success: #59C749;        /* Mantis */
+  --heimdall-success-deep: #2F8F28;
   --heimdall-warning: #C47A00;
   --heimdall-error: #D64545;
   --heimdall-purple: #6D4DBA;
 
-  --heimdall-shadow-card: 0 1px 2px rgba(0, 71, 65, 0.06);
-  --heimdall-shadow-card-hover: 0 8px 24px rgba(0, 71, 65, 0.10);
+  --heimdall-shadow-card: 0 1px 2px rgba(45, 62, 44, 0.06);
+  --heimdall-shadow-card-hover: 0 8px 24px rgba(45, 62, 44, 0.10);
 }
 
 /* Ant Design token bridge — light mode only */
@@ -37,8 +50,8 @@ html:not([data-theme="ultra-dark"]) body:not(.dark) {
   --ant-color-primary: var(--heimdall-primary);
   --ant-color-primary-hover: var(--heimdall-primary-hover);
   --ant-color-primary-active: var(--heimdall-primary-active);
-  --ant-color-link: var(--heimdall-primary);
-  --ant-color-link-hover: var(--heimdall-primary-hover);
+  --ant-color-link: var(--heimdall-accent);
+  --ant-color-link-hover: var(--heimdall-accent-hover);
   --ant-color-link-active: var(--heimdall-primary-active);
 
   --ant-color-bg-layout: var(--heimdall-bg-page);
@@ -92,6 +105,7 @@ html:not([data-theme="ultra-dark"]) body:not(.dark) .sider-utility .ant-menu-ite
 html:not([data-theme="ultra-dark"]) body:not(.dark) .drawer-menu .ant-menu-item-selected {
   background-color: var(--heimdall-sidebar-active) !important;
   color: var(--heimdall-primary) !important;
+  font-weight: 600;
 }
 
 html:not([data-theme="ultra-dark"]) body:not(.dark) .sider-nav .ant-menu-item-selected .anticon,
@@ -147,7 +161,7 @@ html:not([data-theme="ultra-dark"]) body:not(.dark) .ant-table-thead > tr > th {
 html:not([data-theme="ultra-dark"]) body:not(.dark) .ant-btn-primary {
   background: var(--heimdall-primary) !important;
   border-color: var(--heimdall-primary) !important;
-  box-shadow: 0 2px 6px rgba(0, 71, 65, 0.16);
+  box-shadow: 0 2px 6px rgba(45, 62, 44, 0.18);
 }
 
 html:not([data-theme="ultra-dark"]) body:not(.dark) .ant-btn-primary:not(:disabled):hover,
@@ -173,7 +187,17 @@ html:not([data-theme="ultra-dark"]) body:not(.dark) .ant-input:hover,
 html:not([data-theme="ultra-dark"]) body:not(.dark) .ant-input-affix-wrapper:hover,
 html:not([data-theme="ultra-dark"]) body:not(.dark) .ant-select-selector:hover,
 html:not([data-theme="ultra-dark"]) body:not(.dark) .ant-picker:hover {
-  border-color: var(--heimdall-primary-hover) !important;
+  border-color: var(--heimdall-accent) !important;
+}
+
+/* Switches, checkboxes and progress-ish accents */
+html:not([data-theme="ultra-dark"]) body:not(.dark) .ant-switch.ant-switch-checked {
+  background: var(--heimdall-success) !important;
+}
+
+html:not([data-theme="ultra-dark"]) body:not(.dark) .ant-checkbox-checked .ant-checkbox-inner {
+  background-color: var(--heimdall-primary) !important;
+  border-color: var(--heimdall-primary) !important;
 }
 
 /* Tags / status accents */
@@ -188,29 +212,29 @@ html:not([data-theme="ultra-dark"]) body:not(.dark) .ant-tag-purple {
 
 /* Login page, light only */
 html:not([data-theme="ultra-dark"]) body:not(.dark) .login-page {
-  --bg-page: #F0EDE4;
-  --bg-card: rgba(255, 255, 255, 0.78);
+  --bg-page: #FFFDF1;
+  --bg-card: rgba(255, 255, 255, 0.80);
   --bg-card-solid: #FFFFFF;
-  --color-text: #002A26;
-  --color-text-subtle: #476964;
-  --color-accent: #004741;
-  --color-border: rgba(0, 71, 65, 0.16);
-  --shadow-card: 0 1px 3px rgba(0, 71, 65, 0.08), 0 18px 50px rgba(0, 71, 65, 0.14);
-  --blob-1: rgba(0, 71, 65, 0.22);
-  --blob-2: rgba(240, 237, 228, 0.95);
-  --blob-3: rgba(0, 135, 113, 0.18);
-  --blob-4: rgba(196, 122, 0, 0.14);
-  --blob-5: rgba(71, 105, 100, 0.18);
-  --grid-color: rgba(0, 71, 65, 0.045);
-  --vignette: radial-gradient(ellipse at center, transparent 30%, rgba(0, 71, 65, 0.08) 100%);
+  --color-text: #1F2A1F;
+  --color-text-subtle: #4E5D4D;
+  --color-accent: #2D3E2C;
+  --color-border: rgba(45, 62, 44, 0.14);
+  --shadow-card: 0 1px 3px rgba(45, 62, 44, 0.08), 0 18px 50px rgba(45, 62, 44, 0.13);
+  --blob-1: rgba(228, 253, 151, 0.55);
+  --blob-2: rgba(89, 199, 73, 0.22);
+  --blob-3: rgba(0, 71, 65, 0.14);
+  --blob-4: rgba(240, 237, 228, 0.92);
+  --blob-5: rgba(45, 62, 44, 0.12);
+  --grid-color: rgba(45, 62, 44, 0.04);
+  --vignette: radial-gradient(ellipse at center, transparent 30%, rgba(45, 62, 44, 0.07) 100%);
 }
 
 html:not([data-theme="ultra-dark"]) body:not(.dark) .brand-name {
-  background: linear-gradient(135deg, #004741, #008771) !important;
+  background: linear-gradient(135deg, #2D3E2C, #59C749) !important;
   -webkit-background-clip: text !important;
   background-clip: text !important;
 }
 
 html:not([data-theme="ultra-dark"]) body:not(.dark) .brand-underline {
-  background: linear-gradient(90deg, #004741, #008771) !important;
+  background: linear-gradient(90deg, #2D3E2C, #59C749) !important;
 }
