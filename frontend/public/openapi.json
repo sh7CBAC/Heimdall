@@ -2,7 +2,7 @@
   "openapi": "3.0.3",
   "info": {
     "title": "HEIMDALL Panel API",
-    "version": "1.5.0",
+    "version": "3.x",
     "description": "Programmatic interface to a HEIMDALL panel. Authenticate either by logging in (cookie) or with an API token from Settings → Security → API Token (Bearer). All endpoints under /panel/api/* honour both modes — an API token is a full-admin credential, so treat it like the panel password."
   },
   "servers": [
@@ -21,7 +21,7 @@
       "cookieAuth": {
         "type": "apiKey",
         "in": "cookie",
-        "name": "3x-ui",
+        "name": "heimdall",
         "description": "Session cookie set by POST /login. Browser-only."
       }
     },
