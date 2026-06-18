@@ -247,6 +247,7 @@ function App() {
                   />
                 )}
                 {isOffSections.jsonConfigBox !== false && <JsonConfigBox />}
+                <div style={{ height: "28px" }} />
               </>
             )
           )}
