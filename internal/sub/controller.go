@@ -391,11 +391,21 @@ func (a *SUBController) serveSubPage(c *gin.Context, basePath string, page PageD
 		"datepicker":    datepicker,
 	}
 
-	// When an admin has configured a custom subscription theme, render it
-	// instead of the default SPA. We render into a buffer first so a template
-	// that fails mid-execution can't leave a partially-written (corrupt)
-	// response — on any error we log and fall through to the default page.
-	if themeDir, _ := a.settingService.GetSubThemeDir(); themeDir != "" {
+	// Default Heimdall uses the bundled Ourenus subscription template.
+	// The Sanaei sentinel intentionally skips custom-template rendering and
+	// falls through to the original built-in subscription page below.
+	const defaultHeimdallSubThemeDir = "/usr/local/x-ui/sub_templates/ourenus"
+	const sanaeiDefaultSubThemeDir = "__heimdall_sanaei_default__"
+
+	themeDir, _ := a.settingService.GetSubThemeDir()
+	themeDir = strings.TrimSpace(themeDir)
+	if themeDir == "" {
+		themeDir = defaultHeimdallSubThemeDir
+	} else if themeDir == sanaeiDefaultSubThemeDir {
+		themeDir = ""
+	}
+
+	if themeDir != "" {
 		if tmpl, err := a.loadSubTemplate(themeDir); err != nil {
 			logger.Error("sub: custom template parse failed, using default page:", err)
 		} else if tmpl == nil {
