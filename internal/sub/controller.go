@@ -121,6 +121,8 @@ func (a *SUBController) initRouter(g *gin.RouterGroup) {
 	gLink := g.Group(a.subPath)
 	gLink.GET(":subid", a.subs)
 	gLink.HEAD(":subid", a.subs)
+	gLink.GET(":subid/info", a.subInfo)
+	gLink.HEAD(":subid/info", a.subInfo)
 	if a.jsonEnabled {
 		gJson := g.Group(a.subJsonPath)
 		gJson.GET(":subid", a.subJsons)
@@ -180,6 +182,76 @@ func (a *SUBController) subs(c *gin.Context) {
 			c.String(200, result)
 		}
 	}
+}
+
+// subInfo returns a JSON view-model for rich subscription page templates such as Ourenus.
+func (a *SUBController) subInfo(c *gin.Context) {
+	subId := c.Param("subid")
+	_, host, _, hostHeader := a.subService.ResolveRequest(c)
+	subs, emails, lastOnline, traffic, err := a.subService.GetSubs(subId, host)
+	if err != nil || len(subs) == 0 {
+		writeSubError(c, err)
+		return
+	}
+
+	subURL, subJsonURL, subClashURL := a.subService.BuildURLs(a.subPath, a.subJsonPath, a.subClashPath, subId)
+	if !a.jsonEnabled {
+		subJsonURL = ""
+	}
+	if !a.clashEnabled {
+		subClashURL = ""
+	}
+
+	basePath, exists := c.Get("base_path")
+	if !exists {
+		basePath = "/"
+	}
+	basePathStr := basePath.(string)
+	page := a.subService.BuildPageData(subId, hostHeader, traffic, lastOnline, subs, emails, subURL, subJsonURL, subClashURL, basePathStr, a.subTitle, a.subSupportUrl)
+
+	usedTraffic := page.DownloadByte + page.UploadByte
+	status := "disabled"
+	if page.Enabled {
+		status = "active"
+	}
+
+	payload := gin.H{
+		"sId":                       page.SId,
+		"id":                        page.SId,
+		"sub_id":                    page.SId,
+		"username":                  page.SId,
+		"name":                      page.SId,
+		"status":                    status,
+		"enabled":                   page.Enabled,
+		"download":                  page.Download,
+		"upload":                    page.Upload,
+		"total":                     page.Total,
+		"used":                      page.Used,
+		"remained":                  page.Remained,
+		"expire":                    page.Expire,
+		"last_online":               page.LastOnline,
+		"lastOnline":                page.LastOnline,
+		"downloadByte":              page.DownloadByte,
+		"uploadByte":                page.UploadByte,
+		"totalByte":                 page.TotalByte,
+		"data_limit":                page.TotalByte,
+		"used_traffic":              usedTraffic,
+		"subscription_url":          page.SubUrl,
+		"subUrl":                    page.SubUrl,
+		"subJsonUrl":                page.SubJsonUrl,
+		"subClashUrl":               page.SubClashUrl,
+		"title":                     page.SubTitle,
+		"subTitle":                  page.SubTitle,
+		"support_url":               page.SubSupportUrl,
+		"subSupportUrl":             page.SubSupportUrl,
+		"links":                     page.Result,
+		"configs":                   page.Result,
+		"emails":                    page.Emails,
+		"data_limit_reset_strategy": "no_reset",
+	}
+
+	setNoCacheHeaders(c)
+	c.JSON(http.StatusOK, payload)
 }
 
 // serveSubPage renders internal/web/dist/subpage.html for the current subscription
