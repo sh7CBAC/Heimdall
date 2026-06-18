@@ -5,7 +5,9 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"github.com/mhsanaei/3x-ui/v3/internal/database"
 	"html/template"
+	"math"
 	"net/http"
 	"net/url"
 	"os"
@@ -285,6 +287,8 @@ func (a *SUBController) subInfo(c *gin.Context) {
 		}
 	}
 
+	clientSpeedLimits := a.getClientSpeedLimitsForSubID(subId)
+
 	payload := gin.H{
 		"sId":                       page.SId,
 		"id":                        page.SId,
@@ -310,6 +314,7 @@ func (a *SUBController) subInfo(c *gin.Context) {
 		"subUrl":                    page.SubUrl,
 		"subJsonUrl":                page.SubJsonUrl,
 		"subJsonLabel":              subJsonLabel,
+		"speedLimits":               clientSpeedLimits,
 		"subClashUrl":               page.SubClashUrl,
 		"title":                     page.SubTitle,
 		"subTitle":                  page.SubTitle,
@@ -554,4 +559,167 @@ func (a *SUBController) ApplyCommonHeaders(
 	if profileRoutingRules != "" {
 		c.Writer.Header().Set("Routing", profileRoutingRules)
 	}
+}
+
+func (a *SUBController) getClientSpeedLimitsForSubID(subID string) gin.H {
+	result := gin.H{
+		"matched":      false,
+		"uploadMbps":   int64(0),
+		"downloadMbps": int64(0),
+		"hasLimit":     false,
+	}
+
+	subID = strings.TrimSpace(subID)
+	if subID == "" {
+		return result
+	}
+
+	db := database.GetDB()
+	if db == nil {
+		return result
+	}
+
+	type inboundSettingsRow struct {
+		Settings string `gorm:"column:settings"`
+	}
+
+	var rows []inboundSettingsRow
+	if err := db.Table("inbounds").Select("settings").Find(&rows).Error; err != nil {
+		return result
+	}
+
+	uploadKeys := []string{
+		"upMbps", "uploadMbps", "uploadLimitMbps", "uploadLimit",
+		"upLimitMbps", "upLimit", "uplinkLimitMbps", "uplinkLimit",
+		"limitUploadMbps", "limitUpload", "upload", "up",
+	}
+
+	downloadKeys := []string{
+		"downMbps", "downloadMbps", "downloadLimitMbps", "downloadLimit",
+		"downLimitMbps", "downLimit", "downlinkLimitMbps", "downlinkLimit",
+		"limitDownloadMbps", "limitDownload", "download", "down",
+	}
+
+	for _, row := range rows {
+		if strings.TrimSpace(row.Settings) == "" {
+			continue
+		}
+
+		var settings struct {
+			Clients []map[string]any `json:"clients"`
+		}
+		if err := json.Unmarshal([]byte(row.Settings), &settings); err != nil {
+			continue
+		}
+
+		for _, client := range settings.Clients {
+			if speedLimitString(client["subId"]) != subID && speedLimitString(client["subid"]) != subID {
+				continue
+			}
+
+			uploadMbps, uploadKey := speedLimitFirstNumber(client, uploadKeys...)
+			downloadMbps, downloadKey := speedLimitFirstNumber(client, downloadKeys...)
+
+			result["matched"] = true
+			result["uploadMbps"] = uploadMbps
+			result["downloadMbps"] = downloadMbps
+			result["uploadKey"] = uploadKey
+			result["downloadKey"] = downloadKey
+			result["hasLimit"] = uploadMbps > 0 || downloadMbps > 0
+			return result
+		}
+	}
+
+	return result
+}
+
+func speedLimitString(value any) string {
+	switch typed := value.(type) {
+	case string:
+		return strings.TrimSpace(typed)
+	case json.Number:
+		return strings.TrimSpace(typed.String())
+	case float64:
+		if math.Trunc(typed) == typed {
+			return strconv.FormatInt(int64(typed), 10)
+		}
+		return strconv.FormatFloat(typed, 'f', -1, 64)
+	case float32:
+		f := float64(typed)
+		if math.Trunc(f) == f {
+			return strconv.FormatInt(int64(f), 10)
+		}
+		return strconv.FormatFloat(f, 'f', -1, 64)
+	case int:
+		return strconv.Itoa(typed)
+	case int64:
+		return strconv.FormatInt(typed, 10)
+	case int32:
+		return strconv.FormatInt(int64(typed), 10)
+	default:
+		return ""
+	}
+}
+
+func speedLimitFirstNumber(client map[string]any, keys ...string) (int64, string) {
+	for _, key := range keys {
+		value, ok := client[key]
+		if !ok {
+			continue
+		}
+
+		number, valid := speedLimitNumber(value)
+		if !valid {
+			continue
+		}
+
+		return number, key
+	}
+
+	return 0, ""
+}
+
+func speedLimitNumber(value any) (int64, bool) {
+	switch typed := value.(type) {
+	case json.Number:
+		floatValue, err := typed.Float64()
+		if err != nil {
+			return 0, false
+		}
+		return speedLimitSanitize(floatValue)
+	case float64:
+		return speedLimitSanitize(typed)
+	case float32:
+		return speedLimitSanitize(float64(typed))
+	case int:
+		return speedLimitSanitize(float64(typed))
+	case int64:
+		return speedLimitSanitize(float64(typed))
+	case int32:
+		return speedLimitSanitize(float64(typed))
+	case string:
+		trimmed := strings.TrimSpace(typed)
+		if trimmed == "" {
+			return 0, false
+		}
+		floatValue, err := strconv.ParseFloat(trimmed, 64)
+		if err != nil {
+			return 0, false
+		}
+		return speedLimitSanitize(floatValue)
+	default:
+		return 0, false
+	}
+}
+
+func speedLimitSanitize(value float64) (int64, bool) {
+	if math.IsNaN(value) || math.IsInf(value, 0) || value < 0 {
+		return 0, false
+	}
+
+	if value > 100000 {
+		return 0, false
+	}
+
+	return int64(math.Round(value)), true
 }

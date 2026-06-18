@@ -441,5 +441,151 @@ export default theme;`}function wd(e={},...n){const{breakpoints:o,mixins:i={},sp
   
   
   
+  
+    <script>
+    // HEIMDALL_SPEED_LIMIT_CARD_V1
+    (function () {
+      if (window.__HEIMDALL_SPEED_LIMIT_CARD_V1__) return;
+      window.__HEIMDALL_SPEED_LIMIT_CARD_V1__ = true;
+
+      var inserted = false;
+
+      function isFa() {
+        return (document.body && document.body.innerText || "").indexOf("فارسی") !== -1;
+      }
+
+      function infoUrl() {
+        var path = window.location.pathname.replace(/\/+$/, "");
+        if (!path) return "/info";
+        if (path.endsWith("/info")) return path;
+        return path + "/info";
+      }
+
+      function allElements() {
+        return Array.prototype.slice.call(document.querySelectorAll("body *"));
+      }
+
+      function smallestTextElement(words) {
+        var found = allElements().filter(function (el) {
+          var text = (el.textContent || "").trim();
+          return words.some(function (word) { return text.indexOf(word) !== -1; });
+        });
+
+        found.sort(function (a, b) {
+          return (a.textContent || "").length - (b.textContent || "").length;
+        });
+
+        return found[0] || null;
+      }
+
+      function roundedCardFor(el) {
+        var cur = el;
+        for (var i = 0; i < 12 && cur && cur !== document.body; i += 1, cur = cur.parentElement) {
+          var r = cur.getBoundingClientRect();
+          var cs = window.getComputedStyle(cur);
+          if (r.width > 260 && r.height > 45 && cs.borderRadius && cs.borderRadius !== "0px") return cur;
+        }
+        return null;
+      }
+
+      function trafficCard() {
+        var el = smallestTextElement([
+          "حجم اولیه شما",
+          "حجم باقیمانده شما",
+          "Initial Volume",
+          "Remaining Volume",
+          "Remaining Traffic",
+          "Traffic"
+        ]);
+        return el ? roundedCardFor(el) : null;
+      }
+
+      function formatMbps(value, fa) {
+        var n = Number(value || 0);
+        if (!Number.isFinite(n) || n <= 0) return fa ? "نامحدود" : "Unlimited";
+        return String(Math.round(n)) + " Mbps";
+      }
+
+      function createSpeedCard(info) {
+        if (inserted || document.querySelector("[data-heimdall-speed-limit-card]")) {
+          inserted = true;
+          return true;
+        }
+
+        if (!info || !info.speedLimits || !info.speedLimits.matched) return false;
+
+        var anchor = trafficCard();
+        if (!anchor || !anchor.parentElement) return false;
+
+        var fa = isFa();
+        var speed = info.speedLimits || {};
+        var downloadText = formatMbps(speed.downloadMbps, fa);
+        var uploadText = formatMbps(speed.uploadMbps, fa);
+
+        var card = document.createElement("div");
+        card.setAttribute("data-heimdall-speed-limit-card", "1");
+        card.style.cssText =
+          "width:100%;box-sizing:border-box;margin:1rem auto 0 auto;border-radius:20px;" +
+          "background:rgba(255,255,255,.95);box-shadow:0 0 30px 10px rgba(0,0,0,.08);" +
+          "padding:1rem 1.25rem;color:#111;direction:rtl;";
+
+        var title = document.createElement("div");
+        title.textContent = fa ? "محدودیت سرعت" : "Speed Limit";
+        title.style.cssText = "text-align:center;font-size:1rem;font-weight:800;margin-bottom:.85rem;";
+
+        var grid = document.createElement("div");
+        grid.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:.75rem;align-items:center;";
+
+        function metric(label, value) {
+          var box = document.createElement("div");
+          box.style.cssText =
+            "border:1px solid rgba(80,80,120,.16);border-radius:14px;padding:.7rem .5rem;" +
+            "background:rgba(255,255,255,.45);text-align:center;";
+
+          var l = document.createElement("div");
+          l.textContent = label;
+          l.style.cssText = "font-size:.82rem;color:#777;font-weight:700;margin-bottom:.35rem;";
+
+          var v = document.createElement("div");
+          v.textContent = value;
+          v.style.cssText = "font-size:1rem;color:#207a34;font-weight:900;direction:ltr;";
+
+          box.appendChild(l);
+          box.appendChild(v);
+          return box;
+        }
+
+        grid.appendChild(metric(fa ? "دانلود" : "Download", downloadText));
+        grid.appendChild(metric(fa ? "آپلود" : "Upload", uploadText));
+
+        card.appendChild(title);
+        card.appendChild(grid);
+
+        anchor.parentElement.insertBefore(card, anchor.nextSibling);
+        inserted = true;
+        return true;
+      }
+
+      function boot() {
+        fetch(infoUrl(), { cache: "no-store" })
+          .then(function (response) { return response.ok ? response.json() : null; })
+          .then(function (info) {
+            var tries = 0;
+            var timer = setInterval(function () {
+              tries += 1;
+              if (createSpeedCard(info) || tries > 30) clearInterval(timer);
+            }, 120);
+          })
+          .catch(function () {});
+      }
+
+      if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", boot, { once: true });
+      } else {
+        boot();
+      }
+    })();
+    </script>
+  
   </body>
 </html>
