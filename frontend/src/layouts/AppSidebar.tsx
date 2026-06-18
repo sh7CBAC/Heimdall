@@ -36,7 +36,7 @@ import { useAllSettings } from '@/api/queries/useAllSettings';
 import './AppSidebar.css';
 
 const SIDEBAR_COLLAPSED_KEY = 'isSidebarCollapsed';
-const DONATE_URL = 'https://donate.sanaei.dev/';
+const DONATE_URL = 'https://reymit.ir/heimdall';
 const REPO_URL = 'https://github.com/sh7CBAC/Heimdall';
 const LOGOUT_KEY = '__logout__';
 
