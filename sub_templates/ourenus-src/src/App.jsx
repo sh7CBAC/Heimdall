@@ -244,6 +244,7 @@ function App() {
                       background: theme.colors.glassColor,
                     }}
                     isFirst={!isOffSections.appsBox}
+                    bottomPadding={isOffSections.jsonConfigBox !== false ? "0" : "1rem"}
                   />
                 )}
                 {isOffSections.jsonConfigBox !== false && <JsonConfigBox />}

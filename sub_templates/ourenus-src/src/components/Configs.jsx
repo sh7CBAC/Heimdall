@@ -30,6 +30,7 @@ const Configs = ({
   btnStyle,
   liStyle,
   isFirst,
+  bottomPadding = "1rem",
 }) => {
   const filteredLinks = useMemo(() => {
     if (configs && configs[configs.length - 1] === "False") {
@@ -62,7 +63,7 @@ const Configs = ({
         justifyContent="space-between"
         xs={11}
         item
-        sx={{ paddingBottom: "1rem", ...isFirstPadding }}
+        sx={{ paddingBottom: bottomPadding, ...isFirstPadding }}
       >
         <Accordion sx={style}>
           <AccordionSummary
@@ -173,6 +174,7 @@ Configs.propTypes = {
   iconColor: PropTypes.string,
   liStyle: PropTypes.object,
   isFirst: PropTypes.bool,
+  bottomPadding: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
 };
 
 export default Configs;
