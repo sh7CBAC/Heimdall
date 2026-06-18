@@ -2,6 +2,8 @@ import { Grid, ThemeProvider, CssBaseline } from "@mui/material";
 import LogoBox from "./components/LogoBox";
 import UserBox from "./components/UserBox";
 import UsageBox from "./components/UsageBox";
+import SpeedLimitBox from "./components/SpeedLimitBox";
+import JsonConfigBox from "./components/JsonConfigBox";
 import Apps from "./components/Apps";
 import { useState, useMemo, useEffect } from "react";
 import { useTranslation } from "react-i18next";
@@ -98,6 +100,8 @@ function App() {
         userBox: true,
         supportBox: true,
         configs: true,
+        speedLimitBox: true,
+        jsonConfigBox: true,
       };
     } catch (error) {
       console.error("Failed to parse VITE_OFF_SECTIONS:", error);
@@ -109,6 +113,8 @@ function App() {
         userBox: true,
         supportBox: true,
         configs: true,
+        speedLimitBox: true,
+        jsonConfigBox: true,
       };
     }
   }, []);
@@ -159,6 +165,9 @@ function App() {
                     subLink={getAdjustedUrl(data?.subscription_url)}
                   />
                 )}
+                {isOffSections.speedLimitBox !== false && (
+                  <SpeedLimitBox speedLimits={data?.speedLimits} />
+                )}
                 {isOffSections.usageBox && (
                   <UsageBox
                     type="usage"
@@ -186,6 +195,7 @@ function App() {
                       data?.expire || data?.expire_date,
                       t
                     )}
+                    connectionLimit={data?.connectionLimit}
                   />
                 )}
                 {isOffSections.appsBox && (
@@ -238,6 +248,7 @@ function App() {
                     isFirst={!isOffSections.appsBox}
                   />
                 )}
+                {isOffSections.jsonConfigBox !== false && <JsonConfigBox />}
               </>
             )
           )}

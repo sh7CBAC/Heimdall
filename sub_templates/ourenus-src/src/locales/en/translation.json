@@ -44,5 +44,16 @@
   "dark": "Dark",
   "ended": "Ended",
   "tutorialTitle": "Tutorial",
-  "ad": "Ad"
+  "ad": "Ad",
+  "uploadLimit": "Upload",
+  "downloadLimit": "Download",
+  "concurrentLimit": "Concurrent IP",
+  "ipUnit": "IP",
+  "mbps": "Mbps",
+  "jsonConfig": "JSON Config",
+  "jsonConfigDescription": "Copy JSON output for compatible clients",
+  "copyJson": "Copy JSON",
+  "copying": "Copying",
+  "jsonCopied": "JSON config copied",
+  "jsonCopyFailed": "Failed to copy JSON config"
 }

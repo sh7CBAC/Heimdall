@@ -83,7 +83,7 @@ const RadioButtons = ({ setIsDarkMode }) => {
         />
         <CapsuleButton
           label={import.meta.env.VITE_SECOND_LANG || "en"}
-          isActive={lang === import.meta.env.VITE_SECOND_LANG || "en"}
+          isActive={lang === (import.meta.env.VITE_SECOND_LANG || "en")}
           onClick={handleLangChange}
           icon={
             import.meta.env.VITE_SECOND_LANG === "ru" ? "Русский" : "English"

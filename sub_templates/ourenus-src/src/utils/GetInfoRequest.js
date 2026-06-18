@@ -1,14 +1,44 @@
 import Request from "./Request";
 
 export default class GetInfoRequest extends Request {
-  static async getInfo() {
-    const pathname = `${
-      import.meta.env?.VITE_PANEL_DOMAIN || window.location.origin
-    }${window.location.pathname.split("#")[0]}`;
+  static getBaseUrl() {
+    return import.meta.env?.VITE_PANEL_DOMAIN || window.location.origin;
+  }
 
+  static getCurrentSubscriptionPathname() {
+    return window.location.pathname.split("#")[0].replace(/\/+$/, "");
+  }
+
+  static getCurrentSubscriptionUrl() {
+    return `${GetInfoRequest.getBaseUrl()}${GetInfoRequest.getCurrentSubscriptionPathname()}`;
+  }
+
+  static getCurrentSubId() {
+    const pathname = GetInfoRequest.getCurrentSubscriptionPathname();
+    const match = pathname.match(/\/sub\/([^/?#]+)/);
+
+    if (match?.[1]) {
+      return decodeURIComponent(match[1]);
+    }
+
+    const parts = pathname.split("/").filter(Boolean);
+    return parts.length ? decodeURIComponent(parts[parts.length - 1]) : "";
+  }
+
+  static getJsonUrl() {
+    const subId = GetInfoRequest.getCurrentSubId();
+
+    if (subId) {
+      return `${GetInfoRequest.getBaseUrl()}/json/${encodeURIComponent(subId)}`;
+    }
+
+    return `${GetInfoRequest.getCurrentSubscriptionUrl()}/json`;
+  }
+
+  static async getInfo() {
     try {
       const response = await GetInfoRequest.send(
-        `${pathname}/info`,
+        `${GetInfoRequest.getCurrentSubscriptionUrl()}/info`,
         "GET",
         {},
         {
@@ -23,13 +53,9 @@ export default class GetInfoRequest extends Request {
   }
 
   static async getConfigs() {
-    const pathname = `${
-      import.meta.env?.VITE_PANEL_DOMAIN ?? window.location.origin
-    }${window.location.pathname.split("#")[0]}`;
-
     try {
       const response = await GetInfoRequest.send(
-        `${pathname}`,
+        `${GetInfoRequest.getCurrentSubscriptionUrl()}`,
         "GET",
         {},
         {
@@ -38,7 +64,28 @@ export default class GetInfoRequest extends Request {
       );
       return response;
     } catch (error) {
-      console.error("Error fetching info:", error);
+      console.error("Error fetching configs:", error);
+      throw error;
+    }
+  }
+
+  static async getJsonConfig() {
+    try {
+      const response = await GetInfoRequest.send(
+        GetInfoRequest.getJsonUrl(),
+        "GET",
+        {
+          headers: {
+            Accept: "application/json",
+          },
+        },
+        {
+          toastError: true,
+        }
+      );
+      return response;
+    } catch (error) {
+      console.error("Error fetching JSON config:", error);
       throw error;
     }
   }

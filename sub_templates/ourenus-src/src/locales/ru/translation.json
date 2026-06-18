@@ -45,5 +45,16 @@
   "dark": "Темная",
   "ended": "Закончилась",
   "tutorialTitle": "Обучение",
-  "ad": "Реклама"
+  "ad": "Реклама",
+  "uploadLimit": "Загрузка",
+  "downloadLimit": "Скачивание",
+  "concurrentLimit": "Одновременные IP",
+  "ipUnit": "IP",
+  "mbps": "Mbps",
+  "jsonConfig": "JSON конфиг",
+  "jsonConfigDescription": "Скопировать JSON для совместимых клиентов",
+  "copyJson": "Копировать JSON",
+  "copying": "Копирование",
+  "jsonCopied": "JSON конфиг скопирован",
+  "jsonCopyFailed": "Не удалось скопировать JSON конфиг"
 }
