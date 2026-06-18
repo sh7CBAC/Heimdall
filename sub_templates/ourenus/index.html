@@ -587,12 +587,15 @@ export default theme;`}function wd(e={},...n){const{breakpoints:o,mixins:i={},sp
     })();
     </script>
     <script>
-    // HEIMDALL_CONNECTION_LIMIT_CARD_V4
+    // HEIMDALL_CONNECTION_LIMIT_CARD_V5
     (function () {
-      if (window.__HEIMDALL_CONNECTION_LIMIT_CARD_V4__) return;
-      window.__HEIMDALL_CONNECTION_LIMIT_CARD_V4__ = true;
+      if (window.__HEIMDALL_CONNECTION_LIMIT_CARD_V5__) return;
+      window.__HEIMDALL_CONNECTION_LIMIT_CARD_V5__ = true;
 
       var inserted = false;
+      var infoCache = null;
+      var lastColumnKey = "";
+      var stableCount = 0;
 
       function isFa() {
         return (document.body && document.body.innerText || "").indexOf("فارسی") !== -1;
@@ -612,7 +615,7 @@ export default theme;`}function wd(e={},...n){const{breakpoints:o,mixins:i={},sp
       function smallestTextElement(words) {
         var found = allElements().filter(function (el) {
           var text = (el.textContent || "").trim();
-          return words.some(function (word) { return text.indexOf(word) !== -1; });
+          return words.some(function (word) { return text === word || text.indexOf(word) !== -1; });
         });
 
         found.sort(function (a, b) {
@@ -630,24 +633,40 @@ export default theme;`}function wd(e={},...n){const{breakpoints:o,mixins:i={},sp
           "Remaining time",
           "Time Remaining"
         ]);
+
         if (!label) return null;
 
-        var cur = label.parentElement;
-        for (var i = 0; i < 6 && cur && cur !== document.body; i += 1, cur = cur.parentElement) {
-          var text = (cur.textContent || "").trim();
-          var r = cur.getBoundingClientRect();
+        var column = label.parentElement;
+        if (!column || column === document.body) return null;
 
-          if (
-            r.width >= 120 &&
-            r.height >= 45 &&
-            text.indexOf((label.textContent || "").trim()) !== -1 &&
-            !cur.querySelector("[data-heimdall-connection-limit]")
-          ) {
-            return cur;
-          }
+        // The correct target is the direct parent of the label:
+        // <div class="MuiGrid-root MuiGrid-item MuiGrid-grid-xs-8 ...">
+        //   <div>زمان باقیمانده شما</div>
+        //   <div>29</div>
+        //   <div>روز</div>
+        // </div>
+        var className = String(column.className || "");
+        if (className.indexOf("MuiGrid-item") === -1) {
+          var closest = label.closest ? label.closest(".MuiGrid-root.MuiGrid-item") : null;
+          if (closest && closest !== document.body) column = closest;
         }
 
-        return label.parentElement || null;
+        if (!column || column === document.body) return null;
+        if (column.querySelector("[data-heimdall-remaining-conn-split]")) return null;
+
+        var rect = column.getBoundingClientRect();
+        if (!rect || rect.width < 90 || rect.height < 40) return null;
+
+        // Refuse huge/root-like containers. This is what caused the first-load bug.
+        if (window.innerWidth && rect.width > window.innerWidth * 0.45) return null;
+
+        var children = Array.prototype.slice.call(column.children || []);
+        if (children.length < 3) return null;
+
+        var text = (column.textContent || "").trim();
+        if (text.indexOf((label.textContent || "").trim()) === -1) return null;
+
+        return column;
       }
 
       function formatLimit(value, fa) {
@@ -667,8 +686,27 @@ export default theme;`}function wd(e={},...n){const{breakpoints:o,mixins:i={},sp
         var column = remainingTimeColumn();
         if (!column) return false;
 
+        var rect = column.getBoundingClientRect();
+        var key = [
+          Math.round(rect.left),
+          Math.round(rect.top),
+          Math.round(rect.width),
+          Math.round(rect.height),
+          (column.textContent || "").trim().slice(0, 80)
+        ].join("|");
+
+        if (key === lastColumnKey) {
+          stableCount += 1;
+        } else {
+          lastColumnKey = key;
+          stableCount = 0;
+        }
+
+        // Wait until the real MUI column is stable for a few ticks.
+        if (stableCount < 2) return false;
+
         var originalChildren = Array.prototype.slice.call(column.children);
-        if (!originalChildren.length) return false;
+        if (originalChildren.length < 3) return false;
 
         var fa = isFa();
         var value = formatLimit(info.connectionLimit.limitIp, fa);
@@ -736,16 +774,19 @@ export default theme;`}function wd(e={},...n){const{breakpoints:o,mixins:i={},sp
         return true;
       }
 
+      function startTrying(info) {
+        infoCache = info || {};
+        var tries = 0;
+        var timer = setInterval(function () {
+          tries += 1;
+          if (createConnectionLimit(infoCache) || tries > 80) clearInterval(timer);
+        }, 100);
+      }
+
       function boot() {
         fetch(infoUrl(), { cache: "no-store" })
           .then(function (response) { return response.ok ? response.json() : null; })
-          .then(function (info) {
-            var tries = 0;
-            var timer = setInterval(function () {
-              tries += 1;
-              if (createConnectionLimit(info) || tries > 30) clearInterval(timer);
-            }, 120);
-          })
+          .then(function (info) { startTrying(info); })
           .catch(function () {});
       }
 
@@ -756,6 +797,7 @@ export default theme;`}function wd(e={},...n){const{breakpoints:o,mixins:i={},sp
       }
     })();
     </script>
+
 
   
   </body>
