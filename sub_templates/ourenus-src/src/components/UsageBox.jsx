@@ -18,9 +18,9 @@ const UsageBox = ({ type, value, total, remaining, connectionLimit }) => {
 
   const getTypographyGradient = (v) => {
     if (v === Infinity || Number.isNaN(v)) {
-      return `linear-gradient(0deg, ${theme.palette.success.main}, ${theme.palette.success.dark})`;
+      return `linear-gradient(0deg, ${theme.palette.mode === "dark" ? "#9CCFA8" : theme.palette.success.main}, ${theme.palette.mode === "dark" ? "#78B989" : theme.palette.success.dark})`;
     } else if (v <= 30) {
-      return `linear-gradient(0deg, ${theme.palette.success.main}, ${theme.palette.success.dark})`;
+      return `linear-gradient(0deg, ${theme.palette.mode === "dark" ? "#9CCFA8" : theme.palette.success.main}, ${theme.palette.mode === "dark" ? "#78B989" : theme.palette.success.dark})`;
     } else if (v <= 70) {
       return `linear-gradient(0deg, ${theme.palette.warning.main}, ${theme.palette.warning.dark})`;
     } else {
@@ -156,7 +156,7 @@ const UsageBox = ({ type, value, total, remaining, connectionLimit }) => {
             variant="h6"
             component="div"
             sx={{
-              background: `linear-gradient(0deg, ${theme.palette.success.main}, ${theme.palette.success.dark})`,
+              background: `linear-gradient(0deg, ${theme.palette.mode === "dark" ? "#9CCFA8" : theme.palette.success.main}, ${theme.palette.mode === "dark" ? "#78B989" : theme.palette.success.dark})`,
               backgroundClip: "text",
               WebkitBackgroundClip: "text",
               WebkitTextFillColor: "transparent",

@@ -32,7 +32,7 @@ const SpeedLimitBox = ({ speedLimits }) => {
   const download = formatLimit(speedLimits.downloadMbps);
 
   const valueSx = {
-    background: `linear-gradient(0deg, ${theme.palette.success.main}, ${theme.palette.success.dark})`,
+    background: `linear-gradient(0deg, ${theme.palette.mode === "dark" ? "#9CCFA8" : theme.palette.success.main}, ${theme.palette.mode === "dark" ? "#78B989" : theme.palette.success.dark})`,
     backgroundClip: "text",
     WebkitBackgroundClip: "text",
     WebkitTextFillColor: "transparent",
