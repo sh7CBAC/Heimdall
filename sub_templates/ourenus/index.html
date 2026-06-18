@@ -168,10 +168,10 @@ export default theme;`}function wd(e={},...n){const{breakpoints:o,mixins:i={},sp
   <body>
     <div id="root"></div>
     <script>
-    // HEIMDALL_JSON_CONFIG_CARD_SAFE_V3
+    // HEIMDALL_JSON_CONFIG_CARD_SAFE_V4
     (function () {
-      if (window.__HEIMDALL_JSON_CONFIG_CARD_SAFE_V3__) return;
-      window.__HEIMDALL_JSON_CONFIG_CARD_SAFE_V3__ = true;
+      if (window.__HEIMDALL_JSON_CONFIG_CARD_SAFE_V4__) return;
+      window.__HEIMDALL_JSON_CONFIG_CARD_SAFE_V4__ = true;
 
       var infoCache = null;
       var cardInserted = false;
@@ -292,7 +292,7 @@ export default theme;`}function wd(e={},...n){const{breakpoints:o,mixins:i={},sp
 
         card.setAttribute("data-heimdall-safe-json-collapsed", collapsed ? "1" : "0");
         body.style.display = collapsed ? "none" : "block";
-        toggle.textContent = collapsed ? "▾" : "▴";
+        toggle.textContent = collapsed ? "▼" : "▲";
       }
 
       function createCardFast() {
@@ -316,32 +316,32 @@ export default theme;`}function wd(e={},...n){const{breakpoints:o,mixins:i={},sp
         card.setAttribute("data-heimdall-safe-json-config-card", "1");
         card.setAttribute("data-heimdall-safe-json-collapsed", "1");
         card.style.cssText =
-          "width:100%;box-sizing:border-box;margin:1rem auto 0 auto;border-radius:16px;" +
+          "width:100%;box-sizing:border-box;margin:1rem auto 0 auto;border-radius:20px;" +
           "background:rgba(255,255,255,.95);box-shadow:0 0 30px 10px rgba(0,0,0,.08);" +
-          "padding:1rem;color:#111;direction:rtl;";
+          "padding:0;color:#111;direction:rtl;overflow:hidden;";
 
         var header = document.createElement("button");
         header.type = "button";
         header.setAttribute("data-heimdall-safe-json-header", "1");
         header.style.cssText =
-          "width:100%;display:grid;grid-template-columns:2rem 1fr 2rem;align-items:center;gap:.75rem;" +
-          "border:0;background:transparent;padding:0;margin:0;cursor:pointer;color:inherit;font:inherit;direction:ltr;";
+          "width:100%;min-height:96px;display:grid;grid-template-columns:3.25rem 1fr 3.25rem;align-items:center;gap:.75rem;" +
+          "border:0;background:transparent;padding:0 1.35rem;margin:0;cursor:pointer;color:inherit;font:inherit;direction:ltr;box-sizing:border-box;";
 
         var toggle = document.createElement("div");
         toggle.setAttribute("data-heimdall-safe-json-toggle", "1");
-        toggle.textContent = "▾";
+        toggle.textContent = "▼";
         toggle.style.cssText =
-          "grid-column:1;text-align:left;font-size:1rem;font-weight:900;color:#50527c;line-height:1;";
+          "grid-column:1;justify-self:start;text-align:left;font-size:1.35rem;font-weight:900;color:#50527c;line-height:1;";
 
         var titleEl = document.createElement("div");
         titleEl.textContent = title;
         titleEl.style.cssText =
-          "grid-column:2;text-align:center;font-size:1.05rem;font-weight:800;direction:rtl;";
+          "grid-column:2;text-align:center;font-size:1.25rem;font-weight:800;direction:rtl;";
 
         var icon = document.createElement("div");
         icon.textContent = "{ }";
         icon.style.cssText =
-          "grid-column:3;text-align:right;font-size:1.35rem;font-weight:900;color:#50527c;direction:ltr;line-height:1;";
+          "grid-column:3;justify-self:end;text-align:right;font-size:2rem;font-weight:900;color:#50527c;direction:ltr;line-height:1;";
 
         header.appendChild(toggle);
         header.appendChild(titleEl);
@@ -349,7 +349,7 @@ export default theme;`}function wd(e={},...n){const{breakpoints:o,mixins:i={},sp
 
         var body = document.createElement("div");
         body.setAttribute("data-heimdall-safe-json-body", "1");
-        body.style.cssText = "margin-top:1rem;display:none;";
+        body.style.cssText = "padding:0 1rem 1rem 1rem;display:none;";
 
         var row = document.createElement("div");
         row.style.cssText =
@@ -437,6 +437,7 @@ export default theme;`}function wd(e={},...n){const{breakpoints:o,mixins:i={},sp
       }
     })();
     </script>
+
   
   
   
