@@ -285,13 +285,6 @@ func (a *SUBController) subInfo(c *gin.Context) {
 		}
 	}
 
-	subJsonContent := ""
-	if a.jsonEnabled {
-		if jsonSub, _, jsonErr := a.subJsonService.GetJson(subId, host); jsonErr == nil && len(jsonSub) > 0 {
-			subJsonContent = jsonSub
-		}
-	}
-
 	payload := gin.H{
 		"sId":                       page.SId,
 		"id":                        page.SId,
@@ -316,7 +309,6 @@ func (a *SUBController) subInfo(c *gin.Context) {
 		"subscription_url":          page.SubUrl,
 		"subUrl":                    page.SubUrl,
 		"subJsonUrl":                page.SubJsonUrl,
-		"subJsonContent":            subJsonContent,
 		"subJsonLabel":              subJsonLabel,
 		"subClashUrl":               page.SubClashUrl,
 		"title":                     page.SubTitle,
