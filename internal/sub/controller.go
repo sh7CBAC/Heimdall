@@ -274,6 +274,17 @@ func (a *SUBController) subInfo(c *gin.Context) {
 
 	infoItems, infoEmails := splitSubscriptionInfoItems(page.Result, page.Emails)
 
+	subJsonLabel := "JSON Config"
+	for _, itemEmail := range infoEmails {
+		itemEmail = strings.TrimSpace(itemEmail)
+		if itemEmail == "" {
+			continue
+		}
+		if subJsonLabel == "JSON Config" || len([]rune(itemEmail)) < len([]rune(subJsonLabel)) {
+			subJsonLabel = itemEmail
+		}
+	}
+
 	subJsonContent := ""
 	if a.jsonEnabled {
 		if jsonSub, _, jsonErr := a.subJsonService.GetJson(subId, host); jsonErr == nil && len(jsonSub) > 0 {
@@ -306,6 +317,7 @@ func (a *SUBController) subInfo(c *gin.Context) {
 		"subUrl":                    page.SubUrl,
 		"subJsonUrl":                page.SubJsonUrl,
 		"subJsonContent":            subJsonContent,
+		"subJsonLabel":              subJsonLabel,
 		"subClashUrl":               page.SubClashUrl,
 		"title":                     page.SubTitle,
 		"subTitle":                  page.SubTitle,
