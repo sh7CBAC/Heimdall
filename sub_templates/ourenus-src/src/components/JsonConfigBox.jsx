@@ -58,17 +58,18 @@ const JsonConfigBox = ({ isFirst }) => {
             color: theme.colors.userBox.logoColor[theme.palette.mode],
             width: "2.4rem",
             height: "2.4rem",
+            fontSize: "1.9rem",
           }}
         />
       </Grid>
 
-      <Grid item xs={5} display="flex" flexDirection="column" textAlign="start" sx={{ color: theme.colors.BWColor[theme.palette.mode] }}>
+      <Grid item xs={6} display="flex" flexDirection="column" alignItems="center" justifyContent="center" textAlign="center" sx={{ color: theme.colors.BWColor[theme.palette.mode] }}>
         <Typography variant="h6" component="div" sx={{ fontWeight: 600, fontSize: "1rem" }}>
           {t("jsonConfig")}
         </Typography>
       </Grid>
 
-      <Grid item xs={4} display="flex" justifyContent="flex-end">
+      <Grid item xs={3} display="flex" justifyContent="flex-end">
         <Button
           disabled={copying}
           onClick={handleCopyJson}
