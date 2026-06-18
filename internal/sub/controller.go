@@ -391,9 +391,6 @@ func (a *SUBController) serveSubPage(c *gin.Context, basePath string, page PageD
 		"datepicker":    datepicker,
 	}
 
-	// Default Heimdall uses the bundled Ourenus subscription template.
-	// The Sanaei sentinel intentionally skips custom-template rendering and
-	// falls through to the original built-in subscription page below.
 	const defaultHeimdallSubThemeDir = "/usr/local/x-ui/sub_templates/ourenus"
 	const sanaeiDefaultSubThemeDir = "__heimdall_sanaei_default__"
 
