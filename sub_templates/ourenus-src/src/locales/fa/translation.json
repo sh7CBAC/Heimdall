@@ -55,6 +55,5 @@
   "copyJson": "کپی",
   "copying": "در حال کپی",
   "jsonCopied": "کانفیگ JSON کپی شد",
-  "jsonCopyFailed": "کپی کانفیگ JSON ناموفق بود",
-  "speedLimitTitle": "محدودیت سرعت"
+  "jsonCopyFailed": "کپی کانفیگ JSON ناموفق بود"
 }

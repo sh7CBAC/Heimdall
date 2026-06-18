@@ -56,6 +56,5 @@
   "copyJson": "Копировать",
   "copying": "Копирование",
   "jsonCopied": "JSON конфиг скопирован",
-  "jsonCopyFailed": "Не удалось скопировать JSON конфиг",
-  "speedLimitTitle": "Лимит скорости"
+  "jsonCopyFailed": "Не удалось скопировать JSON конфиг"
 }
