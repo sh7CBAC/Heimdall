@@ -168,10 +168,10 @@ export default theme;`}function wd(e={},...n){const{breakpoints:o,mixins:i={},sp
   <body>
     <div id="root"></div>
     <script>
-    // HEIMDALL_JSON_CONFIG_CARD_SAFE_V2
+    // HEIMDALL_JSON_CONFIG_CARD_SAFE_V3
     (function () {
-      if (window.__HEIMDALL_JSON_CONFIG_CARD_SAFE_V2__) return;
-      window.__HEIMDALL_JSON_CONFIG_CARD_SAFE_V2__ = true;
+      if (window.__HEIMDALL_JSON_CONFIG_CARD_SAFE_V3__) return;
+      window.__HEIMDALL_JSON_CONFIG_CARD_SAFE_V3__ = true;
 
       var infoCache = null;
       var cardInserted = false;
@@ -314,7 +314,7 @@ export default theme;`}function wd(e={},...n){const{breakpoints:o,mixins:i={},sp
 
         var card = document.createElement("div");
         card.setAttribute("data-heimdall-safe-json-config-card", "1");
-        card.setAttribute("data-heimdall-safe-json-collapsed", "0");
+        card.setAttribute("data-heimdall-safe-json-collapsed", "1");
         card.style.cssText =
           "width:100%;box-sizing:border-box;margin:1rem auto 0 auto;border-radius:16px;" +
           "background:rgba(255,255,255,.95);box-shadow:0 0 30px 10px rgba(0,0,0,.08);" +
@@ -324,34 +324,32 @@ export default theme;`}function wd(e={},...n){const{breakpoints:o,mixins:i={},sp
         header.type = "button";
         header.setAttribute("data-heimdall-safe-json-header", "1");
         header.style.cssText =
-          "width:100%;display:flex;align-items:center;justify-content:space-between;gap:1rem;" +
-          "border:0;background:transparent;padding:0;margin:0;cursor:pointer;color:inherit;font:inherit;";
-
-        var left = document.createElement("div");
-        left.style.cssText = "display:flex;align-items:center;gap:.75rem;";
-
-        var icon = document.createElement("div");
-        icon.textContent = "{ }";
-        icon.style.cssText = "font-size:1.35rem;font-weight:900;color:#50527c;direction:ltr;";
+          "width:100%;display:grid;grid-template-columns:2rem 1fr 2rem;align-items:center;gap:.75rem;" +
+          "border:0;background:transparent;padding:0;margin:0;cursor:pointer;color:inherit;font:inherit;direction:ltr;";
 
         var toggle = document.createElement("div");
         toggle.setAttribute("data-heimdall-safe-json-toggle", "1");
-        toggle.textContent = "▴";
-        toggle.style.cssText = "font-size:1rem;font-weight:900;color:#50527c;min-width:1rem;text-align:center;";
-
-        left.appendChild(icon);
-        left.appendChild(toggle);
+        toggle.textContent = "▾";
+        toggle.style.cssText =
+          "grid-column:1;text-align:left;font-size:1rem;font-weight:900;color:#50527c;line-height:1;";
 
         var titleEl = document.createElement("div");
         titleEl.textContent = title;
-        titleEl.style.cssText = "font-size:1.05rem;font-weight:800;";
+        titleEl.style.cssText =
+          "grid-column:2;text-align:center;font-size:1.05rem;font-weight:800;direction:rtl;";
 
-        header.appendChild(left);
+        var icon = document.createElement("div");
+        icon.textContent = "{ }";
+        icon.style.cssText =
+          "grid-column:3;text-align:right;font-size:1.35rem;font-weight:900;color:#50527c;direction:ltr;line-height:1;";
+
+        header.appendChild(toggle);
         header.appendChild(titleEl);
+        header.appendChild(icon);
 
         var body = document.createElement("div");
         body.setAttribute("data-heimdall-safe-json-body", "1");
-        body.style.cssText = "margin-top:1rem;";
+        body.style.cssText = "margin-top:1rem;display:none;";
 
         var row = document.createElement("div");
         row.style.cssText =
@@ -439,6 +437,7 @@ export default theme;`}function wd(e={},...n){const{breakpoints:o,mixins:i={},sp
       }
     })();
     </script>
+  
   
   
   </body>
