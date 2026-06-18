@@ -51,7 +51,6 @@
   "ipUnit": "IP",
   "mbps": "Mbps",
   "jsonConfig": "کانفیگ JSON",
-  "jsonConfigDescription": "کپی خروجی JSON برای کلاینت‌های سازگار",
   "copyJson": "کپی",
   "copying": "در حال کپی",
   "jsonCopied": "کانفیگ JSON کپی شد",

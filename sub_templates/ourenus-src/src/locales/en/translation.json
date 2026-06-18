@@ -51,7 +51,6 @@
   "ipUnit": "IP",
   "mbps": "Mbps",
   "jsonConfig": "JSON Config",
-  "jsonConfigDescription": "Copy JSON output for compatible clients",
   "copyJson": "Copy",
   "copying": "Copying",
   "jsonCopied": "JSON config copied",

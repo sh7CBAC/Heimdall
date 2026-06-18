@@ -66,9 +66,6 @@ const JsonConfigBox = ({ isFirst }) => {
         <Typography variant="h6" component="div" sx={{ fontWeight: 600, fontSize: "1rem" }}>
           {t("jsonConfig")}
         </Typography>
-        <Typography variant="body2" component="div" sx={{ opacity: 0.6, fontSize: "small" }}>
-          {t("jsonConfigDescription")}
-        </Typography>
       </Grid>
 
       <Grid item xs={4} display="flex" justifyContent="flex-end">

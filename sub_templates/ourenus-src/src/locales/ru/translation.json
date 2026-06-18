@@ -52,7 +52,6 @@
   "ipUnit": "IP",
   "mbps": "Mbps",
   "jsonConfig": "JSON конфиг",
-  "jsonConfigDescription": "Скопировать JSON для совместимых клиентов",
   "copyJson": "Копировать",
   "copying": "Копирование",
   "jsonCopied": "JSON конфиг скопирован",
