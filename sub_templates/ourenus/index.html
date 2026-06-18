@@ -167,15 +167,15 @@ export default theme;`}function wd(e={},...n){const{breakpoints:o,mixins:i={},sp
   </head>
   <body>
     <div id="root"></div>
-  
     <script>
-    // HEIMDALL_JSON_CONFIG_CARD_SAFE_V1
+    // HEIMDALL_JSON_CONFIG_CARD_SAFE_V2
     (function () {
-      if (window.__HEIMDALL_JSON_CONFIG_CARD_SAFE_V1__) return;
-      window.__HEIMDALL_JSON_CONFIG_CARD_SAFE_V1__ = true;
+      if (window.__HEIMDALL_JSON_CONFIG_CARD_SAFE_V2__) return;
+      window.__HEIMDALL_JSON_CONFIG_CARD_SAFE_V2__ = true;
 
       var infoCache = null;
-      var inserted = false;
+      var cardInserted = false;
+      var infoRequested = false;
 
       function currentSubId() {
         var parts = window.location.pathname.split("/").filter(Boolean);
@@ -189,21 +189,24 @@ export default theme;`}function wd(e={},...n){const{breakpoints:o,mixins:i={},sp
         return path + "/info";
       }
 
-      function jsonUrlFromInfo() {
-        var url = infoCache && infoCache.subJsonUrl ? String(infoCache.subJsonUrl) : "";
+      function normalizeJsonUrl(url) {
         var sid = currentSubId();
         if (!url && sid) return "/json/" + encodeURIComponent(sid);
 
         try {
-          var parsed = new URL(url, window.location.origin);
+          var parsed = new URL(String(url || ""), window.location.origin);
           if ((parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1") && window.location.hostname !== parsed.hostname) {
             parsed.protocol = window.location.protocol;
             parsed.host = window.location.host;
           }
           return parsed.toString();
         } catch (e) {
-          return sid ? "/json/" + encodeURIComponent(sid) : url;
+          return sid ? "/json/" + encodeURIComponent(sid) : String(url || "");
         }
+      }
+
+      function jsonUrlFromInfo() {
+        return normalizeJsonUrl(infoCache && infoCache.subJsonUrl ? infoCache.subJsonUrl : "");
       }
 
       function copyText(value) {
@@ -262,9 +265,41 @@ export default theme;`}function wd(e={},...n){const{breakpoints:o,mixins:i={},sp
         return el ? roundedCardFor(el) : null;
       }
 
-      function createCard() {
-        if (inserted) return true;
-        if (!infoCache || !infoCache.subJsonUrl) return false;
+      function requestInfo() {
+        if (infoRequested) return;
+        infoRequested = true;
+
+        fetch(infoUrl(), { cache: "no-store" })
+          .then(function (response) { return response.ok ? response.json() : null; })
+          .then(function (data) {
+            infoCache = data || {};
+            updateCardFromInfo();
+          })
+          .catch(function () {});
+      }
+
+      function updateCardFromInfo() {
+        var labelEl = document.querySelector("[data-heimdall-safe-json-label]");
+        if (!labelEl) return;
+        var label = infoCache && infoCache.subJsonLabel ? infoCache.subJsonLabel : currentSubId() || "JSON Config";
+        labelEl.textContent = label;
+      }
+
+      function setCollapsed(card, collapsed) {
+        var body = card.querySelector("[data-heimdall-safe-json-body]");
+        var toggle = card.querySelector("[data-heimdall-safe-json-toggle]");
+        if (!body || !toggle) return;
+
+        card.setAttribute("data-heimdall-safe-json-collapsed", collapsed ? "1" : "0");
+        body.style.display = collapsed ? "none" : "block";
+        toggle.textContent = collapsed ? "▾" : "▴";
+      }
+
+      function createCardFast() {
+        if (cardInserted || document.querySelector("[data-heimdall-safe-json-config-card]")) {
+          cardInserted = true;
+          return true;
+        }
 
         var anchor = osCard();
         if (!anchor || !anchor.parentElement) return false;
@@ -275,20 +310,48 @@ export default theme;`}function wd(e={},...n){const{breakpoints:o,mixins:i={},sp
         var loadingLabel = fa ? "در حال آماده‌سازی" : "Preparing";
         var copiedLabel = fa ? "کپی شد" : "Copied";
         var failedLabel = fa ? "خطا" : "Error";
-        var label = infoCache.subJsonLabel || "JSON Config";
+        var label = currentSubId() || "JSON Config";
 
         var card = document.createElement("div");
         card.setAttribute("data-heimdall-safe-json-config-card", "1");
+        card.setAttribute("data-heimdall-safe-json-collapsed", "0");
         card.style.cssText =
           "width:100%;box-sizing:border-box;margin:1rem auto 0 auto;border-radius:16px;" +
           "background:rgba(255,255,255,.95);box-shadow:0 0 30px 10px rgba(0,0,0,.08);" +
           "padding:1rem;color:#111;direction:rtl;";
 
-        var header = document.createElement("div");
-        header.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:1rem;margin-bottom:1rem;";
-        header.innerHTML =
-          '<div style="font-size:1.05rem;font-weight:800;">' + title + '</div>' +
-          '<div style="font-size:1.35rem;font-weight:900;color:#50527c;">{ }</div>';
+        var header = document.createElement("button");
+        header.type = "button";
+        header.setAttribute("data-heimdall-safe-json-header", "1");
+        header.style.cssText =
+          "width:100%;display:flex;align-items:center;justify-content:space-between;gap:1rem;" +
+          "border:0;background:transparent;padding:0;margin:0;cursor:pointer;color:inherit;font:inherit;";
+
+        var left = document.createElement("div");
+        left.style.cssText = "display:flex;align-items:center;gap:.75rem;";
+
+        var icon = document.createElement("div");
+        icon.textContent = "{ }";
+        icon.style.cssText = "font-size:1.35rem;font-weight:900;color:#50527c;direction:ltr;";
+
+        var toggle = document.createElement("div");
+        toggle.setAttribute("data-heimdall-safe-json-toggle", "1");
+        toggle.textContent = "▴";
+        toggle.style.cssText = "font-size:1rem;font-weight:900;color:#50527c;min-width:1rem;text-align:center;";
+
+        left.appendChild(icon);
+        left.appendChild(toggle);
+
+        var titleEl = document.createElement("div");
+        titleEl.textContent = title;
+        titleEl.style.cssText = "font-size:1.05rem;font-weight:800;";
+
+        header.appendChild(left);
+        header.appendChild(titleEl);
+
+        var body = document.createElement("div");
+        body.setAttribute("data-heimdall-safe-json-body", "1");
+        body.style.cssText = "margin-top:1rem;";
 
         var row = document.createElement("div");
         row.style.cssText =
@@ -298,6 +361,7 @@ export default theme;`}function wd(e={},...n){const{breakpoints:o,mixins:i={},sp
 
         var name = document.createElement("div");
         name.textContent = label;
+        name.setAttribute("data-heimdall-safe-json-label", "1");
         name.style.cssText =
           "font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:left;direction:ltr;";
 
@@ -309,11 +373,25 @@ export default theme;`}function wd(e={},...n){const{breakpoints:o,mixins:i={},sp
           "border:0;background:#50527c;color:#fff;border-radius:12px;padding:.45rem .9rem;" +
           "cursor:pointer;font-weight:800;min-width:72px;";
 
-        button.addEventListener("click", function () {
+        button.addEventListener("click", function (event) {
+          event.stopPropagation();
+
           var original = button.textContent;
           button.textContent = loadingLabel;
 
-          fetch(jsonUrlFromInfo(), { cache: "no-store" })
+          var infoPromise = infoCache ? Promise.resolve(infoCache) :
+            fetch(infoUrl(), { cache: "no-store" })
+              .then(function (response) { return response.ok ? response.json() : {}; })
+              .then(function (data) {
+                infoCache = data || {};
+                updateCardFromInfo();
+                return infoCache;
+              });
+
+          infoPromise
+            .then(function () {
+              return fetch(jsonUrlFromInfo(), { cache: "no-store" });
+            })
             .then(function (response) {
               if (!response.ok) throw new Error("JSON fetch failed");
               return response.text();
@@ -331,26 +409,27 @@ export default theme;`}function wd(e={},...n){const{breakpoints:o,mixins:i={},sp
 
         row.appendChild(name);
         row.appendChild(button);
+        body.appendChild(row);
         card.appendChild(header);
-        card.appendChild(row);
+        card.appendChild(body);
+
+        header.addEventListener("click", function () {
+          setCollapsed(card, card.getAttribute("data-heimdall-safe-json-collapsed") !== "1" ? true : false);
+        });
 
         anchor.parentElement.insertBefore(card, anchor.nextSibling);
-        inserted = true;
+        cardInserted = true;
+
+        requestInfo();
         return true;
       }
 
       function boot() {
-        fetch(infoUrl(), { cache: "no-store" })
-          .then(function (response) { return response.ok ? response.json() : null; })
-          .then(function (data) {
-            infoCache = data || {};
-            var tries = 0;
-            var timer = setInterval(function () {
-              tries += 1;
-              if (createCard() || tries > 25) clearInterval(timer);
-            }, 250);
-          })
-          .catch(function () {});
+        var tries = 0;
+        var timer = setInterval(function () {
+          tries += 1;
+          if (createCardFast() || tries > 30) clearInterval(timer);
+        }, 120);
       }
 
       if (document.readyState === "loading") {
@@ -360,6 +439,7 @@ export default theme;`}function wd(e={},...n){const{breakpoints:o,mixins:i={},sp
       }
     })();
     </script>
+  
   
   </body>
 </html>
