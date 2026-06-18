@@ -32,6 +32,47 @@ func writeSubError(c *gin.Context, err error) {
 	c.Status(http.StatusInternalServerError)
 }
 
+// splitSubscriptionInfoItems expands multi-line subscription entries for rich
+// HTML templates. Raw subscription responses intentionally keep their existing
+// behavior; this is only used by /sub/:subid/info so each profile appears as a
+// separate row in templates such as Ourenus.
+func splitSubscriptionInfoItems(items []string, emails []string) ([]string, []string) {
+	if len(items) == 0 {
+		return items, emails
+	}
+
+	flattenedItems := make([]string, 0, len(items))
+	flattenedEmails := make([]string, 0, len(items))
+
+	for index, item := range items {
+		normalized := strings.ReplaceAll(item, "\r\n", "\n")
+		normalized = strings.ReplaceAll(normalized, "\r", "\n")
+
+		parts := strings.Split(normalized, "\n")
+		email := ""
+		if index < len(emails) {
+			email = emails[index]
+		}
+
+		for _, part := range parts {
+			part = strings.TrimSpace(part)
+			if part == "" {
+				continue
+			}
+			flattenedItems = append(flattenedItems, part)
+			if len(emails) > 0 {
+				flattenedEmails = append(flattenedEmails, email)
+			}
+		}
+	}
+
+	if len(flattenedItems) == 0 {
+		return items, emails
+	}
+
+	return flattenedItems, flattenedEmails
+}
+
 // cachedSubTemplate holds a parsed custom subscription template together with
 // the modification time of the file it was parsed from, so the cache can be
 // invalidated when an admin edits the template on disk.
@@ -215,6 +256,8 @@ func (a *SUBController) subInfo(c *gin.Context) {
 		status = "active"
 	}
 
+	infoItems, infoEmails := splitSubscriptionInfoItems(page.Result, page.Emails)
+
 	payload := gin.H{
 		"sId":                       page.SId,
 		"id":                        page.SId,
@@ -244,9 +287,9 @@ func (a *SUBController) subInfo(c *gin.Context) {
 		"subTitle":                  page.SubTitle,
 		"support_url":               page.SubSupportUrl,
 		"subSupportUrl":             page.SubSupportUrl,
-		"links":                     page.Result,
-		"configs":                   page.Result,
-		"emails":                    page.Emails,
+		"links":                     infoItems,
+		"configs":                   infoItems,
+		"emails":                    infoEmails,
 		"data_limit_reset_strategy": "no_reset",
 	}
 
