@@ -53,7 +53,7 @@
   "mbps": "Mbps",
   "jsonConfig": "JSON конфиг",
   "jsonConfigDescription": "Скопировать JSON для совместимых клиентов",
-  "copyJson": "Копировать JSON",
+  "copyJson": "Копировать",
   "copying": "Копирование",
   "jsonCopied": "JSON конфиг скопирован",
   "jsonCopyFailed": "Не удалось скопировать JSON конфиг"

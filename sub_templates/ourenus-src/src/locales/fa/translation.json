@@ -52,7 +52,7 @@
   "mbps": "Mbps",
   "jsonConfig": "کانفیگ JSON",
   "jsonConfigDescription": "کپی خروجی JSON برای کلاینت‌های سازگار",
-  "copyJson": "کپی JSON",
+  "copyJson": "کپی",
   "copying": "در حال کپی",
   "jsonCopied": "کانفیگ JSON کپی شد",
   "jsonCopyFailed": "کپی کانفیگ JSON ناموفق بود"

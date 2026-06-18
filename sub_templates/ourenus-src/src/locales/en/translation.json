@@ -52,7 +52,7 @@
   "mbps": "Mbps",
   "jsonConfig": "JSON Config",
   "jsonConfigDescription": "Copy JSON output for compatible clients",
-  "copyJson": "Copy JSON",
+  "copyJson": "Copy",
   "copying": "Copying",
   "jsonCopied": "JSON config copied",
   "jsonCopyFailed": "Failed to copy JSON config"
