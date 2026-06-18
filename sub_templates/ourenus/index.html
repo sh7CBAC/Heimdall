@@ -863,41 +863,80 @@ export default theme;`}function wd(e={},...n){const{breakpoints:o,mixins:i={},sp
     })();
     </script>
 
-
-  
-  
     <script>
-    // HEIMDALL_CUSTOM_LANG_SYNC_V3
+    // HEIMDALL_CUSTOM_LANG_SYNC_V4
     (function () {
-      if (window.__HEIMDALL_CUSTOM_LANG_SYNC_V3__) return;
-      window.__HEIMDALL_CUSTOM_LANG_SYNC_V3__ = true;
+      if (window.__HEIMDALL_CUSTOM_LANG_SYNC_V4__) return;
+      window.__HEIMDALL_CUSTOM_LANG_SYNC_V4__ = true;
 
       var rafId = 0;
+      var forcedLang = "";
       var lastFa = null;
+
+      function setText(el, value) {
+        if (el && el.textContent !== value) el.textContent = value;
+      }
 
       function nativePageText() {
         var clone = document.body ? document.body.cloneNode(true) : null;
         if (!clone) return "";
-        ["[data-heimdall-speed-limit-card]","[data-heimdall-safe-json-config-card]","[data-heimdall-connection-limit]","[data-heimdall-remaining-conn-separator]"].forEach(function (selector) {
+
+        [
+          "[data-heimdall-speed-limit-card]",
+          "[data-heimdall-safe-json-config-card]",
+          "[data-heimdall-connection-limit]",
+          "[data-heimdall-remaining-conn-separator]"
+        ].forEach(function (selector) {
           Array.prototype.slice.call(clone.querySelectorAll(selector)).forEach(function (node) {
             if (node && node.parentNode) node.parentNode.removeChild(node);
           });
         });
+
         return clone.innerText || "";
       }
 
-      function detectFa() {
+      function detectNativeFa() {
         var text = nativePageText();
+
         if (/(انتخاب سیستم عامل|همه پروکسی|حجم باقیمانده|حجم اولیه|زمان باقی|فعال|روز|گیگابایت)/.test(text)) return true;
         if (/\b(Operating Systems|Configs List|Remaining Traffic|Initial Traffic|Remaining Time|Active|days|GB)\b/.test(text)) return false;
+
         var lang = (document.documentElement && document.documentElement.lang || "").toLowerCase();
         if (lang.indexOf("fa") === 0 || lang.indexOf("ir") === 0) return true;
         if (lang.indexOf("en") === 0) return false;
+
         return lastFa === true;
       }
 
-      function setText(el, value) {
-        if (el && el.textContent !== value) el.textContent = value;
+      function isFa() {
+        if (forcedLang === "fa") return true;
+        if (forcedLang === "en") return false;
+        return detectNativeFa();
+      }
+
+      function clickedLanguageFromEvent(event) {
+        var node = event && event.target;
+        var best = "";
+
+        for (var i = 0; i < 7 && node && node !== document.body; i += 1, node = node.parentElement) {
+          var text = (node.innerText || node.textContent || "").trim();
+          if (!text || text.length > 48) continue;
+
+          var hasFa = text.indexOf("فارسی") !== -1;
+          var hasEn = /\bEnglish\b|^en$/i.test(text);
+
+          if (hasFa && !hasEn) {
+            best = "fa";
+            break;
+          }
+
+          if (hasEn && !hasFa) {
+            best = "en";
+            break;
+          }
+        }
+
+        return best;
       }
 
       function createArrowSvg() {
@@ -908,17 +947,21 @@ export default theme;`}function wd(e={},...n){const{breakpoints:o,mixins:i={},sp
         svg.setAttribute("viewBox", "0 0 24 24");
         svg.setAttribute("data-testid", "ArrowDropDownIcon");
         svg.style.cssText = "width:1.5em;height:1.5em;display:block;transition:transform .2s ease;flex:0 0 auto;";
+
         var path = document.createElementNS("http://www.w3.org/2000/svg", "path");
         path.setAttribute("d", "m7 10 5 5 5-5z");
         svg.appendChild(path);
+
         return svg;
       }
 
       function syncSpeedCard(fa) {
         var card = document.querySelector("[data-heimdall-speed-limit-card]");
         if (!card) return;
-        Array.prototype.slice.call(card.querySelectorAll("div")).forEach(function (el) {
+
+        Array.prototype.slice.call(card.querySelectorAll("div,span,p,h1,h2,h3,h4,h5,h6")).forEach(function (el) {
           var text = (el.textContent || "").trim();
+
           if (/^(Speed Limit|محدودیت سرعت)$/.test(text)) setText(el, fa ? "محدودیت سرعت" : "Speed Limit");
           if (/^(Upload|آپلود)$/.test(text)) setText(el, fa ? "آپلود" : "Upload");
           if (/^(Download|دانلود)$/.test(text)) setText(el, fa ? "دانلود" : "Download");
@@ -928,8 +971,10 @@ export default theme;`}function wd(e={},...n){const{breakpoints:o,mixins:i={},sp
       function syncConnectionLimit(fa) {
         var box = document.querySelector("[data-heimdall-connection-limit]");
         if (!box) return;
-        Array.prototype.slice.call(box.querySelectorAll("div")).forEach(function (el) {
+
+        Array.prototype.slice.call(box.querySelectorAll("div,span,p,h1,h2,h3,h4,h5,h6")).forEach(function (el) {
           var text = (el.textContent || "").trim();
+
           if (/^(Concurrent IP Limit|محدودیت اتصال همزمان)$/.test(text)) setText(el, fa ? "محدودیت اتصال همزمان" : "Concurrent IP Limit");
           if (/^(IP|اتصال)$/.test(text)) setText(el, fa ? "اتصال" : "IP");
         });
@@ -949,6 +994,7 @@ export default theme;`}function wd(e={},...n){const{breakpoints:o,mixins:i={},sp
           setText(title, fa ? "کانفیگ JSON" : "JSON Config");
           title.style.direction = fa ? "rtl" : "ltr";
         }
+
         if (copyBtn) {
           var t = (copyBtn.textContent || "").trim();
           if (/^(Copy|کپی)$/.test(t)) setText(copyBtn, fa ? "کپی" : "Copy");
@@ -956,6 +1002,7 @@ export default theme;`}function wd(e={},...n){const{breakpoints:o,mixins:i={},sp
           if (/^(Copied|کپی شد)$/.test(t)) setText(copyBtn, fa ? "کپی شد" : "Copied");
           if (/^(Error|خطا)$/.test(t)) setText(copyBtn, fa ? "خطا" : "Error");
         }
+
         if (toggle) {
           if (!toggle.querySelector("svg")) {
             toggle.textContent = "";
@@ -964,10 +1011,12 @@ export default theme;`}function wd(e={},...n){const{breakpoints:o,mixins:i={},sp
           toggle.style.gridColumn = fa ? "1" : "3";
           toggle.style.justifySelf = fa ? "start" : "end";
         }
+
         if (icon) {
           icon.style.gridColumn = fa ? "3" : "1";
           icon.style.justifySelf = fa ? "end" : "start";
         }
+
         if (header) {
           header.style.height = "76px";
           header.style.minHeight = "76px";
@@ -983,8 +1032,9 @@ export default theme;`}function wd(e={},...n){const{breakpoints:o,mixins:i={},sp
       }
 
       function syncAll() {
-        var fa = detectFa();
+        var fa = isFa();
         lastFa = fa;
+
         syncSpeedCard(fa);
         syncConnectionLimit(fa);
         syncJsonCard(fa);
@@ -1000,28 +1050,49 @@ export default theme;`}function wd(e={},...n){const{breakpoints:o,mixins:i={},sp
 
       function burstSync() {
         syncAll();
-        [30,80,150,300,600,1000,1600].forEach(function (delay) {
+        [0, 30, 80, 160, 320, 650, 1100, 1800].forEach(function (delay) {
           window.setTimeout(syncAll, delay);
         });
       }
 
+      function handlePossibleLanguageClick(event) {
+        var lang = clickedLanguageFromEvent(event);
+        if (lang) {
+          forcedLang = lang;
+          burstSync();
+        } else {
+          scheduleSync();
+        }
+      }
+
       function boot() {
         burstSync();
-        var observer = new MutationObserver(function () { scheduleSync(); });
+
+        var observer = new MutationObserver(function () {
+          scheduleSync();
+        });
+
         if (document.body) {
           observer.observe(document.body, {
             childList: true,
             subtree: true,
             characterData: true,
             attributes: true,
-            attributeFilter: ["class","style","lang","dir","aria-selected"]
+            attributeFilter: ["class", "style", "lang", "dir", "aria-selected"]
           });
         }
-        document.addEventListener("click", burstSync, true);
-        document.addEventListener("keyup", burstSync, true);
+
+        document.addEventListener("pointerdown", handlePossibleLanguageClick, true);
+        document.addEventListener("mousedown", handlePossibleLanguageClick, true);
+        document.addEventListener("touchstart", handlePossibleLanguageClick, true);
+        document.addEventListener("click", handlePossibleLanguageClick, true);
+        document.addEventListener("keyup", function (event) {
+          if (event.key === "Enter" || event.key === " ") handlePossibleLanguageClick(event);
+        }, true);
+
         window.addEventListener("hashchange", burstSync);
         window.addEventListener("popstate", burstSync);
-        window.setInterval(syncAll, 800);
+        window.setInterval(syncAll, 500);
       }
 
       if (document.readyState === "loading") {
