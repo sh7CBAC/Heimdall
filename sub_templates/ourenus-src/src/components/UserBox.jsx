@@ -9,6 +9,27 @@ import { useEffect, useState } from "react";
 import QrModal from "./QrModal";
 import QrCodeOutlinedIcon from "@mui/icons-material/QrCodeOutlined";
 
+const getClientDisplayName = (data) => {
+  const emails = Array.isArray(data?.emails)
+    ? data.emails.filter(Boolean)
+    : [];
+
+  return (
+    emails[0] ||
+    data?.email ||
+    data?.clientEmail ||
+    data?.client_email ||
+    data?.clientName ||
+    data?.client_name ||
+    data?.remark ||
+    data?.clientRemark ||
+    data?.client_remark ||
+    data?.name ||
+    data?.username ||
+    ""
+  );
+};
+
 const UserBox = ({ data, subLink }) => {
   const theme = useTheme();
   const { t } = useTranslation();
@@ -118,7 +139,7 @@ const UserBox = ({ data, subLink }) => {
               xs={8}
               textAlign={"start"}
             >
-              {data?.username}
+              {getClientDisplayName(data)}
             </Grid>
             <Grid item xs={4} textAlign={"end"}>
               <Button
@@ -211,6 +232,16 @@ const UserBox = ({ data, subLink }) => {
 UserBox.propTypes = {
   data: PropTypes.shape({
     username: PropTypes.string,
+    emails: PropTypes.arrayOf(PropTypes.string),
+    email: PropTypes.string,
+    clientEmail: PropTypes.string,
+    client_email: PropTypes.string,
+    clientName: PropTypes.string,
+    client_name: PropTypes.string,
+    name: PropTypes.string,
+    remark: PropTypes.string,
+    clientRemark: PropTypes.string,
+    client_remark: PropTypes.string,
     status: PropTypes.string,
   }).isRequired,
 };
