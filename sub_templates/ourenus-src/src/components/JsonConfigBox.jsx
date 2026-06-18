@@ -51,7 +51,7 @@ const JsonConfigBox = ({ isFirst }) => {
   };
 
   return (
-    <BoxS>
+    <BoxS marginBottom="calc(2rem + env(safe-area-inset-bottom, 0px))">
       <Grid item xs={3} display="flex" justifyContent="center" sx={isFirst ? { marginTop: "1rem" } : undefined}>
         <DataObjectIcon
           sx={{

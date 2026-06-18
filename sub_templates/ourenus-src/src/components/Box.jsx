@@ -2,12 +2,12 @@ import { Box, Grid, useTheme } from "@mui/material";
 import PropTypes from "prop-types";
 import i18n from "../utils/i18n";
 
-const BoxS = ({ children }) => {
+const BoxS = ({ children, marginBottom = 0 }) => {
   const theme = useTheme();
   const language = i18n.language;
 
   return (
-    <Grid item container justifyContent="space-around" xs={11}>
+    <Grid item container justifyContent="space-around" xs={11} sx={{ marginBottom }}>
       <Box
         sx={{
           borderRadius: "16px",
@@ -31,6 +31,7 @@ const BoxS = ({ children }) => {
 
 BoxS.propTypes = {
   children: PropTypes.node.isRequired,
+  marginBottom: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
 };
 
 export default BoxS;
