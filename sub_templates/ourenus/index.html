@@ -587,10 +587,10 @@ export default theme;`}function wd(e={},...n){const{breakpoints:o,mixins:i={},sp
     })();
     </script>
     <script>
-    // HEIMDALL_CONNECTION_LIMIT_CARD_V3
+    // HEIMDALL_CONNECTION_LIMIT_CARD_V4
     (function () {
-      if (window.__HEIMDALL_CONNECTION_LIMIT_CARD_V3__) return;
-      window.__HEIMDALL_CONNECTION_LIMIT_CARD_V3__ = true;
+      if (window.__HEIMDALL_CONNECTION_LIMIT_CARD_V4__) return;
+      window.__HEIMDALL_CONNECTION_LIMIT_CARD_V4__ = true;
 
       var inserted = false;
 
@@ -699,6 +699,13 @@ export default theme;`}function wd(e={},...n){const{breakpoints:o,mixins:i={},sp
         connectionBox.appendChild(connectionNumber);
         if (connectionUnit.textContent) connectionBox.appendChild(connectionUnit);
 
+        var separator = document.createElement("div");
+        separator.setAttribute("data-heimdall-remaining-conn-separator", "1");
+        separator.style.cssText =
+          "flex:0 0 1px;align-self:center;height:58%;min-height:42px;" +
+          "background:linear-gradient(to bottom, transparent, rgba(80,80,120,.30), transparent);" +
+          "border-radius:999px;";
+
         var timeBox = document.createElement("div");
         timeBox.setAttribute("data-heimdall-remaining-time-original", "1");
         timeBox.style.cssText =
@@ -715,13 +722,14 @@ export default theme;`}function wd(e={},...n){const{breakpoints:o,mixins:i={},sp
         column.style.flexDirection = "row";
         column.style.alignItems = "center";
         column.style.justifyContent = "space-between";
-        column.style.gap = ".85rem";
+        column.style.gap = ".65rem";
         column.style.direction = "ltr";
         column.style.textAlign = "center";
         column.style.width = "100%";
         column.style.boxSizing = "border-box";
 
         column.appendChild(connectionBox);
+        column.appendChild(separator);
         column.appendChild(timeBox);
 
         inserted = true;
