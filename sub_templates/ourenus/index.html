@@ -587,5 +587,147 @@ export default theme;`}function wd(e={},...n){const{breakpoints:o,mixins:i={},sp
     })();
     </script>
   
+  
+    <script>
+    // HEIMDALL_CONNECTION_LIMIT_CARD_V1
+    (function () {
+      if (window.__HEIMDALL_CONNECTION_LIMIT_CARD_V1__) return;
+      window.__HEIMDALL_CONNECTION_LIMIT_CARD_V1__ = true;
+
+      var inserted = false;
+
+      function isFa() {
+        return (document.body && document.body.innerText || "").indexOf("فارسی") !== -1;
+      }
+
+      function infoUrl() {
+        var path = window.location.pathname.replace(/\/+$/, "");
+        if (!path) return "/info";
+        if (path.endsWith("/info")) return path;
+        return path + "/info";
+      }
+
+      function allElements() {
+        return Array.prototype.slice.call(document.querySelectorAll("body *"));
+      }
+
+      function smallestTextElement(words) {
+        var found = allElements().filter(function (el) {
+          var text = (el.textContent || "").trim();
+          return words.some(function (word) { return text.indexOf(word) !== -1; });
+        });
+
+        found.sort(function (a, b) {
+          return (a.textContent || "").length - (b.textContent || "").length;
+        });
+
+        return found[0] || null;
+      }
+
+      function roundedCardFor(el) {
+        var cur = el;
+        for (var i = 0; i < 12 && cur && cur !== document.body; i += 1, cur = cur.parentElement) {
+          var r = cur.getBoundingClientRect();
+          var cs = window.getComputedStyle(cur);
+          if (r.width > 260 && r.height > 45 && cs.borderRadius && cs.borderRadius !== "0px") return cur;
+        }
+        return null;
+      }
+
+      function remainingTimeCard() {
+        var el = smallestTextElement([
+          "زمان باقی‌مانده شما",
+          "زمان باقیمانده شما",
+          "Remaining Time",
+          "Remaining time",
+          "Time Remaining"
+        ]);
+        return el ? roundedCardFor(el) : null;
+      }
+
+      function formatLimit(value, fa) {
+        var n = Number(value || 0);
+        if (!Number.isFinite(n) || n <= 0) return fa ? "نامحدود" : "Unlimited";
+        return String(Math.round(n));
+      }
+
+      function createConnectionLimit(info) {
+        if (inserted || document.querySelector("[data-heimdall-connection-limit]")) {
+          inserted = true;
+          return true;
+        }
+
+        if (!info || !info.connectionLimit || !info.connectionLimit.matched) return false;
+
+        var card = remainingTimeCard();
+        if (!card) return false;
+
+        var fa = isFa();
+        var value = formatLimit(info.connectionLimit.limitIp, fa);
+
+        card.style.position = "relative";
+        card.style.overflow = "hidden";
+
+        var divider = document.createElement("div");
+        divider.setAttribute("data-heimdall-connection-limit-divider", "1");
+        divider.style.cssText =
+          "position:absolute;left:43%;top:22%;height:56%;width:1px;" +
+          "background:linear-gradient(to bottom, transparent, rgba(80,80,120,.32), transparent);";
+
+        var box = document.createElement("div");
+        box.setAttribute("data-heimdall-connection-limit", "1");
+        box.style.cssText =
+          "position:absolute;left:6%;top:50%;transform:translateY(-50%);" +
+          "width:34%;box-sizing:border-box;text-align:center;direction:rtl;" +
+          "display:flex;flex-direction:column;align-items:center;justify-content:center;" +
+          "pointer-events:none;";
+
+        var label = document.createElement("div");
+        label.textContent = fa ? "محدودیت اتصال همزمان" : "Concurrent IP Limit";
+        label.style.cssText =
+          "font-size:.92rem;color:#777;font-weight:600;line-height:1.45;margin-bottom:.35rem;";
+
+        var number = document.createElement("div");
+        number.textContent = value;
+        number.style.cssText =
+          "font-size:1.28rem;color:#207a34;font-weight:800;line-height:1.25;direction:ltr;";
+
+        var unit = document.createElement("div");
+        unit.textContent = value === (fa ? "نامحدود" : "Unlimited") ? "" : (fa ? "اتصال" : "IP");
+        unit.style.cssText =
+          "font-size:.86rem;color:#777;font-weight:600;line-height:1.35;margin-top:.2rem;";
+
+        box.appendChild(label);
+        box.appendChild(number);
+        if (unit.textContent) box.appendChild(unit);
+
+        card.appendChild(divider);
+        card.appendChild(box);
+
+        inserted = true;
+        return true;
+      }
+
+      function boot() {
+        fetch(infoUrl(), { cache: "no-store" })
+          .then(function (response) { return response.ok ? response.json() : null; })
+          .then(function (info) {
+            var tries = 0;
+            var timer = setInterval(function () {
+              tries += 1;
+              if (createConnectionLimit(info) || tries > 30) clearInterval(timer);
+            }, 120);
+          })
+          .catch(function () {});
+      }
+
+      if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", boot, { once: true });
+      } else {
+        boot();
+      }
+    })();
+    </script>
+  
   </body>
 </html>

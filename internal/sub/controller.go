@@ -288,6 +288,7 @@ func (a *SUBController) subInfo(c *gin.Context) {
 	}
 
 	clientSpeedLimits := a.getClientSpeedLimitsForSubID(subId)
+	clientConnectionLimit := a.getClientConnectionLimitForSubID(subId)
 
 	payload := gin.H{
 		"sId":                       page.SId,
@@ -315,6 +316,7 @@ func (a *SUBController) subInfo(c *gin.Context) {
 		"subJsonUrl":                page.SubJsonUrl,
 		"subJsonLabel":              subJsonLabel,
 		"speedLimits":               clientSpeedLimits,
+		"connectionLimit":           clientConnectionLimit,
 		"subClashUrl":               page.SubClashUrl,
 		"title":                     page.SubTitle,
 		"subTitle":                  page.SubTitle,
@@ -722,4 +724,72 @@ func speedLimitSanitize(value float64) (int64, bool) {
 	}
 
 	return int64(math.Round(value)), true
+}
+
+func (a *SUBController) getClientConnectionLimitForSubID(subID string) gin.H {
+	result := gin.H{
+		"matched":  false,
+		"limitIp":  int64(0),
+		"hasLimit": false,
+	}
+
+	subID = strings.TrimSpace(subID)
+	if subID == "" {
+		return result
+	}
+
+	db := database.GetDB()
+	if db == nil {
+		return result
+	}
+
+	type inboundSettingsRow struct {
+		Settings string `gorm:"column:settings"`
+	}
+
+	var rows []inboundSettingsRow
+	if err := db.Table("inbounds").Select("settings").Find(&rows).Error; err != nil {
+		return result
+	}
+
+	limitKeys := []string{
+		"limitIp",
+		"limitIP",
+		"limit_ip",
+		"ipLimit",
+		"iplimit",
+		"ip_limit",
+		"concurrentIpLimit",
+		"concurrentIPLimit",
+		"concurrent_ip_limit",
+		"concurrentLimit",
+	}
+
+	for _, row := range rows {
+		if strings.TrimSpace(row.Settings) == "" {
+			continue
+		}
+
+		var settings struct {
+			Clients []map[string]any `json:"clients"`
+		}
+		if err := json.Unmarshal([]byte(row.Settings), &settings); err != nil {
+			continue
+		}
+
+		for _, client := range settings.Clients {
+			if speedLimitString(client["subId"]) != subID && speedLimitString(client["subid"]) != subID {
+				continue
+			}
+
+			limitIp, limitKey := speedLimitFirstNumber(client, limitKeys...)
+			result["matched"] = true
+			result["limitIp"] = limitIp
+			result["limitKey"] = limitKey
+			result["hasLimit"] = limitIp > 0
+			return result
+		}
+	}
+
+	return result
 }
