@@ -34,6 +34,7 @@ export const AllSettingSchema = z.object({
   xrayTemplateConfig: z.string().optional(),
   subEnable: z.boolean().optional(),
   subJsonEnable: z.boolean().optional(),
+  subClientImportFormat: z.enum(['normal', 'json']).optional(),
   subTitle: z.string().optional(),
   subSupportUrl: z.string().optional(),
   subProfileUrl: z.string().optional(),

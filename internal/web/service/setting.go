@@ -60,6 +60,7 @@ var defaultValueMap = map[string]string{
 	"twoFactorToken":              "",
 	"subEnable":                   "true",
 	"subJsonEnable":               "false",
+	"subClientImportFormat":       "normal",
 	"subTitle":                    "",
 	"subSupportUrl":               "",
 	"subProfileUrl":               "",
@@ -630,6 +631,10 @@ func (s *SettingService) GetSubJsonEnable() (bool, error) {
 	return s.getBool("subJsonEnable")
 }
 
+func (s *SettingService) GetSubClientImportFormat() (string, error) {
+	return s.getString("subClientImportFormat")
+}
+
 func (s *SettingService) GetSubTitle() (string, error) {
 	return s.getString("subTitle")
 }
@@ -1033,26 +1038,27 @@ func (s *SettingService) BuildSubURIBase(host string) string {
 func (s *SettingService) GetDefaultSettings(host string) (any, error) {
 	type settingFunc func() (any, error)
 	settings := map[string]settingFunc{
-		"expireDiff":      func() (any, error) { return s.GetExpireDiff() },
-		"trafficDiff":     func() (any, error) { return s.GetTrafficDiff() },
-		"pageSize":        func() (any, error) { return s.GetPageSize() },
-		"defaultCert":     func() (any, error) { return s.GetCertFile() },
-		"defaultKey":      func() (any, error) { return s.GetKeyFile() },
-		"tgBotEnable":     func() (any, error) { return s.GetTgbotEnabled() },
-		"subThemeDir":     func() (any, error) { return s.GetSubThemeDir() },
-		"subEnable":       func() (any, error) { return s.GetSubEnable() },
-		"subJsonEnable":   func() (any, error) { return s.GetSubJsonEnable() },
-		"subClashEnable":  func() (any, error) { return s.GetSubClashEnable() },
-		"subTitle":        func() (any, error) { return s.GetSubTitle() },
-		"subURI":          func() (any, error) { return s.GetSubURI() },
-		"subJsonURI":      func() (any, error) { return s.GetSubJsonURI() },
-		"subClashURI":     func() (any, error) { return s.GetSubClashURI() },
-		"remarkModel":     func() (any, error) { return s.GetRemarkModel() },
-		"datepicker":      func() (any, error) { return s.GetDatepicker() },
-		"ipLimitEnable":   func() (any, error) { return s.GetIpLimitEnable() },
-		"accessLogEnable": func() (any, error) { return s.GetAccessLogEnable() },
-		"webDomain":       func() (any, error) { return s.GetWebDomain() },
-		"subDomain":       func() (any, error) { return s.GetSubDomain() },
+		"expireDiff":            func() (any, error) { return s.GetExpireDiff() },
+		"trafficDiff":           func() (any, error) { return s.GetTrafficDiff() },
+		"pageSize":              func() (any, error) { return s.GetPageSize() },
+		"defaultCert":           func() (any, error) { return s.GetCertFile() },
+		"defaultKey":            func() (any, error) { return s.GetKeyFile() },
+		"tgBotEnable":           func() (any, error) { return s.GetTgbotEnabled() },
+		"subThemeDir":           func() (any, error) { return s.GetSubThemeDir() },
+		"subEnable":             func() (any, error) { return s.GetSubEnable() },
+		"subJsonEnable":         func() (any, error) { return s.GetSubJsonEnable() },
+		"subClientImportFormat": func() (any, error) { return s.GetSubClientImportFormat() },
+		"subClashEnable":        func() (any, error) { return s.GetSubClashEnable() },
+		"subTitle":              func() (any, error) { return s.GetSubTitle() },
+		"subURI":                func() (any, error) { return s.GetSubURI() },
+		"subJsonURI":            func() (any, error) { return s.GetSubJsonURI() },
+		"subClashURI":           func() (any, error) { return s.GetSubClashURI() },
+		"remarkModel":           func() (any, error) { return s.GetRemarkModel() },
+		"datepicker":            func() (any, error) { return s.GetDatepicker() },
+		"ipLimitEnable":         func() (any, error) { return s.GetIpLimitEnable() },
+		"accessLogEnable":       func() (any, error) { return s.GetAccessLogEnable() },
+		"webDomain":             func() (any, error) { return s.GetWebDomain() },
+		"subDomain":             func() (any, error) { return s.GetSubDomain() },
 	}
 
 	result := make(map[string]any)

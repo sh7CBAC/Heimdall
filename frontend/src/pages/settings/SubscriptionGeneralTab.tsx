@@ -98,6 +98,21 @@ export default function SubscriptionGeneralTab({ allSetting, updateSetting }: Su
             <SettingListItem paddings="small" title={t('pages.settings.subJsonEnableTitle')} description={t('pages.settings.subJsonEnable')}>
               <Switch checked={allSetting.subJsonEnable} onChange={(v) => updateSetting({ subJsonEnable: v })} />
             </SettingListItem>
+              <SettingListItem
+                paddings="small"
+                title={t('pages.settings.subClientImportFormat')}
+                description={t('pages.settings.subClientImportFormatDesc')}
+              >
+                <Select
+                  value={allSetting.subClientImportFormat || 'normal'}
+                  onChange={(v) => updateSetting({ subClientImportFormat: v as 'normal' | 'json' })}
+                  style={{ width: '100%' }}
+                  options={[
+                    { value: 'normal', label: t('pages.settings.subClientImportFormatNormal') },
+                    { value: 'json', label: t('pages.settings.subClientImportFormatJson') },
+                  ]}
+                />
+              </SettingListItem>
             <SettingListItem
               paddings="small"
               title="Smart Iran Direct for JSON Subscription"

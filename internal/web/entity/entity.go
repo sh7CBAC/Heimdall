@@ -58,6 +58,7 @@ type AllSetting struct {
 	// Subscription server settings
 	SubEnable                   bool   `json:"subEnable" form:"subEnable"`                                     // Enable subscription server
 	SubJsonEnable               bool   `json:"subJsonEnable" form:"subJsonEnable"`                             // Enable JSON subscription endpoint
+	SubClientImportFormat       string `json:"subClientImportFormat" form:"subClientImportFormat"`             // Default non-HTML /sub import format: normal or json
 	SubTitle                    string `json:"subTitle" form:"subTitle"`                                       // Subscription title
 	SubSupportUrl               string `json:"subSupportUrl" form:"subSupportUrl"`                             // Subscription support URL
 	SubProfileUrl               string `json:"subProfileUrl" form:"subProfileUrl"`                             // Subscription profile URL

@@ -209,6 +209,22 @@ func (a *SUBController) subs(c *gin.Context) {
 			return
 		}
 
+		if a.jsonEnabled {
+			clientImportFormat, _ := a.settingService.GetSubClientImportFormat()
+			if strings.EqualFold(strings.TrimSpace(clientImportFormat), "json") {
+				jsonSub, jsonHeader, jsonErr := a.subJsonService.GetJson(subId, host)
+				if jsonErr == nil && len(jsonSub) > 0 {
+					profileUrl := a.subProfileUrl
+					if profileUrl == "" {
+						profileUrl = fmt.Sprintf("%s://%s%s", scheme, hostWithPort, c.Request.RequestURI)
+					}
+					a.ApplyCommonHeaders(c, jsonHeader, a.updateInterval, a.subTitle, a.subSupportUrl, profileUrl, a.subAnnounce, a.subEnableRouting, a.subRoutingRules)
+					c.String(http.StatusOK, jsonSub)
+					return
+				}
+			}
+		}
+
 		// Add headers
 		header := fmt.Sprintf("upload=%d; download=%d; total=%d; expire=%d", traffic.Up, traffic.Down, traffic.Total, traffic.ExpiryTime/1000)
 		profileUrl := a.subProfileUrl

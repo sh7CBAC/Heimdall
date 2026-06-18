@@ -30,6 +30,7 @@ export class AllSetting {
   xrayTemplateConfig = '';
   subEnable = true;
   subJsonEnable = false;
+  subClientImportFormat: 'normal' | 'json' = 'normal';
   subTitle = '';
   subSupportUrl = '';
   subProfileUrl = '';
