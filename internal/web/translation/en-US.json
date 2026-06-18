@@ -541,7 +541,6 @@
         "maxSendingWindow": "Max Sending Window",
         "externalProxy": "External Proxy",
         "subscriptionProfiles": "Subscription Profiles",
-        "subscriptionProfilesHint": "Create multiple client-side connection configurations from this inbound. Protocol, client identity, traffic, expiry and SECX limits stay inherited from the parent inbound.",
         "subscriptionProfile": "Profile",
         "addSubscriptionProfile": "Add Subscription Profile",
         "profileName": "Profile Name",

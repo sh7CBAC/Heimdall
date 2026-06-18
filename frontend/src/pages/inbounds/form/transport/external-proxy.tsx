@@ -42,7 +42,6 @@ export default function ExternalProxyForm() {
           <>
             <Form.Item
               label={t('pages.inbounds.form.subscriptionProfiles')}
-              extra={t('pages.inbounds.form.subscriptionProfilesHint')}
             >
               <Switch checked={enabled} onChange={toggleProfiles} />
             </Form.Item>
