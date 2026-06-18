@@ -42,6 +42,22 @@ const SpeedLimitBox = ({ speedLimits }) => {
 
   return (
     <BoxS>
+      <Grid container alignItems="center" sx={{ width: "100%" }}>
+        <Grid item xs={12} sx={{ textAlign: "center", marginBottom: ".35rem" }}>
+          <Typography
+            data-testid="speed-limit-title"
+            variant="caption"
+            component="div"
+            sx={{
+              fontWeight: 700,
+              letterSpacing: ".01em",
+              color: theme.colors.BWColor[theme.palette.mode],
+              opacity: theme.palette.mode === "dark" ? 0.82 : 0.66,
+            }}
+          >
+            {t("speedLimitTitle")}
+          </Typography>
+        </Grid>
       <Grid item xs={3} display="flex" justifyContent="center">
         <SpeedIcon
           sx={{
@@ -75,6 +91,7 @@ const SpeedLimitBox = ({ speedLimits }) => {
           {download.unit}
         </Typography>
       </Grid>
+          </Grid>
     </BoxS>
   );
 };

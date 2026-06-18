@@ -55,5 +55,6 @@
   "copyJson": "Copy",
   "copying": "Copying",
   "jsonCopied": "JSON config copied",
-  "jsonCopyFailed": "Failed to copy JSON config"
+  "jsonCopyFailed": "Failed to copy JSON config",
+  "speedLimitTitle": "Speed Limit"
 }
