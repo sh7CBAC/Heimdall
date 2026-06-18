@@ -128,7 +128,7 @@ function App() {
           content="Powered by https://github.com/MatinDehghanian"
         />
       </Helmet>
-      <Grid container justifyContent={"center"} sx={{ minHeight: "100vh", paddingBottom: "72px" }}>
+      <Grid container justifyContent={"center"}>
         <Grid
           container
           justifyContent={"center"}
