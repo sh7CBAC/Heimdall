@@ -1,5 +1,4 @@
 import { Grid, ThemeProvider, CssBaseline } from "@mui/material";
-import LogoBox from "./components/LogoBox";
 import UserBox from "./components/UserBox";
 import UsageBox from "./components/UsageBox";
 import SpeedLimitBox from "./components/SpeedLimitBox";
@@ -94,7 +93,7 @@ function App() {
       }
       return {
         appsBox: true,
-        logoBox: true,
+        logoBox: false,
         timeBox: true,
         usageBox: true,
         userBox: true,
@@ -107,7 +106,7 @@ function App() {
       console.error("Failed to parse VITE_OFF_SECTIONS:", error);
       return {
         appsBox: true,
-        logoBox: true,
+        logoBox: false,
         timeBox: true,
         usageBox: true,
         userBox: true,
@@ -158,7 +157,6 @@ function App() {
                   setIsDarkMode={setIsDarkMode}
                   handleLanguageChange={handleLanguageChange}
                 />
-                {isOffSections.logoBox && <LogoBox />}
                 {isOffSections.userBox && (
                   <UserBox
                     data={data}
