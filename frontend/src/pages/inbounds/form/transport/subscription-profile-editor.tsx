@@ -130,7 +130,7 @@ export default function SubscriptionProfileEditor({
   const effectiveSecurity = selectedSecurity === 'same' ? parentSecurity : selectedSecurity;
   const title = remark.trim() || destination.trim()
     || `${t('pages.inbounds.form.subscriptionProfile')} ${displayIndex}`;
-  const [profileCollapsed, setProfileCollapsed] = useState(false);
+  const [profileCollapsed, setProfileCollapsed] = useState(true);
 
   useEffect(() => {
     if (enabled === undefined) form.setFieldValue([...base, 'enabled'], true);
