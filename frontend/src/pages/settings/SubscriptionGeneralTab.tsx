@@ -254,8 +254,8 @@ export default function SubscriptionGeneralTab({ allSetting, updateSetting }: Su
                     onChange={setSubscriptionTemplatePreset}
                     style={{ width: '100%' }}
                     options={[
-                      { value: 'default', label: 'Default Heimdall' },
-                      { value: 'ourenus', label: 'Ourenus' },
+                      { value: 'default', label: 'Ourenus' },
+                      { value: 'ourenus', label: 'Sanaei' },
                       { value: 'custom', label: 'Custom Path' },
                     ]}
                   />
