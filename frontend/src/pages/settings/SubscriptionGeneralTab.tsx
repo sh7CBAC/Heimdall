@@ -14,14 +14,15 @@ const REMARK_SAMPLES: Record<string, string> = { i: 'Germany', e: 'john', o: 'Re
 const REMARK_SEPARATORS = [' ', '-', '_', '@', ':', '~', '|', ',', '.', '/'];
 
 const OURENUS_SUB_TEMPLATE_DIR = '/usr/local/x-ui/sub_templates/ourenus';
+const SANAEI_SUB_TEMPLATE_SENTINEL = '__heimdall_sanaei_default__';
 const CUSTOM_SUB_TEMPLATE_DIR = '/usr/local/x-ui/sub_templates/custom';
 
-type SubscriptionTemplatePreset = 'default' | 'ourenus' | 'custom';
+type SubscriptionTemplatePreset = 'default' | 'sanaei' | 'custom';
 
 function getSubscriptionTemplatePreset(themeDir?: string): SubscriptionTemplatePreset {
   const normalized = (themeDir || '').trim();
-  if (!normalized) return 'default';
-  if (normalized === OURENUS_SUB_TEMPLATE_DIR) return 'ourenus';
+  if (!normalized || normalized === OURENUS_SUB_TEMPLATE_DIR) return 'default';
+  if (normalized === SANAEI_SUB_TEMPLATE_SENTINEL) return 'sanaei';
   return 'custom';
 }
 
@@ -49,14 +50,17 @@ export default function SubscriptionGeneralTab({ allSetting, updateSetting }: Su
       updateSetting({ subThemeDir: '' });
       return;
     }
-    if (preset === 'ourenus') {
-      updateSetting({ subThemeDir: OURENUS_SUB_TEMPLATE_DIR });
+    if (preset === 'sanaei') {
+      updateSetting({ subThemeDir: SANAEI_SUB_TEMPLATE_SENTINEL });
       return;
     }
 
     const current = (allSetting.subThemeDir || '').trim();
     updateSetting({
-      subThemeDir: current && current !== OURENUS_SUB_TEMPLATE_DIR ? current : CUSTOM_SUB_TEMPLATE_DIR,
+      subThemeDir:
+        current && current !== OURENUS_SUB_TEMPLATE_DIR && current !== SANAEI_SUB_TEMPLATE_SENTINEL
+          ? current
+          : CUSTOM_SUB_TEMPLATE_DIR,
     });
   }
 
@@ -254,8 +258,8 @@ export default function SubscriptionGeneralTab({ allSetting, updateSetting }: Su
                     onChange={setSubscriptionTemplatePreset}
                     style={{ width: '100%' }}
                     options={[
-                      { value: 'default', label: 'Ourenus' },
-                      { value: 'ourenus', label: 'Sanaei' },
+                      { value: 'default', label: 'Default Heimdall' },
+                      { value: 'sanaei', label: 'Sanaei' },
                       { value: 'custom', label: 'Custom Path' },
                     ]}
                   />
