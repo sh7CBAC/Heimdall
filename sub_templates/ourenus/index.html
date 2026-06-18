@@ -336,7 +336,7 @@ export default theme;`}function wd(e={},...n){const{breakpoints:o,mixins:i={},sp
         var titleEl = document.createElement("div");
         titleEl.textContent = title;
         titleEl.style.cssText =
-          "grid-column:2;text-align:center;font-size:1.08rem;font-weight:800;direction:rtl;";
+          "grid-column:2;text-align:center;font-size:1.08rem;font-weight:500;direction:rtl;";
 
         var icon = document.createElement("div");
         icon.textContent = "{ }";
@@ -443,10 +443,10 @@ export default theme;`}function wd(e={},...n){const{breakpoints:o,mixins:i={},sp
   
   
     <script>
-    // HEIMDALL_SPEED_LIMIT_CARD_V1
+    // HEIMDALL_SPEED_LIMIT_CARD_V2
     (function () {
-      if (window.__HEIMDALL_SPEED_LIMIT_CARD_V1__) return;
-      window.__HEIMDALL_SPEED_LIMIT_CARD_V1__ = true;
+      if (window.__HEIMDALL_SPEED_LIMIT_CARD_V2__) return;
+      window.__HEIMDALL_SPEED_LIMIT_CARD_V2__ = true;
 
       var inserted = false;
 
@@ -561,7 +561,7 @@ export default theme;`}function wd(e={},...n){const{breakpoints:o,mixins:i={},sp
         card.appendChild(title);
         card.appendChild(grid);
 
-        anchor.parentElement.insertBefore(card, anchor.nextSibling);
+        anchor.parentElement.insertBefore(card, anchor);
         inserted = true;
         return true;
       }
