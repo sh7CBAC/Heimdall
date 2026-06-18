@@ -168,14 +168,29 @@ export default theme;`}function wd(e={},...n){const{breakpoints:o,mixins:i={},sp
   <body>
     <div id="root"></div>
     <script>
-    // HEIMDALL_JSON_CONFIG_CARD_SAFE_V5
+    // HEIMDALL_JSON_CONFIG_CARD_SAFE_V6
     (function () {
-      if (window.__HEIMDALL_JSON_CONFIG_CARD_SAFE_V5__) return;
-      window.__HEIMDALL_JSON_CONFIG_CARD_SAFE_V5__ = true;
+      if (window.__HEIMDALL_JSON_CONFIG_CARD_SAFE_V6__) return;
+      window.__HEIMDALL_JSON_CONFIG_CARD_SAFE_V6__ = true;
 
       var infoCache = null;
       var cardInserted = false;
       var infoRequested = false;
+
+      function isFa() {
+        var text = (document.body && document.body.innerText || "");
+
+        if (/\b(Operating Systems|Configs List|Remaining Traffic|Remaining Time|Initial Traffic|Speed Limit|Concurrent IP Limit|Active|Download|Upload)\b/.test(text)) {
+          return false;
+        }
+
+        if (/(انتخاب سیستم عامل|همه پروکسی|حجم باقیمانده|حجم اولیه|زمان باقی|محدودیت سرعت|محدودیت اتصال|فعال)/.test(text)) {
+          return true;
+        }
+
+        var lang = (document.documentElement && document.documentElement.lang || "").toLowerCase();
+        return lang.indexOf("fa") === 0 || lang.indexOf("ir") === 0;
+      }
 
       function currentSubId() {
         var parts = window.location.pathname.split("/").filter(Boolean);
@@ -229,8 +244,20 @@ export default theme;`}function wd(e={},...n){const{breakpoints:o,mixins:i={},sp
         return Promise.resolve();
       }
 
-      function isFa() {
-        return (document.body && document.body.innerText || "").indexOf("فارسی") !== -1;
+      function createArrowSvg() {
+        var svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+        svg.setAttribute("class", "MuiSvgIcon-root MuiSvgIcon-fontSizeLarge css-g4ovd8");
+        svg.setAttribute("focusable", "false");
+        svg.setAttribute("aria-hidden", "true");
+        svg.setAttribute("viewBox", "0 0 24 24");
+        svg.setAttribute("data-testid", "ArrowDropDownIcon");
+        svg.style.cssText = "width:1.5em;height:1.5em;display:block;transition:transform .2s ease;";
+
+        var path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+        path.setAttribute("d", "m7 10 5 5 5-5z");
+        svg.appendChild(path);
+
+        return svg;
       }
 
       function allElements() {
@@ -261,7 +288,7 @@ export default theme;`}function wd(e={},...n){const{breakpoints:o,mixins:i={},sp
       }
 
       function osCard() {
-        var el = smallestTextElement(["انتخاب سیستم عامل", "Operating System", "Select OS"]);
+        var el = smallestTextElement(["انتخاب سیستم عامل", "Operating Systems", "Operating System", "Select OS"]);
         return el ? roundedCardFor(el) : null;
       }
 
@@ -292,7 +319,11 @@ export default theme;`}function wd(e={},...n){const{breakpoints:o,mixins:i={},sp
 
         card.setAttribute("data-heimdall-safe-json-collapsed", collapsed ? "1" : "0");
         body.style.display = collapsed ? "none" : "block";
-        toggle.textContent = collapsed ? "▼" : "▲";
+
+        var svg = toggle.querySelector("svg");
+        if (svg) {
+          svg.style.transform = collapsed ? "rotate(0deg)" : "rotate(180deg)";
+        }
       }
 
       function createCardFast() {
@@ -312,6 +343,11 @@ export default theme;`}function wd(e={},...n){const{breakpoints:o,mixins:i={},sp
         var failedLabel = fa ? "خطا" : "Error";
         var label = currentSubId() || "JSON Config";
 
+        var toggleColumn = fa ? "1" : "3";
+        var iconColumn = fa ? "3" : "1";
+        var toggleJustify = fa ? "start" : "end";
+        var iconJustify = fa ? "end" : "start";
+
         var card = document.createElement("div");
         card.setAttribute("data-heimdall-safe-json-config-card", "1");
         card.setAttribute("data-heimdall-safe-json-collapsed", "1");
@@ -329,9 +365,10 @@ export default theme;`}function wd(e={},...n){const{breakpoints:o,mixins:i={},sp
 
         var toggle = document.createElement("div");
         toggle.setAttribute("data-heimdall-safe-json-toggle", "1");
-        toggle.textContent = "▼";
         toggle.style.cssText =
-          "grid-column:1;justify-self:start;text-align:left;font-size:1rem;font-weight:900;color:#50527c;line-height:1;";
+          "grid-column:" + toggleColumn + ";justify-self:" + toggleJustify + ";text-align:" + (fa ? "left" : "right") + ";" +
+          "font-size:1rem;font-weight:500;color:#50527c;line-height:1;display:flex;align-items:center;justify-content:center;";
+        toggle.appendChild(createArrowSvg());
 
         var titleEl = document.createElement("div");
         titleEl.textContent = title;
@@ -341,7 +378,8 @@ export default theme;`}function wd(e={},...n){const{breakpoints:o,mixins:i={},sp
         var icon = document.createElement("div");
         icon.textContent = "{ }";
         icon.style.cssText =
-          "grid-column:3;justify-self:end;text-align:right;font-size:1.55rem;font-weight:900;color:#50527c;direction:ltr;line-height:1;";
+          "grid-column:" + iconColumn + ";justify-self:" + iconJustify + ";text-align:" + (fa ? "right" : "left") + ";" +
+          "font-size:1.55rem;font-weight:900;color:#50527c;direction:ltr;line-height:1;";
 
         header.appendChild(toggle);
         header.appendChild(titleEl);
@@ -438,20 +476,32 @@ export default theme;`}function wd(e={},...n){const{breakpoints:o,mixins:i={},sp
     })();
     </script>
 
+
   
   
   
   
     <script>
-    // HEIMDALL_SPEED_LIMIT_CARD_V2
+    // HEIMDALL_SPEED_LIMIT_CARD_V3
     (function () {
-      if (window.__HEIMDALL_SPEED_LIMIT_CARD_V2__) return;
-      window.__HEIMDALL_SPEED_LIMIT_CARD_V2__ = true;
+      if (window.__HEIMDALL_SPEED_LIMIT_CARD_V3__) return;
+      window.__HEIMDALL_SPEED_LIMIT_CARD_V3__ = true;
 
       var inserted = false;
 
       function isFa() {
-        return (document.body && document.body.innerText || "").indexOf("فارسی") !== -1;
+        var text = (document.body && document.body.innerText || "");
+
+        if (/(Operating Systems|Configs List|Remaining Traffic|Remaining Time|Initial Traffic|Speed Limit|Concurrent IP Limit|Active|Download|Upload)/.test(text)) {
+          return false;
+        }
+
+        if (/(انتخاب سیستم عامل|همه پروکسی|حجم باقیمانده|حجم اولیه|زمان باقی|محدودیت سرعت|محدودیت اتصال|فعال)/.test(text)) {
+          return true;
+        }
+
+        var lang = (document.documentElement && document.documentElement.lang || "").toLowerCase();
+        return lang.indexOf("fa") === 0 || lang.indexOf("ir") === 0;
       }
 
       function infoUrl() {
@@ -587,10 +637,10 @@ export default theme;`}function wd(e={},...n){const{breakpoints:o,mixins:i={},sp
     })();
     </script>
     <script>
-    // HEIMDALL_CONNECTION_LIMIT_CARD_V5
+    // HEIMDALL_CONNECTION_LIMIT_CARD_V6
     (function () {
-      if (window.__HEIMDALL_CONNECTION_LIMIT_CARD_V5__) return;
-      window.__HEIMDALL_CONNECTION_LIMIT_CARD_V5__ = true;
+      if (window.__HEIMDALL_CONNECTION_LIMIT_CARD_V6__) return;
+      window.__HEIMDALL_CONNECTION_LIMIT_CARD_V6__ = true;
 
       var inserted = false;
       var infoCache = null;
@@ -598,7 +648,18 @@ export default theme;`}function wd(e={},...n){const{breakpoints:o,mixins:i={},sp
       var stableCount = 0;
 
       function isFa() {
-        return (document.body && document.body.innerText || "").indexOf("فارسی") !== -1;
+        var text = (document.body && document.body.innerText || "");
+
+        if (/(Operating Systems|Configs List|Remaining Traffic|Remaining Time|Initial Traffic|Speed Limit|Concurrent IP Limit|Active|Download|Upload)/.test(text)) {
+          return false;
+        }
+
+        if (/(انتخاب سیستم عامل|همه پروکسی|حجم باقیمانده|حجم اولیه|زمان باقی|محدودیت سرعت|محدودیت اتصال|فعال)/.test(text)) {
+          return true;
+        }
+
+        var lang = (document.documentElement && document.documentElement.lang || "").toLowerCase();
+        return lang.indexOf("fa") === 0 || lang.indexOf("ir") === 0;
       }
 
       function infoUrl() {
