@@ -13,6 +13,18 @@ const REMARK_MODELS: Record<string, string> = { i: 'Inbound', e: 'Email', o: 'Ot
 const REMARK_SAMPLES: Record<string, string> = { i: 'Germany', e: 'john', o: 'Relay' };
 const REMARK_SEPARATORS = [' ', '-', '_', '@', ':', '~', '|', ',', '.', '/'];
 
+const OURENUS_SUB_TEMPLATE_DIR = '/usr/local/x-ui/sub_templates/ourenus';
+const CUSTOM_SUB_TEMPLATE_DIR = '/usr/local/x-ui/sub_templates/custom';
+
+type SubscriptionTemplatePreset = 'default' | 'ourenus' | 'custom';
+
+function getSubscriptionTemplatePreset(themeDir?: string): SubscriptionTemplatePreset {
+  const normalized = (themeDir || '').trim();
+  if (!normalized) return 'default';
+  if (normalized === OURENUS_SUB_TEMPLATE_DIR) return 'ourenus';
+  return 'custom';
+}
+
 interface SubscriptionGeneralTabProps {
   allSetting: AllSetting;
   updateSetting: (patch: Partial<AllSetting>) => void;
@@ -23,9 +35,29 @@ export default function SubscriptionGeneralTab({ allSetting, updateSetting }: Su
   const { isMobile } = useMediaQuery();
 
   const smartIranDirectEnabled = isSmartIranDirectRules(allSetting.subJsonRules || '');
+  const subscriptionTemplatePreset = useMemo(
+    () => getSubscriptionTemplatePreset(allSetting.subThemeDir),
+    [allSetting.subThemeDir],
+  );
 
   function setSmartIranDirectEnabled(enabled: boolean) {
     updateSetting({ subJsonRules: enabled ? SMART_IRAN_DIRECT_RULES_JSON : '' });
+  }
+
+  function setSubscriptionTemplatePreset(preset: SubscriptionTemplatePreset) {
+    if (preset === 'default') {
+      updateSetting({ subThemeDir: '' });
+      return;
+    }
+    if (preset === 'ourenus') {
+      updateSetting({ subThemeDir: OURENUS_SUB_TEMPLATE_DIR });
+      return;
+    }
+
+    const current = (allSetting.subThemeDir || '').trim();
+    updateSetting({
+      subThemeDir: current && current !== OURENUS_SUB_TEMPLATE_DIR ? current : CUSTOM_SUB_TEMPLATE_DIR,
+    });
   }
 
 
@@ -201,8 +233,25 @@ export default function SubscriptionGeneralTab({ allSetting, updateSetting }: Su
                 </>
               )}
             >
-              <Input value={allSetting.subThemeDir} placeholder="/etc/3x-ui/sub_templates/my-theme/"
-                onChange={(e) => updateSetting({ subThemeDir: e.target.value })} />
+              <Space direction="vertical" style={{ width: '100%' }}>
+                  <Select
+                    value={subscriptionTemplatePreset}
+                    onChange={setSubscriptionTemplatePreset}
+                    style={{ width: '100%' }}
+                    options={[
+                      { value: 'default', label: 'Default Heimdall' },
+                      { value: 'ourenus', label: 'Ourenus' },
+                      { value: 'custom', label: 'Custom Path' },
+                    ]}
+                  />
+                  {subscriptionTemplatePreset === 'custom' && (
+                    <Input
+                      value={allSetting.subThemeDir}
+                      placeholder="/usr/local/x-ui/sub_templates/custom"
+                      onChange={(e) => updateSetting({ subThemeDir: e.target.value })}
+                    />
+                  )}
+                </Space>
             </SettingListItem>
           </>
         ),
