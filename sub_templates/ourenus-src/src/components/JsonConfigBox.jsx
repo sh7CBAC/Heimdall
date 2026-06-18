@@ -58,7 +58,6 @@ const JsonConfigBox = ({ isFirst }) => {
             color: theme.colors.userBox.logoColor[theme.palette.mode],
             width: "2.4rem",
             height: "2.4rem",
-            fontSize: "1.9rem",
           }}
         />
       </Grid>
