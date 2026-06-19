@@ -1,326 +1,106 @@
-<img width="2172" height="724" alt="Heimdall banner" src="https://github.com/user-attachments/assets/a923de2f-b1d4-4179-97b7-e7b9c829f80e" />
+<p align="center">
+  <img width="2172" height="724" alt="Heimdall README hero banner" src="https://github.com/user-attachments/assets/c5159c4c-2db1-4248-954c-26739e36ee39" />
+</p>
 
+## ⚡ Quick Start
 
-# SECX-Ui
+Install Heimdall with one command:
 
-A custom build of **3X-UI** made for cleaner panel management, hidden internal configurations, and a fast concurrent IP limit system powered directly by Xray Core.
+```bash
+bash <(curl -Ls https://raw.githubusercontent.com/sh7CBAC/Heimdall/main/install.sh)
+```
 
-> SECX-Ui is an unofficial fork and is not affiliated with the original 3X-UI project.
+During installation, Heimdall downloads the latest public release package, installs the panel, configures the service, and guides you through the initial setup.
+
+For most single-server deployments, **SQLite** is the recommended choice. **PostgreSQL** is also available for larger deployments, higher client counts, and more advanced operational environments.
 
 ---
 
-## ⚡ Quick Install
+## ✨ What Makes Heimdall Different?
 
-Install the latest release with one command:
+Heimdall is an enhanced Xray management panel built for operators who need more control than basic inbound and client management can provide.
 
-```bash
-bash <(curl -Ls https://raw.githubusercontent.com/sh7CBAC/SECX-Ui/main/install.sh)
-```
-
-After installation, open the main management menu with:
-
-```bash
-x-ui
-```
-
-Open the custom visibility manager with:
-
-```bash
-y-ui
-```
+It focuses on cleaner subscriptions, smarter routing, practical traffic limits, better infrastructure visibility, and a smoother workflow for real-world deployments.
 
 ---
 
-## 🚀 What Does SECX-Ui Add?
+## 🧩 Multi-Profile Inbounds
 
-### 🔗 Per-Inbound Subscription Profiles
+Heimdall introduces **Multi-Profile Inbounds**, allowing a single inbound to serve multiple independent subscription profiles.
 
-Starting with `v1.4.0`, each inbound can publish multiple independently configured subscription entries without creating duplicate Xray inbounds or duplicate client identities.
+Each profile can have its own domain, host, security settings, display name, and subscription behavior. This removes the need to duplicate inbounds just to create different subscription links or client-facing configurations.
 
-Profiles can override the address, port, transport, security, TLS/REALITY settings, headers, SNI, ALPN, fingerprint, ECH/pinning, XHTTP/XMUX, and Mux configuration while continuing to use the original client's shared credentials and account limits.
-
-Inbounds without profiles retain the existing subscription behavior, and disabled profiles are excluded from generated subscriptions.
-
-### 🔐 Core-Level Concurrent IP Limit
-
-Starting with `v1.3.0`, client IP limits are enforced directly inside **Xray Core**.
-
-Unlike the traditional Fail2ban-based method, SECX-Ui does not wait for access logs to be parsed or for an IP to be banned later. Extra public IPs are rejected immediately before their traffic reaches an outbound.
-
-For a client with an IP limit of `1`:
-
-```text
-First public IP  → Allowed
-Same public IP   → Allowed
-Second public IP → Rejected immediately
-```
-
-The first accepted IP stays active. A new device cannot replace or disconnect it.
-
-Available values:
-
-```text
-0 = Unlimited
-1 = One public IP
-2 = Two public IPs
-N = Up to N public IPs
-```
-
-The limit is configured directly when creating or editing a client in the panel.
-
-No Fail2ban, Access Log, firewall ban, or additional IP-limit setup is required.
-
-#### How It Works
-
-```text
-Client authentication
-        ↓
-Client email and source IP detection
-        ↓
-Concurrent IP limit check inside Xray Core
-        ↓
-Traffic allowed or rejected immediately
-```
-
-#### Automatic Slot Release
-
-When all connections from an accepted IP are closed, its slot is released after the configured inactivity period.
-
-The default release delay is:
-
-```text
-60 seconds
-```
-
-#### Protected Logging
-
-Rejected clients may retry many times per second. To prevent unnecessary journal growth, repeated rejection messages are throttled while every extra connection attempt is still rejected.
-
-> Devices behind the same router, Wi-Fi network, or carrier-grade NAT may share one public IP and therefore count as a single IP.
+The result is a cleaner backend, more flexible subscription delivery, and a much better workflow for managing multiple domains, user groups, brands, or routing strategies from one organized panel.
 
 ---
 
-### 👁 Hidden Panel Items
+## 🚦 Upload & Download Speed Limits
 
-SECX-Ui can hide internal or sensitive items from the panel interface:
+Heimdall adds client-level **upload and download speed limits**, giving operators precise control over how much bandwidth each user can consume.
 
-- Inbounds
-- Outbounds
-- Balancers
-- Clients
-- Routing rules
+Separate upstream and downstream limits make it easier to create fair usage policies, define different service tiers, and protect server capacity from heavy or abusive usage.
 
-This is useful for internal tunnels, system clients, private routing configurations, and other items that should not be visible to panel users.
+This keeps the network more stable, predictable, and easier to manage — especially when many clients are served from the same infrastructure.
 
 ---
 
-### ✳️ Wildcard Support
+## 🔐 Concurrent Connection Limits
 
-Prefix wildcards are supported for hidden values.
+Heimdall includes **concurrent connection limits** to help prevent account sharing and keep client usage under control.
 
-Example:
+Operators can define how many active connections a client is allowed to use at the same time. When the limit is reached, extra connections can be blocked or disconnected to protect server resources and maintain fair access for all users.
 
-```text
-system-*
-```
-
-This can match values such as:
-
-```text
-system-client
-system-outbound
-system-tunnel
-system-internal
-```
-
-The wildcard must be placed at the end of the value.
+This is especially useful for commercial deployments where stable performance, abuse prevention, and predictable resource usage matter.
 
 ---
 
-### 📊 Clean Client Statistics
+## 📊 Client Activity Monitoring
 
-Hidden clients are also removed from panel statistics:
+Heimdall includes optional **Client Activity Monitoring** for operators who need deeper visibility into client traffic behavior.
 
-- Total clients
-- Online clients
-- Active clients
+When enabled, Heimdall can help track observed destinations, traffic usage, and activity patterns for selected clients. This makes it easier to investigate abuse, debug routing issues, review service quality, and understand how traffic is flowing through the system.
 
-This keeps the dashboard consistent with the clients that are actually visible in the panel.
+The feature is designed to be controlled and operational, giving administrators useful insight without making the panel unnecessarily heavy or complicated.
 
 ---
 
-### 🧰 y-ui Management Tool
+## 🕶️ Hidden Infrastructure
 
-SECX-Ui includes the `y-ui` command-line manager for controlling hidden items without manually editing environment files.
+Heimdall includes a dedicated **Hidden Infrastructure** system powered by the `y-ui` script, allowing operators to hide internal resources without affecting runtime behavior.
 
-Run:
+Inbounds, outbounds, balancers, clients, and even routing rules can be hidden individually, in groups, or by pattern-based matching. This makes it easy to keep tunnel layers, internal routes, backend services, reseller infrastructure, or operational-only entries out of normal panel views and subscription outputs.
 
-```bash
-y-ui
-```
-
-The manager can be used to:
-
-- View current hidden values
-- Add hidden inbounds
-- Add hidden outbounds
-- Add hidden balancers
-- Add hidden clients
-- Remove existing hidden values
-- Apply changes and restart the service
-
-The configuration is stored in:
-
-```text
-/etc/default/x-ui
-```
+Hidden items are only removed from visibility where needed. They continue to work normally in the background, preserving the actual Xray configuration and traffic flow while keeping the panel cleaner, safer, and easier to operate.
 
 ---
 
-## 🖥 Commands
+## 🧭 Smart Subscription Links & Iran Direct Routing
 
-Main panel management menu:
+Heimdall brings the customized **Uranus subscription template** into the Sanaei-based panel, making subscription output cleaner, smarter, and more practical for real-world deployments.
 
-```bash
-x-ui
-```
+With **Smart Iran Direct Routing**, Heimdall can deliver dedicated Xray JSON routing rules for Iranian domains and IP ranges. This allows domestic traffic to be routed directly instead of passing through the proxy path when direct routing is appropriate.
 
-Custom hidden-item manager:
+This improves access to local services, reduces unnecessary proxy load, and creates a smoother experience for users who frequently visit Iranian websites, banking platforms, local applications, and domestic resources.
 
-```bash
-y-ui
-```
+Together, Smart Subscription Links and Iran Direct Routing turn subscriptions into optimized client profiles — not just simple config delivery.
 
-Check service status:
-
-```bash
-systemctl status x-ui
-```
-
-Restart SECX-Ui and Xray:
-
-```bash
-systemctl restart x-ui
-```
-
-Follow service logs:
-
-```bash
-journalctl -u x-ui -f
-```
-
-Watch rejected IP-limit attempts:
-
-```bash
-journalctl -u x-ui -f | grep --line-buffered '\[IP_LIMIT\]'
-```
-
----
-
-## 📦 Current Version
-
-- SECX-Ui Release: `v1.4.0`
-- Panel Base: `3x-ui v3.3.1`
-- Xray Core: `26.6.1 Custom`
-
-## 🧬 Release History
-
-### v1.0.0
-
-- Added inbound hiding
-
-### v1.1.0
-
-- Added outbound hiding
-- Kept inbound hiding
-
-### v1.2.0
-
-- Added balancer hiding
-- Added client hiding
-- Added routing rule hiding
-- Added wildcard support
-
-### v1.2.1
-
-- Fixed hidden client totals
-- Fixed hidden client online statistics
-- Fixed hidden client active statistics
-- Added the `y-ui` management tool
-
-### v1.3.0
-
-- Added concurrent IP limits directly inside Xray Core
-- Added First IP Wins behavior
-- Added immediate rejection of additional public IPs
-- Removed the need for Fail2ban and Access Log
-- Added automatic synchronization between the panel and Xray Core
-- Added automatic generation of the IP-limit runtime file
-- Added automatic slot release after inactivity
-- Added throttling for repeated rejection logs
-- Preserved all hiding features from previous releases
-
-### v1.3.1
-
-- Updated the panel base from 3X-UI 3.3.0 to 3X-UI 3.3.1
-- Migrated SECX customizations to the new `internal/` backend architecture
-- Preserved inbound, outbound, balancer, routing rule, and client hiding
-- Preserved hidden-client total, online, and active statistics
-- Preserved wildcard matching for hidden values
-- Preserved the `y-ui` visibility management tool
-- Preserved Core-level concurrent IP limits
-- Preserved First IP Wins behavior and automatic slot release
-- Integrated with the new connection-based online statistics API
-- Kept the tested Xray 26.6.1 Custom core
-
----
-
-### v1.3.2
-
-- Added aggregate per-client upload and download speed limits shared across connections using the same client email.
-- Added live speed-limit updates without restarting Xray.
-
-### v1.4.0
-
-- Added per-inbound Subscription Profiles for publishing multiple virtual connection configurations from one inbound.
-- Added independent per-profile connection, transport, security, TLS/REALITY, XHTTP/XMUX, and Mux settings.
-- Preserved legacy subscription behavior for inbounds without profiles.
-- Excluded disabled profiles from generated subscription output.
-
-## 📁 Important Paths
-
-```text
-Panel binary:    /usr/local/x-ui/x-ui
-Xray binary:     /usr/local/x-ui/bin/xray-linux-amd64
-Database:        /etc/x-ui/x-ui.db
-Environment:     /etc/default/x-ui
-IP-limit file:   /usr/local/x-ui/bin/client-ip-limits.json
-Systemd service: /etc/systemd/system/x-ui.service
-x-ui command:    /usr/bin/x-ui
-y-ui command:    /usr/bin/y-ui
-```
-
-The `client-ip-limits.json` file is generated automatically from the panel database and should not normally be edited by hand.
-
----
 
 ## 🙏 Credits
 
-SECX-Ui is built on top of:
+Heimdall is built on top of the Xray ecosystem and extends the foundation of the excellent [3X-UI](https://github.com/MHSanaei/3x-ui/) project by MHSanaei with additional operational, subscription, routing, and management capabilities.
 
-- [MHSanaei/3x-ui](https://github.com/MHSanaei/3x-ui)
-- [XTLS/Xray-core](https://github.com/XTLS/Xray-core)
+Heimdall also integrates and customizes ideas from the [Ourenus](https://github.com/MatinDehghanian/Ourenus) subscription template, created by Matin Dehghanian, to provide cleaner and smarter subscription output for real-world deployments.
 
-Thanks to all developers and contributors behind these projects.
+Special thanks to the open-source projects, developers, and communities that make this ecosystem possible.
 
----
 
-## ⚠️ Disclaimer
+## 💛 Support the Project
 
-Use this software at your own risk.
+Heimdall is developed and maintained with a focus on quality, stability, and real-world usability.
 
-Before installing or upgrading:
+If you find this project useful and want to support its continued development, you can make a donation here:
 
-- Back up `/etc/x-ui/x-ui.db`
-- Test new releases on a separate server when possible
-- Keep your SSH connection independent from the proxy being restarted
+[Donate to Heimdall](https://reymit.ir/heimdall)
+
+Your support helps keep the project moving forward with more energy, better features, and long-term improvements.
+
