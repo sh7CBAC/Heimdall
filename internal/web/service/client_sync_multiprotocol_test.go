@@ -108,6 +108,6 @@ func TestSyncInbound_AllowsClearingFlow(t *testing.T) {
 		t.Fatalf("expected 1 client, got %d", len(list))
 	}
 	if list[0].Flow != "" {
-		t.Errorf("flow should be clearable on the owning inbound, got %q (Copilot review on #4545)", list[0].Flow)
+		t.Errorf("flow should be clearable on the owning inbound, got %q", list[0].Flow)
 	}
 }
