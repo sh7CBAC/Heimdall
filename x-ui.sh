@@ -3062,7 +3062,7 @@ show_usage() {
 │  ${blue}x-ui update${plain}                - Update                           │
 │  ${blue}x-ui update-all-geofiles${plain}   - Update all geo files             │
 │  ${blue}x-ui migrateDB [file]${plain}      - Convert .db <-> .dump (SQLite)   │
-│  ${blue}x-ui legacy${plain}                - Legacy version disabled                   │
+│  ${blue}x-ui legacy${plain}                - Legacy version disabled disabled                   │
 │  ${blue}x-ui install${plain}               - Install                          │
 │  ${blue}x-ui uninstall${plain}             - Uninstall                        │
 └────────────────────────────────────────────────────────────────┘"
