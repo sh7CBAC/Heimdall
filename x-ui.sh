@@ -168,18 +168,12 @@ update_menu() {
 }
 
 legacy_version() {
-    echo -n "Enter the panel version (like 2.4.0):"
-    read -r tag_version
-
-    if [ -z "$tag_version" ]; then
-        echo "Panel version cannot be empty. Exiting."
-        exit 1
+    LOGE "Legacy version installation is disabled in Heimdall to prevent upstream overwrite."
+    LOGI "Use the official Heimdall update path instead."
+    if [[ $# == 0 ]]; then
+        before_show_menu
     fi
-    # Use the entered panel version in the download link
-    install_command="bash <(curl -Ls "https://raw.githubusercontent.com/mhsanaei/3x-ui/v$tag_version/install.sh") v$tag_version"
-
-    echo "Downloading and installing panel version $tag_version..."
-    eval $install_command
+    return 1
 }
 
 # Function to handle the deletion of the script file
@@ -3009,7 +3003,7 @@ show_usage() {
 │  ${blue}x-ui update${plain}                - Update                           │
 │  ${blue}x-ui update-all-geofiles${plain}   - Update all geo files             │
 │  ${blue}x-ui migrateDB [file]${plain}      - Convert .db <-> .dump (SQLite)   │
-│  ${blue}x-ui legacy${plain}                - Legacy version                   │
+│  ${blue}x-ui legacy${plain}                - Legacy version disabled                   │
 │  ${blue}x-ui install${plain}               - Install                          │
 │  ${blue}x-ui uninstall${plain}             - Uninstall                        │
 └────────────────────────────────────────────────────────────────┘"
@@ -3018,13 +3012,13 @@ show_usage() {
 show_menu() {
     echo -e "
 ╔────────────────────────────────────────────────╗
-│   ${green}3X-UI Panel Management Script${plain}                │
+│   ${green}Heimdall Panel Management Script${plain}                │
 │   ${green}0.${plain} Exit Script                               │
 │────────────────────────────────────────────────│
 │   ${green}1.${plain} Install                                   │
 │   ${green}2.${plain} Update                                    │
 │   ${green}3.${plain} Update Menu                               │
-│   ${green}4.${plain} Legacy Version                            │
+│   ${green}4.${plain} Legacy Version (Disabled)                 │
 │   ${green}5.${plain} Uninstall                                 │
 │────────────────────────────────────────────────│
 │   ${green}6.${plain} Reset Username & Password                 │
