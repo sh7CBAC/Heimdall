@@ -18,72 +18,72 @@ For most single-server deployments, **SQLite** is the recommended choice. **Post
 
 ## ✨ What Makes Heimdall Different?
 
-Heimdall is an enhanced Xray management panel built for operators who need more control than basic inbound and client management can provide.
+Heimdall is an enhanced Xray management panel built on top of the excellent 3X-UI / Sanaei foundation, with additional tools for operators who need more control over subscriptions, clients, routing, and infrastructure visibility.
 
-It focuses on cleaner subscriptions, smarter routing, practical traffic limits, better infrastructure visibility, and a smoother workflow for real-world deployments.
+The project keeps the familiar 3X-UI workflow, while extending it with practical features designed for real-world deployments, cleaner management, and more flexible service operation.
 
 ---
 
 ## 🧩 Multi-Profile Inbounds
 
-Heimdall introduces **Multi-Profile Inbounds**, allowing a single inbound to serve multiple independent subscription profiles.
+Multi-Profile Inbounds allow a single inbound to serve multiple independent subscription profiles without duplicating the entire inbound configuration.
 
-Each profile can have its own domain, host, security settings, display name, and subscription behavior. This removes the need to duplicate inbounds just to create different subscription links or client-facing configurations.
+Each profile can define its own address, transport, security mode, display behavior, and subscription output. This makes it easier to manage multiple domains, brands, user groups, or routing strategies from one organized inbound structure.
 
-The result is a cleaner backend, more flexible subscription delivery, and a much better workflow for managing multiple domains, user groups, brands, or routing strategies from one organized panel.
+The result is a cleaner backend, fewer duplicate entries, and a much more flexible subscription workflow.
 
----
+<img width="1672" height="941" alt="multiProfile" src="https://github.com/user-attachments/assets/5e7bc87c-8ca9-4a08-b311-9c9a7af22d85" />
 
-## 🚦 Upload & Download Speed Limits
-
-Heimdall adds client-level **upload and download speed limits**, giving operators precise control over how much bandwidth each user can consume.
-
-Separate upstream and downstream limits make it easier to create fair usage policies, define different service tiers, and protect server capacity from heavy or abusive usage.
-
-This keeps the network more stable, predictable, and easier to manage — especially when many clients are served from the same infrastructure.
 
 ---
 
-## 🔐 Concurrent Connection Limits
+## 🚦 Per-Client Speed & Connection Limits
 
-Heimdall includes **concurrent connection limits** to help prevent account sharing and keep client usage under control.
+Per-client speed controls make it possible to define separate upload and download speed limits for each client, while also controlling how many concurrent connections the client is allowed to use.
 
-Operators can define how many active connections a client is allowed to use at the same time. When the limit is reached, extra connections can be blocked or disconnected to protect server resources and maintain fair access for all users.
+Unlike a total traffic quota, which limits how much data a client can consume, speed limits control how fast each client can upload or download. This makes it easier to create service tiers, apply fair usage policies, and protect server capacity from heavy or abusive usage.
 
-This is especially useful for commercial deployments where stable performance, abuse prevention, and predictable resource usage matter.
+Concurrent connection limits add another layer of control by helping reduce account sharing and keeping resource usage more predictable across the server.
+
+For deployments with many users, these controls make the service more stable, fair, and easier to operate.
+
+<img width="1672" height="941" alt="file_00000000de9071f498c8a8e178843173" src="https://github.com/user-attachments/assets/0dbc02f7-155b-4225-8f55-86838c59a704" />
 
 ---
 
 ## 📊 Client Activity Monitoring
 
-Heimdall includes optional **Client Activity Monitoring** for operators who need deeper visibility into client traffic behavior.
+Client Activity Monitoring provides optional visibility into selected clients and their traffic behavior.
 
-When enabled, Heimdall can help track observed destinations, traffic usage, and activity patterns for selected clients. This makes it easier to investigate abuse, debug routing issues, review service quality, and understand how traffic is flowing through the system.
+When enabled, it can help operators review observed destinations, traffic usage, and activity patterns. This is useful for abuse investigation, routing diagnostics, service quality checks, and understanding how traffic flows through the system.
 
-The feature is designed to be controlled and operational, giving administrators useful insight without making the panel unnecessarily heavy or complicated.
+The feature is designed for controlled operational use, without making the panel unnecessarily heavy or complicated.
+
+<img width="1672" height="941" alt="ClientActivity" src="https://github.com/user-attachments/assets/cf19552e-51d8-4099-b2e4-23fc10b320d7" />
 
 ---
 
 ## 🕶️ Hidden Infrastructure
 
-Heimdall includes a dedicated **Hidden Infrastructure** system powered by the `y-ui` script, allowing operators to hide internal resources without affecting runtime behavior.
+Hidden Infrastructure is managed through the y-ui terminal script and allows internal resources to be hidden without changing the actual runtime behavior.
 
-Inbounds, outbounds, balancers, clients, and even routing rules can be hidden individually, in groups, or by pattern-based matching. This makes it easy to keep tunnel layers, internal routes, backend services, reseller infrastructure, or operational-only entries out of normal panel views and subscription outputs.
+Operators can hide inbound remarks, outbound tags, balancer tags, client emails, and routing-related entries from normal views or subscription outputs. This is useful for tunnel layers, internal routes, backend services, reseller structures, and operational-only configurations.
 
-Hidden items are only removed from visibility where needed. They continue to work normally in the background, preserving the actual Xray configuration and traffic flow while keeping the panel cleaner, safer, and easier to operate.
+Hidden items continue to work normally in the background, while the visible panel and subscription output stay cleaner, safer, and easier to manage.
+
+<img width="1672" height="941" alt="Hidden" src="https://github.com/user-attachments/assets/48f52635-173d-4ffb-9063-0c811ccf3e9e" />
 
 ---
 
 ## 🧭 Smart Subscription Links & Iran Direct Routing
 
-Heimdall brings the customized **Uranus subscription template** into the Sanaei-based panel, making subscription output cleaner, smarter, and more practical for real-world deployments.
+Smart Subscription Links turn subscription output into a cleaner and more practical client experience, powered by the customized Ourenus-based subscription template.
 
-With **Smart Iran Direct Routing**, Heimdall can deliver dedicated Xray JSON routing rules for Iranian domains and IP ranges. This allows domestic traffic to be routed directly instead of passing through the proxy path when direct routing is appropriate.
+Iran Direct Routing adds dedicated routing support for Iranian domains and IP ranges, allowing domestic traffic to be routed directly when direct routing is appropriate instead of passing through the proxy path.
 
-This improves access to local services, reduces unnecessary proxy load, and creates a smoother experience for users who frequently visit Iranian websites, banking platforms, local applications, and domestic resources.
+This reduces unnecessary proxy load, improves access to local services, and creates smoother client profiles for users who frequently access Iranian websites, banking platforms, local applications, and domestic resources.
 
-Together, Smart Subscription Links and Iran Direct Routing turn subscriptions into optimized client profiles — not just simple config delivery.
-
+<img width="1672" height="941" alt="sub template" src="https://github.com/user-attachments/assets/626b2086-96cd-405f-9f6e-25ecb87357c8" />
 
 ## 🙏 Credits
 
