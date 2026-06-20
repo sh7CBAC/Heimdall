@@ -12,9 +12,6 @@ bash <(curl -Ls https://raw.githubusercontent.com/sh7CBAC/Heimdall/main/install.
 
 During installation, Heimdall downloads the latest public release package, installs the panel, configures the system service, and walks you through the initial setup.
 
-For small and typical single-server deployments, SQLite is simple, lightweight, and recommended. If you plan to manage more than 500 clients, or if you need better performance for larger operational environments, PostgreSQL is recommended for improved scalability and database handling.
-
-
 ---
 
 ## ✨ What Makes Heimdall Different?
