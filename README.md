@@ -18,9 +18,12 @@ For most single-server deployments, **SQLite** is the recommended choice. **Post
 
 ## ✨ What Makes Heimdall Different?
 
-Heimdall is an enhanced Xray management panel built on top of the excellent 3X-UI / Sanaei foundation, with additional tools for operators who need more control over subscriptions, clients, routing, and infrastructure visibility.
+Heimdall is designed for operators who need more control, cleaner subscription delivery, and a more practical workflow for real-world Xray deployments.
 
-The project keeps the familiar 3X-UI workflow, while extending it with practical features designed for real-world deployments, cleaner management, and more flexible service operation.
+It keeps the familiar panel experience, while adding operational tools for multi-profile subscriptions, per-client controls, infrastructure visibility, smarter routing, and easier service management.
+
+The goal is to make daily operation cleaner, more flexible, and more reliable without making the panel unnecessarily complicated.
+
 
 ---
 
@@ -87,11 +90,12 @@ This reduces unnecessary proxy load, improves access to local services, and crea
 
 ## 🙏 Credits
 
-Heimdall is built on top of the Xray ecosystem and extends the foundation of the excellent [3X-UI](https://github.com/MHSanaei/3x-ui/) project by MHSanaei with additional operational, subscription, routing, and management capabilities.
+Heimdall is built on top of the Xray ecosystem and is based on the excellent [3X-UI](https://github.com/MHSanaei/3x-ui/) project by MHSanaei.
 
-Heimdall also integrates and customizes ideas from the [Ourenus](https://github.com/MatinDehghanian/Ourenus) subscription template, created by Matin Dehghanian, to provide cleaner and smarter subscription output for real-world deployments.
+It also integrates and customizes ideas from the [Ourenus](https://github.com/MatinDehghanian/Ourenus) subscription template, created by Matin Dehghanian, to provide a cleaner subscription experience.
 
 Special thanks to the open-source projects, developers, and communities that make this ecosystem possible.
+
 
 
 ## 💛 Support the Project
