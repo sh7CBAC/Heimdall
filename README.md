@@ -10,16 +10,14 @@ Install Heimdall with one command:
 bash <(curl -Ls https://raw.githubusercontent.com/sh7CBAC/Heimdall/main/install.sh)
 ```
 
-During installation, Heimdall downloads the latest public release package, installs the panel, configures the service, and guides you through the initial setup.
+During installation, Heimdall downloads the latest public release package, installs the panel, configures the system service, and walks you through the initial setup. For small and typical single-server deployments, SQLite is simple, lightweight, and recommended. If you plan to manage more than 500 clients, or if you need better performance for larger operational environments, PostgreSQL is recommended for improved scalability and database handling.
 
-For most single-server deployments, **SQLite** is the recommended choice. **PostgreSQL** is also available for larger deployments, higher client counts, and more advanced operational environments.
 
 ---
 
 ## ✨ What Makes Heimdall Different?
 
 Heimdall is designed for operators who need more control, cleaner subscription delivery, and a more practical workflow for real-world Xray deployments.
-
 It keeps the familiar panel experience, while adding operational tools for multi-profile subscriptions, per-client controls, infrastructure visibility, smarter routing, and easier service management.
 
 The goal is to make daily operation cleaner, more flexible, and more reliable without making the panel unnecessarily complicated.
