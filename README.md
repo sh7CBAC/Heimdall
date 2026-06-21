@@ -71,7 +71,7 @@ Operators can hide inbound remarks, outbound tags, balancer tags, client emails,
 
 Hidden items continue to work normally in the background, while the visible panel and subscription output stay cleaner, safer, and easier to manage.
 
-<img width="1672" height="941" alt="Hidden" src="https://github.com/user-attachments/assets/48f52635-173d-4ffb-9063-0c811ccf3e9e" />
+<img width="1672" height="941" alt="826ac078-92da-41f2-a483-993ce4e86edd" src="https://github.com/user-attachments/assets/6425e5af-ff34-4de6-9d5f-c425054e078f" />
 
 ---
 
