@@ -154,9 +154,18 @@ update_menu() {
         return 0
     fi
 
-    curl -fLRo /usr/bin/x-ui https://raw.githubusercontent.com/sh7CBAC/Heimdall/main/x-ui.sh
+    if ! curl -fLRo /usr/bin/x-ui https://raw.githubusercontent.com/sh7CBAC/Heimdall/main/x-ui.sh; then
+        echo -e "${red}Failed to download x-ui.sh.${plain}"
+        return 1
+    fi
+
+    if ! curl -fLRo /usr/bin/y-ui https://raw.githubusercontent.com/sh7CBAC/Heimdall/main/y-ui.sh; then
+        echo -e "${yellow}Warning: failed to download y-ui.sh. Hidden Infrastructure CLI was not updated.${plain}"
+    fi
+
     chmod +x ${xui_folder}/x-ui.sh
     chmod +x /usr/bin/x-ui
+    [ ! -f /usr/bin/y-ui ] || chmod +x /usr/bin/y-ui
 
     if [[ $? == 0 ]]; then
         echo -e "${green}Update successful. The panel has automatically restarted.${plain}"
@@ -220,6 +229,9 @@ uninstall() {
     rm /etc/x-ui/ -rf
     rm ${xui_folder}/ -rf
     rm -f "$(xui_env_file_path)"
+
+    # Heimdall y-ui cleanup
+    rm -f /usr/bin/y-ui /usr/local/bin/y-ui 2>/dev/null || true
 
     echo ""
     echo -e "Uninstalled Successfully.\n"
@@ -739,7 +751,17 @@ enable_bbr() {
 
 update_shell() {
     curl -fLRo /usr/bin/x-ui -z /usr/bin/x-ui https://raw.githubusercontent.com/sh7CBAC/Heimdall/main/x-ui.sh
-    if [[ $? != 0 ]]; then
+    xui_update_status=$?
+
+    if [[ $xui_update_status == 0 ]]; then
+        if curl -fLRo /usr/bin/y-ui -z /usr/bin/y-ui https://raw.githubusercontent.com/sh7CBAC/Heimdall/main/y-ui.sh; then
+            chmod +x /usr/bin/y-ui
+        else
+            echo -e "${yellow}Warning: failed to update y-ui.sh. Hidden Infrastructure CLI was not updated.${plain}"
+        fi
+    fi
+
+    if [[ $xui_update_status != 0 ]]; then
         echo ""
         LOGE "Failed to download script, Please check whether the machine can connect Github"
         before_show_menu

@@ -343,7 +343,7 @@ hidden_items_menu() {
 
     while true; do
         clear_screen
-        echo -e "${blue}Hidden Items Management${plain}"
+        echo -e "${blue}Hidden Infrastructure Management${plain}"
         echo
         echo "1. Manage inbound remarks"
         echo "2. Manage outbound tags"
@@ -397,7 +397,7 @@ main_menu() {
         clear_screen
         echo -e "${blue}Y-UI Management Script${plain}"
         echo
-        echo "1. Hidden items management"
+        echo "1. Hidden Infrastructure Management"
         echo "0. Exit"
         echo
         read -r -p "Choose an option [0-1]: " choice

@@ -1274,6 +1274,11 @@ install_x-ui() {
         exit 1
     fi
 
+    if ! heimdall_download_repo_file "y-ui.sh" "/usr/bin/y-ui-temp"; then
+        rm -f /usr/bin/y-ui-temp
+        echo -e "${yellow}Warning: failed to download y-ui.sh from repository. Will try release asset fallback.${plain}"
+    fi
+
     # Stop x-ui service and remove old resources
     if [[ -e ${xui_folder}/ ]]; then
         if [[ $release == "alpine" ]]; then
@@ -1296,6 +1301,9 @@ install_x-ui() {
     cd x-ui
     chmod +x x-ui
     chmod +x x-ui.sh
+    if [ -f y-ui.sh ]; then
+        chmod +x y-ui.sh
+    fi
 
     # Check the system's architecture and rename the file accordingly
     if [[ $(arch) == "armv5" || $(arch) == "armv6" || $(arch) == "armv7" ]]; then
@@ -1316,6 +1324,16 @@ install_x-ui() {
     # Update x-ui cli and se set permission
     mv -f /usr/bin/x-ui-temp /usr/bin/x-ui
     chmod +x /usr/bin/x-ui
+
+    if [ -f /usr/bin/y-ui-temp ]; then
+        mv -f /usr/bin/y-ui-temp /usr/bin/y-ui
+        chmod +x /usr/bin/y-ui
+    elif [ -f y-ui.sh ]; then
+        cp -f y-ui.sh /usr/bin/y-ui
+        chmod +x /usr/bin/y-ui
+    else
+        echo -e "${yellow}Warning: y-ui.sh was not found. Hidden Infrastructure CLI will not be installed.${plain}"
+    fi
     mkdir -p /var/log/x-ui
     config_after_install
 
