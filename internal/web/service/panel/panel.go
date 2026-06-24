@@ -67,7 +67,7 @@ func (s *PanelService) GetUpdateInfo() (*PanelUpdateInfo, error) {
 	current := config.GetVersion()
 	return &PanelUpdateInfo{
 		CurrentVersion:  current,
-		LatestVersion:   latest,
+		LatestVersion:   normalizeVersionTag(latest),
 		UpdateAvailable: isNewerVersion(latest, current),
 	}, nil
 }

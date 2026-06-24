@@ -97,6 +97,9 @@ jobs:
           export CC=$(realpath "$(find "$TOOLCHAIN_DIR/bin" -name '*-gcc.br_real' -type f -executable | head -n1)")
           [ -z "$CC" ] && { echo "No gcc.br_real found in $TOOLCHAIN_DIR/bin" >&2; exit 1; }
           cd -
+          VERSION="${GITHUB_REF_NAME#v}"
+          printf '%s\n' "$VERSION" > internal/config/version
+          echo "Building HEIMDALL version $VERSION"
           go build -ldflags "-w -s -linkmode external -extldflags '-static'" -o xui-release -v main.go
           file xui-release
           ldd xui-release || echo "Static binary confirmed"
@@ -245,6 +248,9 @@ jobs:
           go version
           gcc --version
 
+          VERSION="${GITHUB_REF_NAME#v}"
+          printf '%s\n' "$VERSION" > internal/config/version
+          echo "Building HEIMDALL version $VERSION"
           go build -ldflags "-w -s" -o xui-release.exe -v main.go
 
       - name: Copy and download resources
