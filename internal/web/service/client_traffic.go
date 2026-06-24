@@ -102,7 +102,15 @@ func (s *ClientService) BulkResetTraffic(inboundSvc *InboundService, emails []st
 				}
 				affected += int(res.RowsAffected)
 			}
-			return clearGlobalTraffic(tx, cleanEmails...)
+			if err := clearGlobalTraffic(tx, cleanEmails...); err != nil {
+				return err
+			}
+			for _, batch := range chunkStrings(cleanEmails, sqlInChunk) {
+				if err := tx.Where("email IN ?", batch).Delete(&model.NodeClientTraffic{}).Error; err != nil {
+					return err
+				}
+			}
+			return nil
 		})
 	})
 	if err != nil {
@@ -122,27 +130,35 @@ func (s *ClientService) resetAllClientTrafficsLocked(id int) error {
 	now := time.Now().Unix() * 1000
 
 	if err := db.Transaction(func(tx *gorm.DB) error {
-		whereText := "inbound_id "
-		if id == -1 {
-			whereText += " > ?"
-		} else {
-			whereText += " = ?"
-		}
-
+		// client_traffics.inbound_id is stale: it reflects the inbound the row was
+		// first inserted under and is never refreshed. Use the client_inbounds join
+		// as the authoritative source for which emails belong to a given inbound.
 		var resetEmails []string
-		emailQuery := applyVisibleClientEmailScope(
-			tx.Model(xray.ClientTraffic{}).Where(whereText, id),
-			"email",
-		)
-		if err := emailQuery.Pluck("email", &resetEmails).Error; err != nil {
-			return err
+		if id == -1 {
+			emailQuery := applyVisibleClientEmailScope(
+				tx.Model(xray.ClientTraffic{}),
+				"email",
+			)
+			if err := emailQuery.Pluck("email", &resetEmails).Error; err != nil {
+				return err
+			}
+		} else {
+			emailQuery := tx.Table("client_inbounds ci").
+				Select("c.email").
+				Joins("JOIN clients c ON c.id = ci.client_id").
+				Where("ci.inbound_id = ?", id)
+			emailQuery = applyVisibleClientEmailScope(emailQuery, "c.email")
+			if err := emailQuery.Pluck("c.email", &resetEmails).Error; err != nil {
+				return err
+			}
+		}
+		if len(resetEmails) == 0 {
+			return nil
 		}
 
-		updateQuery := applyVisibleClientEmailScope(
-			tx.Model(xray.ClientTraffic{}).Where(whereText, id),
-			"email",
-		)
-		result := updateQuery.Updates(map[string]any{"enable": true, "up": 0, "down": 0})
+		result := tx.Model(xray.ClientTraffic{}).
+			Where("email IN ?", resetEmails).
+			Updates(map[string]any{"enable": true, "up": 0, "down": 0})
 
 		if result.Error != nil {
 			return result.Error
@@ -150,6 +166,12 @@ func (s *ClientService) resetAllClientTrafficsLocked(id int) error {
 
 		if err := clearGlobalTraffic(tx, resetEmails...); err != nil {
 			return err
+		}
+
+		for _, batch := range chunkStrings(resetEmails, sqlInChunk) {
+			if err := tx.Where("email IN ?", batch).Delete(&model.NodeClientTraffic{}).Error; err != nil {
+				return err
+			}
 		}
 
 		inboundWhereText := "id "

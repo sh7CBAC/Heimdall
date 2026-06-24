@@ -528,6 +528,11 @@ func (s *ClientService) bulkAdjustInboundClients(
 			if dirty {
 				markDirty = true
 			}
+			// Large batches collapse into one reconcile push rather than M updates.
+			if push && len(foundEmails) > nodeBulkPushThreshold {
+				markDirty = true
+				push = false
+			}
 			if push {
 				for email := range foundEmails {
 					entry := plan[email]
@@ -548,8 +553,9 @@ func (s *ClientService) bulkAdjustInboundClients(
 		}
 	}
 
-	db := database.GetDB()
-	txErr := db.Transaction(func(tx *gorm.DB) error {
+	// Serialize against the traffic poll to avoid the cross-transaction
+	// lock-order deadlock on inbounds/client_records (runSerializedTx).
+	txErr := runSerializedTx(func(tx *gorm.DB) error {
 		if err := tx.Save(oldInbound).Error; err != nil {
 			return err
 		}
@@ -689,7 +695,9 @@ func (s *ClientService) BulkDelete(inboundSvc *InboundService, emails []string, 
 	}
 
 	if len(successIds) > 0 {
-		if err := db.Transaction(func(tx *gorm.DB) error {
+		// Serialize row cleanup against the traffic poll and keep Heimdall
+		// activity cleanup semantics.
+		if err := runSerializedTx(func(tx *gorm.DB) error {
 			// Activity is always deleted with the client, including when
 			// keepTraffic preserves ordinary traffic accounting rows.
 			if err := (&ClientActivityService{}).
@@ -701,6 +709,13 @@ func (s *ClientService) BulkDelete(inboundSvc *InboundService, emails []string, 
 				if err := tx.
 					Where("client_id IN ?", batch).
 					Delete(&model.ClientInbound{}).
+					Error; err != nil {
+					return err
+				}
+
+				if err := tx.
+					Where("client_id IN ?", batch).
+					Delete(&model.ClientExternalLink{}).
 					Error; err != nil {
 					return err
 				}
@@ -732,7 +747,6 @@ func (s *ClientService) BulkDelete(inboundSvc *InboundService, emails []string, 
 					return err
 				}
 			}
-
 			return nil
 		}); err != nil {
 			return result, needRestart, err
@@ -882,14 +896,19 @@ func (s *ClientService) bulkDelInboundClients(
 			}
 		}
 		if len(purge) > 0 {
-			if delErr := inboundSvc.delClientIPsByEmails(db, purge); delErr != nil {
-				logger.Error("Error in delete client IPs")
-				for _, email := range purge {
-					res.perEmailSkipped[email] = delErr.Error()
-					delete(foundEmails, email)
+			// Serialize the IP/stat purge against the traffic poll to avoid the
+			// cross-transaction lock-order deadlock on client_traffics.
+			if delErr := runSerializedTx(func(tx *gorm.DB) error {
+				if e := inboundSvc.delClientIPsByEmails(tx, purge); e != nil {
+					logger.Error("Error in delete client IPs")
+					return e
 				}
-			} else if delErr := inboundSvc.delClientStatsByEmails(db, purge); delErr != nil {
-				logger.Error("Delete stats Data Error")
+				if e := inboundSvc.delClientStatsByEmails(tx, purge); e != nil {
+					logger.Error("Delete stats Data Error")
+					return e
+				}
+				return nil
+			}); delErr != nil {
 				for _, email := range purge {
 					res.perEmailSkipped[email] = delErr.Error()
 					delete(foundEmails, email)
@@ -930,6 +949,11 @@ func (s *ClientService) bulkDelInboundClients(
 			if dirty {
 				markDirty = true
 			}
+			// Large batches collapse into one reconcile push rather than M deletes.
+			if push && len(foundEmails) > nodeBulkPushThreshold {
+				markDirty = true
+				push = false
+			}
 			if push {
 				for email := range foundEmails {
 					if err1 := rt.DeleteUser(context.Background(), oldInbound, email); err1 != nil {
@@ -941,7 +965,9 @@ func (s *ClientService) bulkDelInboundClients(
 		}
 	}
 
-	txErr := db.Transaction(func(tx *gorm.DB) error {
+	// Serialize against the traffic poll to avoid the cross-transaction
+	// lock-order deadlock on inbounds/client_records (runSerializedTx).
+	txErr := runSerializedTx(func(tx *gorm.DB) error {
 		if err := tx.Save(oldInbound).Error; err != nil {
 			return err
 		}

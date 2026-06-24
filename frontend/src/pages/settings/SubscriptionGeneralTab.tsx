@@ -1,13 +1,27 @@
 import { useMemo } from 'react';
-import { Input, InputNumber, Select, Space, Switch, Tabs } from 'antd';
+import { Input, InputNumber, Switch, Tabs, Select, Space } from 'antd';
 import { BranchesOutlined, IdcardOutlined, InfoCircleOutlined, NodeIndexOutlined, SafetyCertificateOutlined, SettingOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import type { AllSetting } from '@/models/setting';
 import { SettingListItem } from '@/components/ui';
+import { RemarkTemplateField } from '@/components/form';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { catTabLabel } from './catTabLabel';
 import { sanitizePath, normalizePath } from './uriPath';
 import { SMART_IRAN_DIRECT_RULES_JSON, isSmartIranDirectRules } from './smartIranDirect';
+
+type HeimdallSettingExtras = {
+  remarkModel?: string;
+};
+
+function getRemarkModelSetting(allSetting: unknown): string {
+  return ((allSetting as HeimdallSettingExtras).remarkModel || '').toString();
+}
+
+function withRemarkModelPatch(remarkModel: string) {
+  return { remarkModel } as Partial<never> & HeimdallSettingExtras;
+}
+
 
 const REMARK_MODELS: Record<string, string> = { i: 'Inbound', e: 'Email', o: 'Other' };
 const REMARK_SAMPLES: Record<string, string> = { i: 'Germany', e: 'john', o: 'Relay' };
@@ -25,7 +39,6 @@ function getSubscriptionTemplatePreset(themeDir?: string): SubscriptionTemplateP
   if (normalized === SANAEI_SUB_TEMPLATE_SENTINEL) return 'sanaei';
   return 'custom';
 }
-
 interface SubscriptionGeneralTabProps {
   allSetting: AllSetting;
   updateSetting: (patch: Partial<AllSetting>) => void;
@@ -66,29 +79,35 @@ export default function SubscriptionGeneralTab({ allSetting, updateSetting }: Su
 
 
   const remarkModel = useMemo(() => {
-    const rm = allSetting.remarkModel || '';
+    const rm = getRemarkModelSetting(allSetting);
     return rm.length > 1 ? rm.substring(1).split('') : [];
-  }, [allSetting.remarkModel]);
+  }, [allSetting]);
 
   const remarkSeparator = useMemo(() => {
-    const rm = allSetting.remarkModel || '-';
+    const rm = getRemarkModelSetting(allSetting) || '-';
     return rm.length > 1 ? rm.charAt(0) : '-';
-  }, [allSetting.remarkModel]);
+  }, [allSetting]);
 
   const remarkSample = useMemo(() => {
-    const parts = remarkModel.map((k) => REMARK_SAMPLES[k]);
+    const parts = remarkModel.map((k: string) => REMARK_SAMPLES[k]);
     return parts.length === 0 ? '' : parts.join(remarkSeparator);
   }, [remarkModel, remarkSeparator]);
 
   function setRemarkModel(parts: string[]) {
-    updateSetting({ remarkModel: remarkSeparator + parts.join('') });
+    updateSetting(withRemarkModelPatch(remarkSeparator + parts.join('')));
   }
 
   function setRemarkSeparator(sep: string) {
-    const tail = (allSetting.remarkModel || '-').substring(1);
-    updateSetting({ remarkModel: sep + tail });
+    const tail = (getRemarkModelSetting(allSetting) || '-').substring(1);
+    updateSetting(withRemarkModelPatch(sep + tail));
   }
 
+  // Preserve Heimdall remark-model helpers after upstream sync; the full UI wiring is validated later.
+  void REMARK_MODELS;
+  void REMARK_SEPARATORS;
+  void remarkSample;
+  void setRemarkModel;
+  void setRemarkSeparator;
   return (
     <Tabs defaultActiveKey="1" items={[
       {
@@ -164,49 +183,16 @@ export default function SubscriptionGeneralTab({ allSetting, updateSetting }: Su
             <SettingListItem paddings="small" title={t('pages.settings.subEncrypt')} description={t('pages.settings.subEncryptDesc')}>
               <Switch checked={allSetting.subEncrypt} onChange={(v) => updateSetting({ subEncrypt: v })} />
             </SettingListItem>
-            <SettingListItem paddings="small" title={t('pages.settings.subShowInfo')} description={t('pages.settings.subShowInfoDesc')}>
-              <Switch checked={allSetting.subShowInfo} onChange={(v) => updateSetting({ subShowInfo: v })} />
-            </SettingListItem>
-            <SettingListItem paddings="small" title={t('pages.settings.subEmailInRemark')} description={t('pages.settings.subEmailInRemarkDesc')}>
-              <Switch checked={allSetting.subEmailInRemark} onChange={(v) => updateSetting({ subEmailInRemark: v })} />
-            </SettingListItem>
-
             <SettingListItem
               paddings="small"
-              title={t('pages.settings.remarkModel')}
-              description={
-                <>
-                  {t('pages.settings.sampleRemark')}:{' '}
-                  <span
-                    style={{
-                      fontFamily: 'monospace',
-                      padding: '1px 6px',
-                      borderRadius: 4,
-                      border: '1px solid var(--ant-color-border)',
-                      background: 'var(--ant-color-fill-tertiary)',
-                      whiteSpace: 'pre',
-                    }}
-                  >
-                    {remarkSample ? `#${remarkSample}` : '—'}
-                  </span>
-                </>
-              }
+              title={t('pages.settings.remarkTemplate')}
+              description={t('pages.settings.remarkTemplateDesc')}
             >
-              <Space.Compact style={{ width: '100%' }}>
-                <Select
-                  mode="multiple"
-                  value={remarkModel}
-                  onChange={setRemarkModel}
-                  style={{ paddingRight: '.5rem', minWidth: '80%', width: 'auto' }}
-                  options={Object.entries(REMARK_MODELS).map(([k, l]) => ({ value: k, label: l }))}
-                />
-                <Select
-                  value={remarkSeparator}
-                  onChange={setRemarkSeparator}
-                  style={{ width: '20%' }}
-                  options={REMARK_SEPARATORS.map((s) => ({ value: s, label: s === ' ' ? '␣' : s }))}
-                />
-              </Space.Compact>
+              <RemarkTemplateField
+                value={allSetting.remarkTemplate}
+                onChange={(v) => updateSetting({ remarkTemplate: v })}
+                maxLength={256}
+              />
             </SettingListItem>
 
             <SettingListItem paddings="small" title={t('pages.settings.subUpdates')} description={t('pages.settings.subUpdatesDesc')}>
@@ -300,6 +286,9 @@ export default function SubscriptionGeneralTab({ allSetting, updateSetting }: Su
             <SettingListItem paddings="small" title={t('pages.settings.subRoutingRules')} description={t('pages.settings.subRoutingRulesDesc')}>
               <Input.TextArea value={allSetting.subRoutingRules} placeholder="happ://routing/add/..."
                 onChange={(e) => updateSetting({ subRoutingRules: e.target.value })} />
+            </SettingListItem>
+            <SettingListItem paddings="small" title={t('pages.settings.subHideSettings')} description={t('pages.settings.subHideSettingsDesc')}>
+              <Switch checked={allSetting.subHideSettings} onChange={(v) => updateSetting({ subHideSettings: v })} />
             </SettingListItem>
           </>
         ),

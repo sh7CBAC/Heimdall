@@ -79,6 +79,7 @@ describe('subscription profile expansion', () => {
               fingerprint: 'chrome',
               echConfigList: '',
               pinnedPeerCertSha256: [],
+      verifyPeerCertByName: '',
               allowInsecure: true,
             },
           },

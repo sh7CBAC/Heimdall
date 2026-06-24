@@ -27,6 +27,7 @@ import {
   type ClientsSummary,
   type ClientPageResponse,
   type InboundOption,
+  type ExternalLink,
   type BulkAdjustResult,
   type BulkAttachResult,
   type BulkCreateResult,
@@ -35,7 +36,10 @@ import {
 } from "@/schemas/client";
 import { DefaultsPayloadSchema } from "@/schemas/defaults";
 
-export type { ClientRecord, ClientTraffic, ClientsSummary, InboundOption };
+// One row sent to POST /clients/:email/externalLinks.
+export type ExternalLinkInput = { kind: 'link' | 'subscription'; value: string; remark: string };
+
+export type { ClientRecord, ClientTraffic, ClientsSummary, InboundOption, ExternalLink };
 
 const JSON_HEADERS = {
   headers: { "Content-Type": "application/json" },
@@ -226,6 +230,9 @@ export function useClients() {
     queryKey: keys.clients.list(query),
     queryFn: () => fetchClientPage(query),
     staleTime: Infinity,
+    // List is sorted/paged server-side, so the WS patch can't add new or
+    // re-sort rows; poll the current page to keep it live (pauses when hidden).
+    refetchInterval: 5000,
     placeholderData: keepPreviousData,
   });
 
@@ -261,6 +268,9 @@ export function useClients() {
   const fetched = listQuery.data !== undefined || listQuery.isError;
   const fetchError = listQuery.error ? (listQuery.error as Error).message : "";
   const loading = listQuery.isFetching;
+  // Showing kept-previous data for a new key (filter/sort/page) — drives the
+  // table overlay so the 5s background poll doesn't flash it.
+  const transitioning = listQuery.isPlaceholderData;
 
   const inbounds = inboundOptionsQuery.data ?? [];
   const onlines = useMemo(() => onlinesQuery.data ?? [], [onlinesQuery.data]);
@@ -462,6 +472,12 @@ export function useClients() {
     },
   });
 
+  const setExternalLinksMut = useMutation({
+    mutationFn: ({ email, externalLinks }: { email: string; externalLinks: ExternalLinkInput[] }) =>
+      HttpUtil.post(`/panel/api/clients/${encodeURIComponent(email)}/externalLinks`, { externalLinks }, JSON_HEADERS),
+    onSuccess: (msg) => { if (msg?.success) invalidateAll(); },
+  });
+
   const bulkAttachMut = useMutation({
     mutationFn: async (payload: {
       emails: string[];
@@ -496,6 +512,7 @@ export function useClients() {
       if (msg?.success) invalidateAll();
     },
   });
+
 
   const bulkDetachMut = useMutation({
     mutationFn: async (payload: {
@@ -541,114 +558,88 @@ export function useClients() {
     },
   });
 
-  const create = useCallback(
-    (payload: unknown) => createMut.mutateAsync(payload),
-    [createMut],
-  );
-  const update = useCallback(
-    (email: string, client: unknown) => {
-      if (!email) return Promise.resolve(null as unknown as Msg<unknown>);
-      return updateMut.mutateAsync({ email, client });
+  const delOrphansMut = useMutation({
+    mutationFn: async () => {
+      const raw = await HttpUtil.post('/panel/api/clients/delOrphans');
+      return parseMsg(raw, DelDepletedResultSchema, 'clients/delOrphans');
     },
-    [updateMut],
-  );
-  const remove = useCallback(
-    (email: string, keepTraffic = false) => {
-      if (!email) return Promise.resolve(null as unknown as Msg<unknown>);
-      return removeMut.mutateAsync({ email, keepTraffic });
+    onSuccess: (msg) => { if (msg?.success) invalidateAll(); },
+  });
+
+  const importClientsMut = useMutation({
+    mutationFn: async (data: string): Promise<Msg<BulkCreateResult>> => {
+      const raw = await HttpUtil.post('/panel/api/clients/import', { data }, JSON_HEADERS);
+      return parseMsg(raw, BulkCreateResultSchema, 'clients/import');
     },
-    [removeMut],
-  );
-  const bulkDelete = useCallback(
-    (emails: string[], keepTraffic = false) => {
-      if (!Array.isArray(emails) || emails.length === 0)
-        return Promise.resolve(null as unknown as Msg<BulkDeleteResult>);
-      return bulkDeleteMut.mutateAsync({ emails, keepTraffic });
-    },
-    [bulkDeleteMut],
-  );
-  const bulkCreate = useCallback(
-    (payloads: unknown[]) => {
-      if (!Array.isArray(payloads) || payloads.length === 0)
-        return Promise.resolve(null as unknown as Msg<BulkCreateResult>);
-      return bulkCreateMut.mutateAsync(payloads);
-    },
-    [bulkCreateMut],
-  );
-  const bulkAdjust = useCallback(
-    (emails: string[], addDays: number, addBytes: number) => {
-      if (!Array.isArray(emails) || emails.length === 0)
-        return Promise.resolve(null);
-      return bulkAdjustMut.mutateAsync({ emails, addDays, addBytes });
-    },
-    [bulkAdjustMut],
-  );
-  const bulkAddToGroup = useCallback(
-    (emails: string[], group: string) => {
-      if (!Array.isArray(emails) || emails.length === 0)
-        return Promise.resolve(null);
-      return bulkAddToGroupMut.mutateAsync({ emails, group });
-    },
-    [bulkAddToGroupMut],
-  );
-  const bulkRemoveFromGroup = useCallback(
-    (emails: string[]) => {
-      if (!Array.isArray(emails) || emails.length === 0)
-        return Promise.resolve(null);
-      return bulkRemoveFromGroupMut.mutateAsync({ emails });
-    },
-    [bulkRemoveFromGroupMut],
-  );
-  const attach = useCallback(
-    (email: string, inboundIds: number[]) => {
-      if (!email) return Promise.resolve(null as unknown as Msg<unknown>);
-      return attachMut.mutateAsync({ email, inboundIds });
-    },
-    [attachMut],
-  );
-  const bulkAttach = useCallback(
-    (emails: string[], inboundIds: number[]) => {
-      if (!Array.isArray(emails) || emails.length === 0)
-        return Promise.resolve(null as unknown as Msg<BulkAttachResult>);
-      if (!Array.isArray(inboundIds) || inboundIds.length === 0)
-        return Promise.resolve(null as unknown as Msg<BulkAttachResult>);
-      return bulkAttachMut.mutateAsync({ emails, inboundIds });
-    },
-    [bulkAttachMut],
-  );
-  const detach = useCallback(
-    (email: string, inboundIds: number[]) => {
-      if (!email) return Promise.resolve(null as unknown as Msg<unknown>);
-      return detachMut.mutateAsync({ email, inboundIds });
-    },
-    [detachMut],
-  );
-  const bulkDetach = useCallback(
-    (emails: string[], inboundIds: number[]) => {
-      if (!Array.isArray(emails) || emails.length === 0)
-        return Promise.resolve(null as unknown as Msg<BulkDetachResult>);
-      if (!Array.isArray(inboundIds) || inboundIds.length === 0)
-        return Promise.resolve(null as unknown as Msg<BulkDetachResult>);
-      return bulkDetachMut.mutateAsync({ emails, inboundIds });
-    },
-    [bulkDetachMut],
-  );
-  const resetTraffic = useCallback(
-    (client: ClientRecord) => {
-      if (!client?.email)
-        return Promise.resolve(null as unknown as Msg<unknown>);
-      return resetTrafficMut.mutateAsync(client.email);
-    },
-    [resetTrafficMut],
-  );
-  const resetAllTraffics = useCallback(
-    () => resetAllTrafficsMut.mutateAsync(),
-    [resetAllTrafficsMut],
-  );
-  const delDepleted = useCallback(
-    () => delDepletedMut.mutateAsync(),
-    [delDepletedMut],
-  );
+    onSuccess: (msg) => { if (msg?.success) invalidateAll(); },
+  });
+
+  const create = useCallback((payload: unknown) => createMut.mutateAsync(payload), [createMut]);
+  const update = useCallback((email: string, client: unknown) => {
+    if (!email) return Promise.resolve(null as unknown as Msg<unknown>);
+    return updateMut.mutateAsync({ email, client });
+  }, [updateMut]);
+  const remove = useCallback((email: string, keepTraffic = false) => {
+    if (!email) return Promise.resolve(null as unknown as Msg<unknown>);
+    return removeMut.mutateAsync({ email, keepTraffic });
+  }, [removeMut]);
+  const bulkDelete = useCallback((emails: string[], keepTraffic = false) => {
+    if (!Array.isArray(emails) || emails.length === 0) return Promise.resolve(null as unknown as Msg<BulkDeleteResult>);
+    return bulkDeleteMut.mutateAsync({ emails, keepTraffic });
+  }, [bulkDeleteMut]);
+  const bulkCreate = useCallback((payloads: unknown[]) => {
+    if (!Array.isArray(payloads) || payloads.length === 0) return Promise.resolve(null as unknown as Msg<BulkCreateResult>);
+    return bulkCreateMut.mutateAsync(payloads);
+  }, [bulkCreateMut]);
+  const bulkAdjust = useCallback((emails: string[], addDays: number, addBytes: number) => {
+    if (!Array.isArray(emails) || emails.length === 0) return Promise.resolve(null);
+    return bulkAdjustMut.mutateAsync({ emails, addDays, addBytes });
+  }, [bulkAdjustMut]);
+  const bulkAddToGroup = useCallback((emails: string[], group: string) => {
+    if (!Array.isArray(emails) || emails.length === 0) return Promise.resolve(null);
+    return bulkAddToGroupMut.mutateAsync({ emails, group });
+  }, [bulkAddToGroupMut]);
+  const bulkRemoveFromGroup = useCallback((emails: string[]) => {
+    if (!Array.isArray(emails) || emails.length === 0) return Promise.resolve(null);
+    return bulkRemoveFromGroupMut.mutateAsync({ emails });
+  }, [bulkRemoveFromGroupMut]);
+  const attach = useCallback((email: string, inboundIds: number[]) => {
+    if (!email) return Promise.resolve(null as unknown as Msg<unknown>);
+    return attachMut.mutateAsync({ email, inboundIds });
+  }, [attachMut]);
+  const setExternalLinks = useCallback((email: string, externalLinks: ExternalLinkInput[]) => {
+    if (!email) return Promise.resolve(null as unknown as Msg<unknown>);
+    return setExternalLinksMut.mutateAsync({ email, externalLinks });
+  }, [setExternalLinksMut]);
+  const bulkAttach = useCallback((emails: string[], inboundIds: number[]) => {
+    if (!Array.isArray(emails) || emails.length === 0) return Promise.resolve(null as unknown as Msg<BulkAttachResult>);
+    if (!Array.isArray(inboundIds) || inboundIds.length === 0) return Promise.resolve(null as unknown as Msg<BulkAttachResult>);
+    return bulkAttachMut.mutateAsync({ emails, inboundIds });
+  }, [bulkAttachMut]);
+  const detach = useCallback((email: string, inboundIds: number[]) => {
+    if (!email) return Promise.resolve(null as unknown as Msg<unknown>);
+    return detachMut.mutateAsync({ email, inboundIds });
+  }, [detachMut]);
+  const bulkDetach = useCallback((emails: string[], inboundIds: number[]) => {
+    if (!Array.isArray(emails) || emails.length === 0) return Promise.resolve(null as unknown as Msg<BulkDetachResult>);
+    if (!Array.isArray(inboundIds) || inboundIds.length === 0) return Promise.resolve(null as unknown as Msg<BulkDetachResult>);
+    return bulkDetachMut.mutateAsync({ emails, inboundIds });
+  }, [bulkDetachMut]);
+  const resetTraffic = useCallback((client: ClientRecord) => {
+    if (!client?.email) return Promise.resolve(null as unknown as Msg<unknown>);
+    return resetTrafficMut.mutateAsync(client.email);
+  }, [resetTrafficMut]);
+  const resetAllTraffics = useCallback(() => resetAllTrafficsMut.mutateAsync(), [resetAllTrafficsMut]);
+  const delDepleted = useCallback(() => delDepletedMut.mutateAsync(), [delDepletedMut]);
+  const delOrphans = useCallback(() => delOrphansMut.mutateAsync(), [delOrphansMut]);
+  const importClients = useCallback((data: string) => importClientsMut.mutateAsync(data), [importClientsMut]);
+  // Fetch the exported clients so the page can show them in a CodeMirror viewer
+  // (Copy / Download), rather than triggering an immediate browser download.
+  const exportClients = useCallback(async (): Promise<unknown[] | null> => {
+    const msg = await HttpUtil.get('/panel/api/clients/export');
+    if (!msg?.success) return null;
+    return Array.isArray(msg.obj) ? msg.obj : [];
+  }, []);
 
   const setEnable = useCallback(
     async (client: ClientRecord, enable: boolean) => {
@@ -755,6 +746,7 @@ export function useClients() {
     inbounds,
     onlines,
     loading,
+    transitioning,
     fetched,
     fetchError,
     subSettings,
@@ -773,12 +765,16 @@ export function useClients() {
     bulkAddToGroup,
     bulkRemoveFromGroup,
     attach,
+    setExternalLinks,
     bulkAttach,
     detach,
     bulkDetach,
     resetTraffic,
     resetAllTraffics,
     delDepleted,
+    delOrphans,
+    exportClients,
+    importClients,
     setEnable,
     applyTrafficEvent,
     applyClientStatsEvent,
