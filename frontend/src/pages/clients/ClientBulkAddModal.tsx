@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
-import { useTranslation } from 'react-i18next';
 import {
-  AutoComplete,
+  useEffect,
+  useMemo,
+  useState } from 'react'; import { useTranslation } from 'react-i18next'; import {   AutoComplete,
   Button,
   Form,
   Input,
@@ -10,7 +10,6 @@ import {
   Select,
   Space,
   Switch,
-  Tooltip,
   message,
 } from 'antd';
 import { ReloadOutlined } from '@ant-design/icons';
@@ -22,7 +21,6 @@ import { formatInboundLabel } from '@/lib/inbounds/label';
 import { TLS_FLOW_CONTROL } from '@/schemas/primitives';
 import { DateTimePicker, SelectAllClearButtons } from '@/components/form';
 import { useClients, type InboundOption } from '@/hooks/useClients';
-import { useFail2banStatusQuery, getLimitIpNotice } from '@/api/queries/useFail2banStatusQuery';
 import {
   ClientBulkAddFormSchema,
   type ClientBulkAddFormValues,
@@ -84,9 +82,6 @@ export default function ClientBulkAddModal({
   const [form, setForm] = useState<FormState>(emptyForm);
   const [delayedStart, setDelayedStart] = useState(false);
   const [saving, setSaving] = useState(false);
-  const fail2ban = useFail2banStatusQuery();
-  const limitIpDisabled = !fail2ban.usable;
-  const limitIpNotice = getLimitIpNotice(fail2ban, t);
 
   useEffect(() => {
     if (!open) return;
@@ -379,14 +374,12 @@ export default function ClientBulkAddModal({
             </Form.Item>
           )}
 
-          <Form.Item label={t('pages.clients.limitIp')}>
-            <Tooltip title={limitIpNotice || undefined}>
-              <span style={{ display: 'inline-flex' }}>
-                <InputNumber value={form.limitIp} min={0} disabled={limitIpDisabled}
-                  style={limitIpDisabled ? { pointerEvents: 'none' } : undefined}
-                  onChange={(v) => update('limitIp', Number(v) || 0)} />
-              </span>
-            </Tooltip>
+          <Form.Item label={t('pages.clients.limitIp')} tooltip={t('pages.clients.limitIpDesc')}>
+            <InputNumber
+              value={form.limitIp}
+              min={0}
+              onChange={(v) => update('limitIp', Number(v) || 0)}
+            />
           </Form.Item>
 
           <Form.Item
