@@ -45,8 +45,10 @@ func (s *SubClashService) GetClash(subId string, host string) (string, string, e
 			continue
 		}
 		subReq.projectThroughFallbackMaster(inbound)
-		if hostEps := subReq.hostEndpoints(inbound, "clash"); len(hostEps) > 0 {
-			injectExternalProxy(inbound, hostEps)
+		if !inboundHasSubscriptionProfiles(inbound) {
+			if hostEps := subReq.hostEndpoints(inbound, "clash"); len(hostEps) > 0 {
+				injectExternalProxy(inbound, hostEps)
+			}
 		}
 		for _, client := range clients {
 			seenEmails[client.Email] = struct{}{}

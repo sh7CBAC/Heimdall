@@ -121,9 +121,9 @@ func TestSub_DisabledHostSkipped(t *testing.T) {
 	}
 }
 
-// #4 — when both hosts and a legacy externalProxy are set, hosts win and the
-// externalProxy entry is ignored.
-func TestSub_HostAndExternalProxy_Precedence(t *testing.T) {
+// #4 — Heimdall rule: when both Managed Hosts and explicit Subscription
+// Profiles are set, Subscription Profiles win and Hosts are ignored.
+func TestSub_SubscriptionProfilesOverrideHosts(t *testing.T) {
 	seedSubDB(t)
 	stream := `{"network":"ws","security":"tls","wsSettings":{"path":"/base","host":"base.host"},"tlsSettings":{"serverName":"base.sni"},"externalProxy":[{"forceTls":"tls","dest":"legacy.cdn.com","port":7443,"remark":"L"}]}`
 	ib := seedSubInbound(t, "s1", "p", 4434, 1, stream)
@@ -134,11 +134,11 @@ func TestSub_HostAndExternalProxy_Precedence(t *testing.T) {
 		t.Fatalf("GetSubs: %v", err)
 	}
 	joined := strings.Join(links, "\n")
-	if !strings.Contains(joined, "host.cdn.com:8443") {
-		t.Fatalf("host should win: %s", joined)
+	if strings.Contains(joined, "host.cdn.com:8443") {
+		t.Fatalf("hosts must not override explicit subscription profiles: %s", joined)
 	}
-	if strings.Contains(joined, "legacy.cdn.com") {
-		t.Fatalf("externalProxy must be ignored when hosts exist: %s", joined)
+	if !strings.Contains(joined, "legacy.cdn.com") {
+		t.Fatalf("subscription profiles should win over hosts: %s", joined)
 	}
 }
 

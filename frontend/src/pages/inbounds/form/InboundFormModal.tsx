@@ -82,6 +82,7 @@ import SniffingTab from './SniffingTab';
 import type { DBInbound } from '@/models/dbinbound';
 import type { NodeRecord } from '@/api/queries/useNodesQuery';
 import ExternalProxyForm from './transport/external-proxy';
+import { createSubscriptionProfileDraft } from '@/lib/xray/subscription-profile';
 
 
 // Render a field label with a hover tooltip icon instead of an `extra` help line below.
@@ -144,6 +145,8 @@ interface InboundFormModalProps {
 
 function buildAddModeValues(): InboundFormValues {
   const settings = createDefaultInboundSettings('vless') ?? undefined;
+  const port = RandomUtil.randomInteger(10000, 60000);
+  const defaultAddress = typeof window !== 'undefined' ? window.location.hostname : '';
   return rawInboundToFormValues({
     protocol: 'vless',
     settings,
@@ -151,9 +154,10 @@ function buildAddModeValues(): InboundFormValues {
       network: 'tcp',
       security: 'none',
       tcpSettings: TcpStreamSettingsSchema.parse({ header: { type: 'none' } }),
+      externalProxy: [createSubscriptionProfileDraft(defaultAddress, port)],
     },
     sniffing: SniffingSchema.parse({}),
-    port: RandomUtil.randomInteger(10000, 60000),
+    port,
     listen: '',
     tag: '',
     enable: true,

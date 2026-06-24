@@ -204,7 +204,12 @@ func (s *SubService) getSubs(subId string) ([]string, []string, int64, xray.Clie
 		s.projectThroughFallbackMaster(inbound)
 		// Host overrides apply AFTER fallback projection so a host's
 		// address/TLS wins over the projected master stream.
-		hostEps := s.hostEndpoints(inbound, "raw")
+		// Heimdall rule: Subscription Profiles / Multi-Profile Inbounds are the primary product feature.
+		// Managed Hosts are only a fallback for inbounds without explicit profiles.
+		var hostEps []map[string]any
+		if !inboundHasSubscriptionProfiles(inbound) {
+			hostEps = s.hostEndpoints(inbound, "raw")
+		}
 		for _, client := range clients {
 			if client.Enable {
 				hasEnabledClient = true
