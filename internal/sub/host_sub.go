@@ -95,6 +95,18 @@ func hostToExternalProxyMap(h *model.Host, defaultDest string, defaultPort int) 
 	if h.MihomoIpVersion != "" {
 		ep["mihomoIpVersion"] = h.MihomoIpVersion
 	}
+	if len(h.ExcludeFromSubTypes) > 0 {
+		ep["excludeFromSubTypes"] = stringsToAnySlice(h.ExcludeFromSubTypes)
+	}
+	if h.VlessRoute != "" {
+		ep["vlessRoute"] = h.VlessRoute
+	}
+	if h.MihomoX25519 {
+		ep["mihomoX25519"] = true
+	}
+	if h.ShuffleHost {
+		ep["shuffleHost"] = true
+	}
 	if h.SockoptParams != "" {
 		ep["sockoptParams"] = h.SockoptParams
 	}
@@ -105,6 +117,33 @@ func hostToExternalProxyMap(h *model.Host, defaultDest string, defaultPort int) 
 		ep["finalMask"] = h.FinalMask
 	}
 	return ep
+}
+
+// endpointExcludedFromSubType reports whether an externalProxy/profile endpoint
+// should be omitted from one subscription format ("raw", "json" or "clash").
+func endpointExcludedFromSubType(ep map[string]any, format string) bool {
+	if ep == nil || format == "" {
+		return false
+	}
+	value, ok := ep["excludeFromSubTypes"]
+	if !ok || value == nil {
+		return false
+	}
+	switch items := value.(type) {
+	case []any:
+		for _, item := range items {
+			if s, ok := item.(string); ok && s == format {
+				return true
+			}
+		}
+	case []string:
+		for _, s := range items {
+			if s == format {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // hostMuxOverride returns a host's muxParams when it is valid JSON, else "".

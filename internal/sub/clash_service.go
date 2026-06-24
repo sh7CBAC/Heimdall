@@ -170,6 +170,9 @@ func (s *SubClashService) getProxies(subReq *SubService, inbound *model.Inbound,
 	proxies := make([]map[string]any, 0, len(externalProxies))
 	for _, ep := range externalProxies {
 		extPrxy := ep.(map[string]any)
+		if endpointExcludedFromSubType(extPrxy, "clash") {
+			continue
+		}
 		// Expand the host's {{VAR}} remark template for this client (no-op for
 		// the synthetic/legacy entry) before it becomes the proxy name.
 		subReq.renderHostRemark(inbound, client, extPrxy, network)

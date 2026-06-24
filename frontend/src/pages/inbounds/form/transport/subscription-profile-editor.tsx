@@ -454,6 +454,65 @@ export default function SubscriptionProfileEditor({
               </Field>
             </div>
           )}
+            <div className="ext-proxy-grid ext-proxy-grid--three">
+              <Field
+                label={t('pages.hosts.fields.excludeFromSubTypes')}
+                hint={t('pages.hosts.hints.excludeFromSubTypes')}
+              >
+                <Form.Item name={[fieldName, 'excludeFromSubTypes']} noStyle>
+                  <Select
+                    mode="multiple"
+                    allowClear
+                    options={[
+                      { value: 'raw', label: 'Raw' },
+                      { value: 'json', label: 'JSON' },
+                      { value: 'clash', label: 'Clash / Mihomo' },
+                    ]}
+                  />
+                </Form.Item>
+              </Field>
+
+              <Field
+                label={t('pages.hosts.fields.vlessRoute')}
+                hint={t('pages.hosts.hints.vlessRoute')}
+              >
+                <Form.Item name={[fieldName, 'vlessRoute']} noStyle>
+                  <Input placeholder="53,443,1000-2000" />
+                </Form.Item>
+              </Field>
+
+              <Field label={t('pages.hosts.fields.mihomoIpVersion')}>
+                <Form.Item name={[fieldName, 'mihomoIpVersion']} noStyle>
+                  <Select
+                    allowClear
+                    placeholder="Auto"
+                    options={[
+                      { value: 'dual', label: 'dual' },
+                      { value: 'ipv4', label: 'ipv4' },
+                      { value: 'ipv6', label: 'ipv6' },
+                      { value: 'ipv4-prefer', label: 'ipv4-prefer' },
+                      { value: 'ipv6-prefer', label: 'ipv6-prefer' },
+                    ]}
+                  />
+                </Form.Item>
+              </Field>
+            </div>
+
+            <div className="ext-proxy-grid ext-proxy-grid--two">
+              <Field label={t('pages.hosts.fields.mihomoX25519')}>
+                <Form.Item name={[fieldName, 'mihomoX25519']} valuePropName="checked" noStyle>
+                  <Switch />
+                </Form.Item>
+              </Field>
+
+              <Field label={t('pages.hosts.fields.shuffleHost')}>
+                <Form.Item name={[fieldName, 'shuffleHost']} valuePropName="checked" noStyle>
+                  <Switch />
+                </Form.Item>
+              </Field>
+            </div>
+
+
         </div>
       </details>
     </div>

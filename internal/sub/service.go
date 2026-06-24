@@ -873,6 +873,9 @@ func (s *SubService) genHysteriaLink(inbound *model.Inbound, email string) strin
 			if !ok {
 				continue
 			}
+			if endpointExcludedFromSubType(ep, "raw") {
+				continue
+			}
 			dest, _ := ep["dest"].(string)
 			portF, okPort := ep["port"].(float64)
 			if dest == "" || !okPort {
@@ -1566,6 +1569,9 @@ func (s *SubService) buildVmessExternalProxyLinks(externalProxies []any, baseObj
 	eps := make([]ShareEndpoint, 0, len(externalProxies))
 	for _, externalProxy := range externalProxies {
 		ep, _ := externalProxy.(map[string]any)
+		if ep == nil || endpointExcludedFromSubType(ep, "raw") {
+			continue
+		}
 		eps = append(eps, externalProxyToEndpoint(ep))
 	}
 	return s.buildEndpointVmessLinks(eps, baseObj, inbound, email, transport)
@@ -1638,6 +1644,9 @@ func (s *SubService) buildExternalProxyURLLinks(
 	eps := make([]ShareEndpoint, 0, len(externalProxies))
 	for _, externalProxy := range externalProxies {
 		ep, _ := externalProxy.(map[string]any)
+		if ep == nil || endpointExcludedFromSubType(ep, "raw") {
+			continue
+		}
 		eps = append(eps, externalProxyToEndpoint(ep))
 	}
 	return s.buildEndpointLinks(eps, params, baseSecurity, makeLink, func(e ShareEndpoint) string {

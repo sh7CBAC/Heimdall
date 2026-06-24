@@ -18,6 +18,9 @@ export function createSubscriptionProfileDraft(
     network: 'same',
     security: 'same',
     forceTls: 'same',
+    excludeFromSubTypes: [],
+    mihomoX25519: false,
+    shuffleHost: false,
   };
 }
 

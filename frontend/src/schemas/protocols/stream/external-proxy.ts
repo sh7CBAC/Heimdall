@@ -41,6 +41,32 @@ export const SubscriptionProfileSecuritySchema = z.enum([
 ]);
 export type SubscriptionProfileSecurity = z.infer<typeof SubscriptionProfileSecuritySchema>;
 
+export const SubscriptionProfileSubTypeSchema = z.enum(['raw', 'json', 'clash']);
+export type SubscriptionProfileSubType = z.infer<typeof SubscriptionProfileSubTypeSchema>;
+
+export const SubscriptionProfileMihomoIpVersionSchema = z.enum([
+  'dual',
+  'ipv4',
+  'ipv6',
+  'ipv4-prefer',
+  'ipv6-prefer',
+]);
+export type SubscriptionProfileMihomoIpVersion = z.infer<typeof SubscriptionProfileMihomoIpVersionSchema>;
+
+export const SubscriptionProfileVlessRouteSchema = z.preprocess(
+  (val) => {
+    if (typeof val !== 'string') return val;
+    const trimmed = val.trim();
+    return trimmed === '' ? undefined : trimmed;
+  },
+  z.string()
+    .regex(
+      /^(\d{1,5}(-\d{1,5})?)(\s*,\s*\d{1,5}(-\d{1,5})?)*$/,
+      'pages.hosts.toasts.badVlessRoute',
+    )
+    .optional(),
+);
+
 // Client-only TLS shape. Server certificates/private keys are deliberately not
 // accepted here because subscription profiles never become Xray inbounds.
 export const SubscriptionProfileTlsSettingsSchema = z.object({
@@ -106,6 +132,16 @@ export const ExternalProxyEntrySchema = z.object({
   realitySettings: SubscriptionProfileRealitySettingsSchema.optional(),
   finalmask: FinalMaskStreamSettingsSchema.optional(),
   mux: SubscriptionProfileMuxSchema.optional(),
+
+  // Heimdall phase-1 parity with Managed Hosts.
+  excludeFromSubTypes: z.array(SubscriptionProfileSubTypeSchema).optional(),
+  vlessRoute: SubscriptionProfileVlessRouteSchema,
+  mihomoIpVersion: z.preprocess(
+    (val) => (val === '' ? undefined : val),
+    SubscriptionProfileMihomoIpVersionSchema.optional(),
+  ),
+  mihomoX25519: z.boolean().optional(),
+  shuffleHost: z.boolean().optional(),
 
   // Legacy External Proxy fields. They are still read and emitted so old
   // configurations remain byte-compatible until a later explicit migration.
