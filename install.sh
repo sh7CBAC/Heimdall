@@ -204,7 +204,23 @@ gen_random_string() {
         | head -c "$length"
 }
 
+
+ensure_postgres_runtime_permissions() {
+    # Protect PostgreSQL setup from broken parent-directory permissions.
+    # A bad tar root entry or hardened image can leave /usr/local as 700.
+    # Then sudo -u postgres psql may fail with:
+    # "Can't locate warnings.pm ... Permission denied"
+    # Do not chmod recursively; only repair the standard parent dirs.
+    if [[ -d /usr/local ]]; then
+        chmod 755 /usr/local 2> /dev/null || true
+    fi
+    if [[ -d /usr/local/lib ]]; then
+        chmod 755 /usr/local/lib 2> /dev/null || true
+    fi
+}
+
 install_postgres_local() {
+    ensure_postgres_runtime_permissions
     local pg_user pg_pass
     pg_pass=$(gen_random_string 24)
     local pg_db="xui"
@@ -1296,6 +1312,7 @@ install_x-ui() {
 
     # Extract resources and set permissions
     tar zxvf x-ui-linux-$(arch).tar.gz
+    ensure_postgres_runtime_permissions
     rm x-ui-linux-$(arch).tar.gz -f
 
     cd x-ui
