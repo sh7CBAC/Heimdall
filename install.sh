@@ -1311,7 +1311,8 @@ install_x-ui() {
     fi
 
     # Extract resources and set permissions
-    tar zxvf x-ui-linux-$(arch).tar.gz
+    echo -e "${green}Extracting Heimdall package...${plain}"
+    tar zxf x-ui-linux-$(arch).tar.gz
     ensure_postgres_runtime_permissions
     rm x-ui-linux-$(arch).tar.gz -f
 
