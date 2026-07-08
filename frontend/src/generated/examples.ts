@@ -48,6 +48,7 @@ export const EXAMPLES: Record<string, unknown> = {
     "subClashPath": "",
     "subClashRules": "",
     "subClashURI": "",
+    "subClientImportFormat": "",
     "subDomain": "",
     "subEnable": false,
     "subEnableRouting": false,
@@ -151,6 +152,7 @@ export const EXAMPLES: Record<string, unknown> = {
     "subClashPath": "",
     "subClashRules": "",
     "subClashURI": "",
+    "subClientImportFormat": "",
     "subDomain": "",
     "subEnable": false,
     "subEnableRouting": false,
@@ -220,6 +222,7 @@ export const EXAMPLES: Record<string, unknown> = {
     "auth": "",
     "comment": "",
     "created_at": 0,
+    "downloadMbps": 0,
     "email": "",
     "enable": false,
     "expiryTime": 0,
@@ -238,7 +241,8 @@ export const EXAMPLES: Record<string, unknown> = {
     "subId": "",
     "tgId": 0,
     "totalGB": 0,
-    "updated_at": 0
+    "updated_at": 0,
+    "uploadMbps": 0
   },
   "ClientInbound": {
     "clientId": 0,
@@ -251,6 +255,9 @@ export const EXAMPLES: Record<string, unknown> = {
     "auth": "",
     "comment": "",
     "createdAt": 0,
+    "createdByAdminId": 0,
+    "disabledByOwnerAdminId": 0,
+    "downloadMbps": 0,
     "email": "",
     "enable": false,
     "expiryTime": 0,
@@ -259,6 +266,7 @@ export const EXAMPLES: Record<string, unknown> = {
     "id": 0,
     "keepAlive": 0,
     "limitIp": 0,
+    "ownerAdminId": 0,
     "password": "",
     "preSharedKey": "",
     "privateKey": "",
@@ -270,6 +278,7 @@ export const EXAMPLES: Record<string, unknown> = {
     "tgId": 0,
     "totalGB": 0,
     "updatedAt": 0,
+    "uploadMbps": 0,
     "uuid": ""
   },
   "ClientReverse": {
@@ -380,7 +389,8 @@ export const EXAMPLES: Record<string, unknown> = {
     "tag": "in-443-tcp",
     "total": 0,
     "trafficReset": "never",
-    "up": 0
+    "up": 0,
+    "usageMultiplier": 1
   },
   "InboundClientIps": {
     "clientEmail": "",
@@ -508,8 +518,23 @@ export const EXAMPLES: Record<string, unknown> = {
     "value": ""
   },
   "User": {
+    "createdAt": 0,
+    "dataLimit": 0,
+    "discordWebhook": "",
     "id": 0,
+    "note": "",
+    "notificationFilters": "",
     "password": "",
+    "permissionOverrides": "",
+    "profileTitle": "",
+    "roleId": 0,
+    "status": "",
+    "subscriptionDomain": "",
+    "subscriptionTemplatePath": "",
+    "supportUrl": "",
+    "telegramId": "",
+    "updatedAt": 0,
+    "usedBytes": 0,
     "username": ""
   }
 };

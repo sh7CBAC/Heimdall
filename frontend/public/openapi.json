@@ -27,7 +27,7 @@
     },
     "schemas": {
       "AllSetting": {
-        "description": "AllSetting contains all configuration settings for the HEIMDALL panel including web server, Telegram bot, and subscription settings.",
+        "description": "AllSetting contains all configuration settings for the 3x-ui panel including web server, Telegram bot, and subscription settings.",
         "properties": {
           "datepicker": {
             "description": "Date picker format",
@@ -213,6 +213,10 @@
           },
           "subClashURI": {
             "description": "Clash/Mihomo subscription server URI",
+            "type": "string"
+          },
+          "subClientImportFormat": {
+            "description": "Default non-HTML /sub import format: normal or json",
             "type": "string"
           },
           "subDomain": {
@@ -464,6 +468,7 @@
           "subClashPath",
           "subClashRules",
           "subClashURI",
+          "subClientImportFormat",
           "subDomain",
           "subEnable",
           "subEnableRouting",
@@ -724,6 +729,10 @@
             "description": "Clash/Mihomo subscription server URI",
             "type": "string"
           },
+          "subClientImportFormat": {
+            "description": "Default non-HTML /sub import format: normal or json",
+            "type": "string"
+          },
           "subDomain": {
             "description": "Domain for subscription server validation",
             "type": "string"
@@ -980,6 +989,7 @@
           "subClashPath",
           "subClashRules",
           "subClashURI",
+          "subClientImportFormat",
           "subDomain",
           "subEnable",
           "subEnableRouting",
@@ -1093,6 +1103,7 @@
         "description": "Client represents a client configuration for Xray inbounds with traffic limits and settings.",
         "properties": {
           "allowedIPs": {
+            "description": "WireGuard allowed IPs",
             "items": {
               "type": "string"
             },
@@ -1108,6 +1119,10 @@
           },
           "created_at": {
             "description": "Creation timestamp",
+            "type": "integer"
+          },
+          "downloadMbps": {
+            "description": "Aggregate download limit in Mbps; 0 means unlimited",
             "type": "integer"
           },
           "email": {
@@ -1135,10 +1150,11 @@
             "type": "string"
           },
           "keepAlive": {
+            "description": "WireGuard persistent keepalive",
             "type": "integer"
           },
           "limitIp": {
-            "description": "IP limit for this client",
+            "description": "Concurrent IP limit; 0 means unlimited",
             "type": "integer"
           },
           "password": {
@@ -1146,12 +1162,15 @@
             "type": "string"
           },
           "preSharedKey": {
+            "description": "WireGuard pre-shared key",
             "type": "string"
           },
           "privateKey": {
+            "description": "WireGuard private key",
             "type": "string"
           },
           "publicKey": {
+            "description": "WireGuard public key",
             "type": "string"
           },
           "reset": {
@@ -1186,10 +1205,15 @@
           "updated_at": {
             "description": "Last update timestamp",
             "type": "integer"
+          },
+          "uploadMbps": {
+            "description": "Aggregate upload limit in Mbps; 0 means unlimited",
+            "type": "integer"
           }
         },
         "required": [
           "comment",
+          "downloadMbps",
           "email",
           "enable",
           "expiryTime",
@@ -1198,7 +1222,8 @@
           "security",
           "subId",
           "tgId",
-          "totalGB"
+          "totalGB",
+          "uploadMbps"
         ],
         "type": "object"
       },
@@ -1239,6 +1264,15 @@
           "createdAt": {
             "type": "integer"
           },
+          "createdByAdminId": {
+            "type": "integer"
+          },
+          "disabledByOwnerAdminId": {
+            "type": "integer"
+          },
+          "downloadMbps": {
+            "type": "integer"
+          },
           "email": {
             "type": "string"
           },
@@ -1261,6 +1295,9 @@
             "type": "integer"
           },
           "limitIp": {
+            "type": "integer"
+          },
+          "ownerAdminId": {
             "type": "integer"
           },
           "password": {
@@ -1294,6 +1331,9 @@
           "updatedAt": {
             "type": "integer"
           },
+          "uploadMbps": {
+            "type": "integer"
+          },
           "uuid": {
             "type": "string"
           }
@@ -1303,6 +1343,9 @@
           "auth",
           "comment",
           "createdAt",
+          "createdByAdminId",
+          "disabledByOwnerAdminId",
+          "downloadMbps",
           "email",
           "enable",
           "expiryTime",
@@ -1311,6 +1354,7 @@
           "id",
           "keepAlive",
           "limitIp",
+          "ownerAdminId",
           "password",
           "preSharedKey",
           "privateKey",
@@ -1322,6 +1366,7 @@
           "tgId",
           "totalGB",
           "updatedAt",
+          "uploadMbps",
           "uuid"
         ],
         "type": "object"
@@ -1718,7 +1763,6 @@
             "type": "string"
           },
           "total": {
-            "description": "Total traffic limit in bytes",
             "type": "integer"
           },
           "trafficReset": {
@@ -1735,6 +1779,11 @@
           "up": {
             "description": "Upload traffic in bytes",
             "type": "integer"
+          },
+          "usageMultiplier": {
+            "description": "Billable usage multiplier; 1.00 means real usage",
+            "example": 1,
+            "type": "number"
           }
         },
         "required": [
@@ -1757,7 +1806,8 @@
           "tag",
           "total",
           "trafficReset",
-          "up"
+          "up",
+          "usageMultiplier"
         ],
         "type": "object"
       },
@@ -1900,7 +1950,7 @@
         "type": "object"
       },
       "Node": {
-        "description": "Node represents a remote HEIMDALL panel registered with the central panel.\nThe central panel polls each node's existing /panel/api/server/status\nendpoint over HTTP using the per-node ApiToken to populate the runtime\nstatus fields below.",
+        "description": "Node represents a remote 3x-ui panel registered with the central panel.\nThe central panel polls each node's existing /panel/api/server/status\nendpoint over HTTP using the per-node ApiToken to populate the runtime\nstatus fields below.",
         "properties": {
           "activeCount": {
             "example": 23,
@@ -2301,7 +2351,7 @@
         "type": "object"
       },
       "Setting": {
-        "description": "Setting stores key-value configuration settings for the HEIMDALL panel.",
+        "description": "Setting stores key-value configuration settings for the 3x-ui panel.",
         "properties": {
           "id": {
             "type": "integer"
@@ -2321,21 +2371,81 @@
         "type": "object"
       },
       "User": {
-        "description": "User represents a user account in the HEIMDALL panel.",
+        "description": "User represents an administrator account in the Heimdall panel.",
         "properties": {
+          "createdAt": {
+            "type": "integer"
+          },
+          "dataLimit": {
+            "type": "integer"
+          },
+          "discordWebhook": {
+            "type": "string"
+          },
           "id": {
             "type": "integer"
           },
+          "note": {
+            "type": "string"
+          },
+          "notificationFilters": {
+            "type": "string"
+          },
           "password": {
             "type": "string"
+          },
+          "permissionOverrides": {
+            "type": "string"
+          },
+          "profileTitle": {
+            "type": "string"
+          },
+          "roleId": {
+            "type": "integer"
+          },
+          "status": {
+            "type": "string"
+          },
+          "subscriptionDomain": {
+            "type": "string"
+          },
+          "subscriptionTemplatePath": {
+            "type": "string"
+          },
+          "supportUrl": {
+            "type": "string"
+          },
+          "telegramId": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "integer"
+          },
+          "usedBytes": {
+            "type": "integer"
           },
           "username": {
             "type": "string"
           }
         },
         "required": [
+          "createdAt",
+          "dataLimit",
+          "discordWebhook",
           "id",
+          "note",
+          "notificationFilters",
           "password",
+          "permissionOverrides",
+          "profileTitle",
+          "roleId",
+          "status",
+          "subscriptionDomain",
+          "subscriptionTemplatePath",
+          "supportUrl",
+          "telegramId",
+          "updatedAt",
+          "usedBytes",
           "username"
         ],
         "type": "object"
@@ -2670,7 +2780,8 @@
                       "tag": "in-443-tcp",
                       "total": 0,
                       "trafficReset": "never",
-                      "up": 0
+                      "up": 0,
+                      "usageMultiplier": 1
                     }
                   ]
                 }
