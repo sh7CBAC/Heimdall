@@ -163,6 +163,7 @@ function buildAddModeValues(): InboundFormValues {
     tag: '',
     enable: true,
     trafficReset: 'never',
+    usageMultiplier: 1,
   });
 }
 
@@ -602,6 +603,13 @@ export default function InboundFormModal({
         label={labelWithHint(t('pages.inbounds.form.subSortIndex'), t('pages.inbounds.form.subSortIndexHelp'))}
       >
         <InputNumber min={1} />
+      </Form.Item>
+
+      <Form.Item
+        name="usageMultiplier"
+        label={labelWithHint(t('pages.inbounds.usageMultiplier'), t('pages.inbounds.usageMultiplierHelp'))}
+      >
+        <InputNumber min={1} max={10} step={0.25} />
       </Form.Item>
 
       <Form.Item

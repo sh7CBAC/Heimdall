@@ -291,6 +291,18 @@ export function useInboundColumns({
         ),
       },
       {
+        title: t('pages.inbounds.usageMultiplier'),
+        key: 'usageMultiplier',
+        align: 'center',
+        width: 90,
+        render: (_, record) => {
+          const raw = (record as DBInboundRecord & { usageMultiplier?: unknown }).usageMultiplier;
+          const multiplier = typeof raw === 'number' && Number.isFinite(raw) ? raw : 1;
+          const label = Number.isInteger(multiplier) ? multiplier.toFixed(0) : multiplier.toFixed(2);
+          return <Tag color={multiplier > 1 ? 'orange' : 'default'}>{label}×</Tag>;
+        },
+      },
+      {
         title: t('pages.inbounds.speed'),
         key: 'speed',
         align: 'center',

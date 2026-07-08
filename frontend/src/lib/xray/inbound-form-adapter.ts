@@ -35,6 +35,7 @@ export interface RawInboundRow {
   up?: number;
   down?: number;
   total?: number;
+  usageMultiplier?: number;
   remark?: string;
   enable?: boolean;
   expiryTime?: number;
@@ -54,6 +55,7 @@ export interface WireInboundPayload {
   up: number;
   down: number;
   total: number;
+  usageMultiplier: number;
   remark: string;
   enable: boolean;
   expiryTime: number;
@@ -104,6 +106,12 @@ function coerceShareAddrStrategy(v: unknown): ShareAddrStrategy {
   return typeof v === 'string' && (SHARE_ADDR_STRATEGIES as string[]).includes(v)
     ? (v as ShareAddrStrategy)
     : 'node';
+}
+
+function coerceUsageMultiplier(v: unknown): number {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return 1;
+  return Math.min(10, Math.max(1, Math.round(n * 100) / 100));
 }
 
 // Network values that map to a required `${network}Settings` key in
@@ -186,6 +194,7 @@ export function rawInboundToFormValues(row: RawInboundRow): InboundFormValues {
     up: row.up ?? 0,
     down: row.down ?? 0,
     total: row.total ?? 0,
+    usageMultiplier: coerceUsageMultiplier(row.usageMultiplier),
     trafficReset: coerceTrafficReset(row.trafficReset),
     lastTrafficResetTime: row.lastTrafficResetTime ?? 0,
     nodeId: row.nodeId ?? null,
@@ -324,6 +333,7 @@ export function formValuesToWirePayload(values: InboundFormValues): WireInboundP
     up: values.up,
     down: values.down,
     total: values.total,
+    usageMultiplier: values.usageMultiplier,
     remark: values.remark,
     enable: values.enable,
     expiryTime: values.expiryTime,

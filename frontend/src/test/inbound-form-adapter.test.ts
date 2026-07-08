@@ -304,3 +304,20 @@ describe('subSortIndex', () => {
     expect(InboundDbFieldsSchema.parse({}).subSortIndex).toBe(1);
   });
 });
+
+
+describe('usageMultiplier', () => {
+  it('usageMultiplier round-trips through inbound adapter payload', () => {
+    const values = rawInboundToFormValues({ ...vlessRow, usageMultiplier: 2.5 });
+    expect(values.usageMultiplier).toBe(2.5);
+
+    const payload = formValuesToWirePayload(values);
+    expect(payload.usageMultiplier).toBe(2.5);
+  });
+
+  it('usageMultiplier defaults to 1 and clamps to the supported range', () => {
+    expect(rawInboundToFormValues({ ...vlessRow, usageMultiplier: undefined }).usageMultiplier).toBe(1);
+    expect(rawInboundToFormValues({ ...vlessRow, usageMultiplier: 0 }).usageMultiplier).toBe(1);
+    expect(rawInboundToFormValues({ ...vlessRow, usageMultiplier: 99 }).usageMultiplier).toBe(10);
+  });
+});
