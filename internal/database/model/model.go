@@ -63,11 +63,12 @@ type User struct {
 
 // Inbound represents an Xray inbound configuration with traffic statistics and settings.
 type Inbound struct {
-	Id                   int                  `json:"id" form:"id" gorm:"primaryKey;autoIncrement" example:"1"`                                                                                                     // Unique identifier
-	UserId               int                  `json:"-"`                                                                                                                                                            // Associated user ID
-	Up                   int64                `json:"up" form:"up"`                                                                                                                                                 // Upload traffic in bytes
-	Down                 int64                `json:"down" form:"down"`                                                                                                                                             // Download traffic in bytes
-	Total                int64                `json:"total" form:"total"`                                                                                                                                           // Total traffic limit in bytes
+	Id                   int                  `json:"id" form:"id" gorm:"primaryKey;autoIncrement" example:"1"` // Unique identifier
+	UserId               int                  `json:"-"`                                                        // Associated user ID
+	Up                   int64                `json:"up" form:"up"`                                             // Upload traffic in bytes
+	Down                 int64                `json:"down" form:"down"`                                         // Download traffic in bytes
+	Total                int64                `json:"total" form:"total"`
+	UsageMultiplier      float64              `json:"usageMultiplier" form:"usageMultiplier" gorm:"column:usage_multiplier;default:1.00" example:"1"`                                                               // Billable usage multiplier; 1.00 means real usage
 	Remark               string               `json:"remark" form:"remark" example:"VLESS-443"`                                                                                                                     // Human-readable remark
 	SubSortIndex         int                  `json:"subSortIndex" form:"subSortIndex" gorm:"default:1" validate:"omitempty,gte=1" example:"1"`                                                                     // 1-based sort order of this inbound's links in subscription output only (lower first; ties by id)
 	Enable               bool                 `json:"enable" form:"enable" gorm:"index:idx_enable_traffic_reset,priority:1" example:"true"`                                                                         // Whether the inbound is enabled

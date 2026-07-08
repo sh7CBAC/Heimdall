@@ -160,6 +160,10 @@ func (s *XrayService) GetXrayConfig() (*xray.Config, error) {
 		var wgPeers []any
 		for i := range dbClients {
 			c := dbClients[i]
+			runtimeEmail := clientInboundStatEmail(c.Email, inbound.Id)
+			if runtimeEmail == "" {
+				runtimeEmail = c.Email
+			}
 			if enable, exists := enableMap[c.Email]; exists && !enable {
 				logger.Infof("Remove Inbound User %s due to expiration or traffic limit", c.Email)
 				continue
@@ -171,7 +175,7 @@ func (s *XrayService) GetXrayConfig() (*xray.Config, error) {
 			if flow == "xtls-rprx-vision-udp443" {
 				flow = "xtls-rprx-vision"
 			}
-			entry := map[string]any{"email": c.Email}
+			entry := map[string]any{"email": runtimeEmail}
 			switch inbound.Protocol {
 			case model.VLESS:
 				if c.ID != "" {
