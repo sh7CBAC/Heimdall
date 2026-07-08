@@ -149,6 +149,9 @@ func (s *XrayService) GetXrayConfig() (*xray.Config, error) {
 		if listErr != nil {
 			return nil, listErr
 		}
+		if mapErr := s.inboundService.EnsureClientInboundTrafficMappingsForInbound(inbound.Id); mapErr != nil {
+			return nil, mapErr
+		}
 
 		clientStats := inbound.ClientStats
 		enableMap := make(map[string]bool, len(clientStats))

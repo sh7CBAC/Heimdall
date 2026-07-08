@@ -76,6 +76,7 @@ func initModels() error {
 		&model.ClientActivitySetting{},
 		&model.ClientActivityDestination{},
 		&model.ClientInbound{},
+		&model.ClientInboundTraffic{},
 		&model.ClientExternalLink{},
 		&model.ClientGroup{},
 		&model.InboundFallback{},

@@ -117,6 +117,14 @@ func (s *InboundService) addClientTraffic(tx *gorm.DB, traffics []*xray.ClientTr
 		return nil
 	}
 
+	traffics, err = s.addAccurateClientInboundTraffic(tx, traffics)
+	if err != nil {
+		return err
+	}
+	if len(traffics) == 0 {
+		return nil
+	}
+
 	emails := make([]string, 0, len(traffics))
 	for _, traffic := range traffics {
 		emails = append(emails, traffic.Email)
@@ -468,8 +476,11 @@ func (s *InboundService) AddClientStat(tx *gorm.DB, inboundId int, client *model
 		Enable:     client.Enable,
 		Reset:      client.Reset,
 	}
-	return tx.Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "email"}}, DoNothing: true}).
-		Create(&clientTraffic).Error
+	if err := tx.Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "email"}}, DoNothing: true}).
+		Create(&clientTraffic).Error; err != nil {
+		return err
+	}
+	return s.upsertClientInboundTrafficMapping(tx, inboundId, client)
 }
 
 func (s *InboundService) UpdateClientStat(tx *gorm.DB, email string, client *model.Client) error {
@@ -483,7 +494,22 @@ func (s *InboundService) UpdateClientStat(tx *gorm.DB, email string, client *mod
 			"reset":       client.Reset,
 		})
 	err := result.Error
-	return err
+	if err != nil {
+		return err
+	}
+	var inboundIDs []int
+	if qErr := tx.Table("client_inbounds").
+		Joins("JOIN clients ON clients.id = client_inbounds.client_id").
+		Where("clients.email = ?", client.Email).
+		Pluck("client_inbounds.inbound_id", &inboundIDs).Error; qErr != nil {
+		return qErr
+	}
+	for _, inboundID := range inboundIDs {
+		if mErr := s.upsertClientInboundTrafficMapping(tx, inboundID, client); mErr != nil {
+			return mErr
+		}
+	}
+	return nil
 }
 
 func (s *InboundService) DelClientStat(tx *gorm.DB, email string) error {
@@ -491,6 +517,9 @@ func (s *InboundService) DelClientStat(tx *gorm.DB, email string) error {
 		return err
 	}
 	if err := clearGlobalTraffic(tx, email); err != nil {
+		return err
+	}
+	if err := tx.Where("email = ?", email).Delete(&model.ClientInboundTraffic{}).Error; err != nil {
 		return err
 	}
 	return tx.Where("email = ?", email).Delete(&model.NodeClientTraffic{}).Error
@@ -507,6 +536,9 @@ func (s *InboundService) delClientStatsByEmails(tx *gorm.DB, emails []string) er
 		if err := tx.Where("email IN ?", batch).Delete(&model.ClientGlobalTraffic{}).Error; err != nil {
 			return err
 		}
+		if err := tx.Where("email IN ?", batch).Delete(&model.ClientInboundTraffic{}).Error; err != nil {
+			return err
+		}
 		if err := tx.Where("email IN ?", batch).Delete(&model.NodeClientTraffic{}).Error; err != nil {
 			return err
 		}
@@ -518,6 +550,9 @@ func (s *InboundService) ResetClientTrafficByEmail(clientEmail string) error {
 	return submitTrafficWrite(func() error {
 		db := database.GetDB()
 		if err := clearGlobalTraffic(db, clientEmail); err != nil {
+			return err
+		}
+		if err := resetClientInboundTrafficByEmail(db, clientEmail); err != nil {
 			return err
 		}
 		if err := db.Model(xray.ClientTraffic{}).
@@ -612,6 +647,9 @@ func (s *InboundService) resetClientTrafficLocked(id int, clientEmail string) (b
 		if err := tx.Save(traffic).Error; err != nil {
 			return err
 		}
+		if err := resetClientInboundTrafficByEmail(tx, clientEmail); err != nil {
+			return err
+		}
 		if err := clearGlobalTraffic(tx, clientEmail); err != nil {
 			return err
 		}
@@ -663,6 +701,9 @@ func (s *InboundService) resetAllTrafficsLocked() error {
 		}).Error; err != nil {
 		return err
 	}
+	if err := resetAllClientInboundTraffic(db); err != nil {
+		return err
+	}
 
 	nodes, err := (&NodeService{}).GetAll()
 	if err == nil {
@@ -681,6 +722,9 @@ func (s *InboundService) resetAllTrafficsLocked() error {
 func (s *InboundService) ResetInboundTraffic(id int) error {
 	return submitTrafficWrite(func() error {
 		db := database.GetDB()
+		if err := resetClientInboundTrafficByInbound(db, id); err != nil {
+			return err
+		}
 		if err := db.Model(model.Inbound{}).
 			Where("id = ?", id).
 			Updates(map[string]any{"up": 0, "down": 0}).Error; err != nil {
@@ -907,7 +951,11 @@ func (s *InboundService) BumpClientsLastOnline(emails []string) error {
 	now := time.Now().UnixMilli()
 	return submitTrafficWrite(func() error {
 		db := database.GetDB()
-		for _, batch := range chunkStrings(uniq, sqliteMaxVars) {
+		logicalEmails, err := s.resolveRuntimeEmailsForLastOnline(db, uniq, now)
+		if err != nil {
+			return err
+		}
+		for _, batch := range chunkStrings(logicalEmails, sqliteMaxVars) {
 			if err := db.Model(xray.ClientTraffic{}).Where("email IN ?", batch).Update("last_online", now).Error; err != nil {
 				return err
 			}
