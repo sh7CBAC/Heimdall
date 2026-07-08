@@ -163,7 +163,7 @@ func (s *XrayService) GetXrayConfig() (*xray.Config, error) {
 		var wgPeers []any
 		for i := range dbClients {
 			c := dbClients[i]
-			runtimeEmail := clientInboundStatEmail(c.Email, inbound.Id)
+			runtimeEmail := model.RuntimeClientEmailForInbound(inbound, c.Email)
 			if runtimeEmail == "" {
 				runtimeEmail = c.Email
 			}

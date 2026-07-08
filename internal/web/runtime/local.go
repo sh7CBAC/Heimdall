@@ -45,6 +45,67 @@ func (l *Local) withAPI(fn func(api *xray.XrayAPI) error) error {
 	return fn(&api)
 }
 
+func localRuntimeUserMap(ib *model.Inbound, userMap map[string]any) map[string]any {
+	if userMap == nil {
+		return nil
+	}
+	out := make(map[string]any, len(userMap))
+	for k, v := range userMap {
+		out[k] = v
+	}
+	if email, ok := out["email"].(string); ok {
+		out["email"] = model.RuntimeClientEmailForInbound(ib, email)
+	}
+	return out
+}
+
+func localRuntimeInbound(ib *model.Inbound) *model.Inbound {
+	if ib == nil || ib.Protocol == model.WireGuard || ib.Protocol == model.MTProto {
+		return ib
+	}
+
+	settings := map[string]any{}
+	if err := json.Unmarshal([]byte(ib.Settings), &settings); err != nil {
+		return ib
+	}
+
+	clients, ok := settings["clients"].([]any)
+	if !ok || len(clients) == 0 {
+		return ib
+	}
+
+	changed := false
+	for i := range clients {
+		clientMap, ok := clients[i].(map[string]any)
+		if !ok {
+			continue
+		}
+		email, ok := clientMap["email"].(string)
+		if !ok || strings.TrimSpace(email) == "" {
+			continue
+		}
+		nextEmail := model.RuntimeClientEmailForInbound(ib, email)
+		if nextEmail == email {
+			continue
+		}
+		clientMap["email"] = nextEmail
+		changed = true
+	}
+
+	if !changed {
+		return ib
+	}
+
+	nextSettings, err := json.Marshal(settings)
+	if err != nil {
+		return ib
+	}
+
+	nextInbound := *ib
+	nextInbound.Settings = string(nextSettings)
+	return &nextInbound
+}
+
 func (l *Local) AddInbound(_ context.Context, ib *model.Inbound) error {
 	if ib.Protocol == model.MTProto {
 		inst, ok := mtproto.InstanceFromInbound(ib)
@@ -53,7 +114,8 @@ func (l *Local) AddInbound(_ context.Context, ib *model.Inbound) error {
 		}
 		return mtproto.GetManager().Ensure(inst)
 	}
-	body, err := json.MarshalIndent(ib.GenXrayInboundConfig(), "", "  ")
+	runtimeInbound := localRuntimeInbound(ib)
+	body, err := json.MarshalIndent(runtimeInbound.GenXrayInboundConfig(), "", "  ")
 	if err != nil {
 		return err
 	}
@@ -85,7 +147,7 @@ func (l *Local) AddUser(_ context.Context, ib *model.Inbound, userMap map[string
 		return nil
 	}
 	return l.withAPI(func(api *xray.XrayAPI) error {
-		return api.AddUser(string(ib.Protocol), ib.Tag, userMap)
+		return api.AddUser(string(ib.Protocol), ib.Tag, localRuntimeUserMap(ib, userMap))
 	})
 }
 
@@ -94,7 +156,7 @@ func (l *Local) RemoveUser(_ context.Context, ib *model.Inbound, email string) e
 		return nil
 	}
 	return l.withAPI(func(api *xray.XrayAPI) error {
-		return api.RemoveUser(ib.Tag, email)
+		return api.RemoveUser(ib.Tag, model.RuntimeClientEmailForInbound(ib, email))
 	})
 }
 

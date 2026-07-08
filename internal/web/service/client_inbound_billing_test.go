@@ -153,3 +153,59 @@ func TestAccurateBillingBumpLastOnlineResolvesRuntimeEmail(t *testing.T) {
 		t.Fatal("detail last_online not bumped")
 	}
 }
+
+func TestRuntimeUserMapForInboundTagRewritesStandardInbound(t *testing.T) {
+	initAccurateBillingTestDB(t)
+
+	db := database.GetDB()
+	svc := &InboundService{}
+	ib := &model.Inbound{
+		UserId:          1,
+		Tag:             "tag-runtime-helper",
+		Enable:          true,
+		Port:            45003,
+		Protocol:        model.VLESS,
+		Settings:        `{"clients":[]}`,
+		UsageMultiplier: 2,
+	}
+	if err := db.Create(ib).Error; err != nil {
+		t.Fatalf("create inbound: %v", err)
+	}
+
+	raw := map[string]any{"email": "helper@x", "id": "11111111-1111-4111-8111-111111111111"}
+	got := svc.runtimeUserMapForInboundTag(ib.Tag, raw)
+	email, _ := got["email"].(string)
+
+	if email == "helper@x" {
+		t.Fatalf("expected runtime stat email, got logical email")
+	}
+	if want := clientInboundStatEmail("helper@x", ib.Id); email != want {
+		t.Fatalf("runtime email = %q, want %q", email, want)
+	}
+	if raw["email"] != "helper@x" {
+		t.Fatalf("input map was mutated: %#v", raw)
+	}
+}
+
+func TestRuntimeUserMapForInboundTagKeepsWireGuard(t *testing.T) {
+	initAccurateBillingTestDB(t)
+
+	db := database.GetDB()
+	svc := &InboundService{}
+	ib := &model.Inbound{
+		UserId:   1,
+		Tag:      "tag-runtime-wg",
+		Enable:   true,
+		Port:     45004,
+		Protocol: model.WireGuard,
+		Settings: `{"peers":[]}`,
+	}
+	if err := db.Create(ib).Error; err != nil {
+		t.Fatalf("create inbound: %v", err)
+	}
+
+	got := svc.runtimeUserMapForInboundTag(ib.Tag, map[string]any{"email": "wg@x"})
+	if got["email"] != "wg@x" {
+		t.Fatalf("wireguard email must stay logical, got %#v", got["email"])
+	}
+}

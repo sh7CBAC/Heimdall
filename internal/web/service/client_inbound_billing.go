@@ -1,8 +1,6 @@
 package service
 
 import (
-	"crypto/sha256"
-	"encoding/base32"
 	"fmt"
 	"math"
 	"regexp"
@@ -19,7 +17,7 @@ import (
 	"gorm.io/gorm/clause"
 )
 
-const clientInboundStatEmailPrefix = "hmstat"
+const clientInboundStatEmailPrefix = model.ClientInboundStatEmailPrefix
 
 var clientInboundStatEmailRe = regexp.MustCompile(`^hmstat_([0-9]+)_([a-z2-7]{16})$`)
 
@@ -31,18 +29,7 @@ var clientInboundStatEmailRe = regexp.MustCompile(`^hmstat_([0-9]+)_([a-z2-7]{16
 // clients.id primary key. The resolver uses client_inbound_traffics.stat_email,
 // so a deterministic privacy-safe hash is enough for runtime attribution.
 func clientInboundStatEmail(logicalEmail string, inboundID int) string {
-	logicalEmail = strings.ToLower(strings.TrimSpace(logicalEmail))
-	if logicalEmail == "" || inboundID <= 0 {
-		return ""
-	}
-
-	sum := sha256.Sum256([]byte(fmt.Sprintf("%d:%s", inboundID, logicalEmail)))
-	encoded := strings.ToLower(base32.StdEncoding.WithPadding(base32.NoPadding).EncodeToString(sum[:]))
-	if len(encoded) > 16 {
-		encoded = encoded[:16]
-	}
-
-	return fmt.Sprintf("%s_%d_%s", clientInboundStatEmailPrefix, inboundID, encoded)
+	return model.ClientInboundStatEmail(logicalEmail, inboundID)
 }
 
 // parseClientInboundStatEmail resolves the inbound id from a Heimdall runtime
@@ -418,6 +405,46 @@ func resetAllClientInboundTraffic(tx *gorm.DB) error {
 			"last_online":   0,
 			"updated_at":    time.Now().UnixMilli(),
 		}).Error
+}
+
+func runtimeClientEmailForInbound(inbound *model.Inbound, logicalEmail string) string {
+	return model.RuntimeClientEmailForInbound(inbound, logicalEmail)
+}
+
+func runtimeUserMapForInbound(inbound *model.Inbound, userMap map[string]any) map[string]any {
+	if userMap == nil {
+		return nil
+	}
+	out := make(map[string]any, len(userMap))
+	for k, v := range userMap {
+		out[k] = v
+	}
+	if email, ok := out["email"].(string); ok {
+		out["email"] = runtimeClientEmailForInbound(inbound, email)
+	}
+	return out
+}
+
+func (s *InboundService) runtimeInboundByTag(tag string) *model.Inbound {
+	if strings.TrimSpace(tag) == "" {
+		return nil
+	}
+	var inbound model.Inbound
+	if err := database.GetDB().Model(&model.Inbound{}).
+		Select("id, protocol, tag").
+		Where("tag = ?", tag).
+		First(&inbound).Error; err != nil {
+		return nil
+	}
+	return &inbound
+}
+
+func (s *InboundService) runtimeEmailForInboundTag(tag string, logicalEmail string) string {
+	return runtimeClientEmailForInbound(s.runtimeInboundByTag(tag), logicalEmail)
+}
+
+func (s *InboundService) runtimeUserMapForInboundTag(tag string, userMap map[string]any) map[string]any {
+	return runtimeUserMapForInbound(s.runtimeInboundByTag(tag), userMap)
 }
 
 func (s *InboundService) resolveRuntimeEmailsForLastOnline(tx *gorm.DB, emails []string, now int64) ([]string, error) {

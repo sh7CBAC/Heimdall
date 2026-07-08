@@ -454,7 +454,7 @@ func (s *InboundService) autoRenewClients(tx *gorm.DB) (bool, int64, error) {
 			return true, int64(len(traffics)), nil
 		}
 		for _, clientToAdd := range clientsToAdd {
-			err1 = s.xrayApi.AddUser(clientToAdd.protocol, clientToAdd.tag, clientToAdd.client)
+			err1 = s.xrayApi.AddUser(clientToAdd.protocol, clientToAdd.tag, s.runtimeUserMapForInboundTag(clientToAdd.tag, clientToAdd.client))
 			if err1 != nil {
 				needRestart = true
 			}
