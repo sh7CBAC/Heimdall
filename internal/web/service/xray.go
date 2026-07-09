@@ -149,6 +149,14 @@ func (s *XrayService) GetXrayConfig() (*xray.Config, error) {
 		if listErr != nil {
 			return nil, listErr
 		}
+
+		// Keep canonical client/client_inbound rows in sync with the same inbound
+		// client list used to generate Xray runtime users. This prevents freshly
+		// created or attached clients from being emitted as hmstat_* users without
+		// a matching client_inbound_traffics resolver row.
+		if syncErr := s.inboundService.clientService.SyncInbound(nil, inbound.Id, dbClients); syncErr != nil {
+			return nil, syncErr
+		}
 		if mapErr := s.inboundService.EnsureClientInboundTrafficMappingsForInbound(inbound.Id); mapErr != nil {
 			return nil, mapErr
 		}
