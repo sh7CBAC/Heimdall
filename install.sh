@@ -11,100 +11,6 @@ cur_dir=$(pwd)
 xui_folder="${XUI_MAIN_FOLDER:=/usr/local/x-ui}"
 xui_service="${XUI_SERVICE:=/etc/systemd/system}"
 
-
-# GitHub source configuration.
-HEIMDALL_GITHUB_REPO="${HEIMDALL_GITHUB_REPO:-sh7CBAC/Heimdall}"
-HEIMDALL_GITHUB_REF="${HEIMDALL_GITHUB_REF:-main}"
-
-heimdall_has_github_access() {
-    command -v gh >/dev/null 2>&1 \
-        && gh api "repos/${HEIMDALL_GITHUB_REPO}" >/dev/null 2>&1
-}
-
-heimdall_private_access_error() {
-    cat >&2 <<EOF
-Unable to access ${HEIMDALL_GITHUB_REPO}.
-
-For a private repository, authenticate this server first:
-  gh auth login
-
-Then start the installer with:
-  gh api -H "Accept: application/vnd.github.raw+json" \\
-    "repos/${HEIMDALL_GITHUB_REPO}/contents/install.sh?ref=${HEIMDALL_GITHUB_REF}" | bash
-EOF
-}
-
-heimdall_latest_release_tag() {
-    if heimdall_has_github_access; then
-        gh api "repos/${HEIMDALL_GITHUB_REPO}/releases/latest" --jq '.tag_name'
-        return
-    fi
-
-    curl -4fsSL --retry 3 --connect-timeout 15 \
-        "https://api.github.com/repos/${HEIMDALL_GITHUB_REPO}/releases/latest" \
-        | grep '"tag_name":' \
-        | sed -E 's/.*"([^"]+)".*/\1/'
-}
-
-heimdall_download_repo_file() {
-    local repo_path="$1"
-    local output_path="$2"
-
-    rm -f "$output_path"
-
-    if heimdall_has_github_access; then
-        if gh api \
-            -H "Accept: application/vnd.github.raw+json" \
-            "repos/${HEIMDALL_GITHUB_REPO}/contents/${repo_path}?ref=${HEIMDALL_GITHUB_REF}" \
-            > "$output_path"; then
-            [[ -s "$output_path" ]] && return 0
-        fi
-    else
-        if curl -4fL --retry 3 --connect-timeout 15 \
-            -o "$output_path" \
-            "https://raw.githubusercontent.com/${HEIMDALL_GITHUB_REPO}/${HEIMDALL_GITHUB_REF}/${repo_path}"; then
-            [[ -s "$output_path" ]] && return 0
-        fi
-    fi
-
-    rm -f "$output_path"
-    return 1
-}
-
-heimdall_download_release_asset() {
-    local tag="$1"
-    local asset_name="$2"
-    local output_path="$3"
-    local asset_id=""
-
-    rm -f "$output_path"
-
-    if heimdall_has_github_access; then
-        asset_id=$(
-            gh api "repos/${HEIMDALL_GITHUB_REPO}/releases/tags/${tag}" \
-                --jq '.assets[] | [.name, (.id | tostring)] | @tsv' 2>/dev/null \
-                | awk -F '\t' -v target="$asset_name" '$1 == target {print $2; exit}'
-        )
-
-        if [[ -n "$asset_id" ]] \
-            && gh api \
-                -H "Accept: application/octet-stream" \
-                "repos/${HEIMDALL_GITHUB_REPO}/releases/assets/${asset_id}" \
-                > "$output_path"; then
-            [[ -s "$output_path" ]] && return 0
-        fi
-    else
-        if curl -4fL --retry 3 --connect-timeout 15 \
-            -o "$output_path" \
-            "https://github.com/${HEIMDALL_GITHUB_REPO}/releases/download/${tag}/${asset_name}"; then
-            [[ -s "$output_path" ]] && return 0
-        fi
-    fi
-
-    rm -f "$output_path"
-    return 1
-}
-
 # check root
 [[ $EUID -ne 0 ]] && echo -e "${red}Fatal error: ${plain} Please run this script with root privilege \n " && exit 1
 
@@ -136,6 +42,16 @@ arch() {
 
 echo "Arch: $(arch)"
 
+# Non-interactive mode: triggered explicitly via XUI_NONINTERACTIVE=1, or
+# implicitly when stdin is not a TTY (e.g. `curl ... | bash`, cloud-init).
+# In this mode every prompt below is replaced by an env var or a sane default.
+if [[ "${XUI_NONINTERACTIVE:-0}" == "1" ]] || [[ ! -t 0 ]]; then
+    NONINTERACTIVE=1
+else
+    NONINTERACTIVE=0
+fi
+export NONINTERACTIVE
+
 # Simple helpers
 is_ipv4() {
     [[ "$1" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]] && return 0 || return 1
@@ -148,6 +64,18 @@ is_ip() {
 }
 is_domain() {
     [[ "$1" =~ ^([A-Za-z0-9](-*[A-Za-z0-9])*\.)+(xn--[a-z0-9]{2,}|[A-Za-z]{2,})$ ]] && return 0 || return 1
+}
+
+# acme.sh's standalone server binds IPv4 by default; --listen-v6 makes it
+# v6-only, which breaks HTTP-01 validation when the domain's A record points
+# at this host's IPv4 (#4994). Only force IPv6 when the host has no global
+# IPv4 address at all.
+acme_listen_flag() {
+    if ip -4 addr show scope global 2> /dev/null | grep -q "inet "; then
+        echo ""
+    else
+        echo "--listen-v6"
+    fi
 }
 
 # Port helpers
@@ -202,6 +130,54 @@ gen_random_string() {
     openssl rand -base64 $((length * 2)) \
         | tr -dc 'a-zA-Z0-9' \
         | head -c "$length"
+}
+
+# prompt_or_default VARNAME "prompt text" "default" [ENV_NAME]
+# Interactive: read into VARNAME. Non-interactive: VARNAME = ${ENV_NAME:-default}.
+# ENV_NAME defaults to VARNAME when omitted. Keeps every interactive prompt
+# string byte-for-byte identical to the original `read -rp`.
+prompt_or_default() {
+    local __var="$1" __prompt="$2" __default="$3" __env="${4:-$1}"
+    if [[ "$NONINTERACTIVE" == "1" ]]; then
+        printf -v "$__var" '%s' "${!__env:-$__default}"
+    else
+        # shellcheck disable=SC2229
+        read -rp "$__prompt" "$__var"
+    fi
+}
+
+# write_install_result <user> <pass> <port> <webpath> <scheme> <host> <token> <dbtype>
+# Persists a parseable, root-only credentials file consumed by cloud-init/MOTD.
+# Values are written with printf '%q' so a pinned password/username containing
+# spaces, quotes, $(...) or backticks is shell-escaped and the file stays safely
+# source-able (consumers do '. install-result.env'). For the alphanumeric random
+# values gen_random_string emits, %q is a no-op. This is a DIFFERENT file from the
+# Postgres env file (/etc/default/x-ui).
+write_install_result() {
+    local u="$1" p="$2" port="$3" wbp="$4" scheme="$5" host="$6" token="$7" dbtype="$8"
+    local result_file="/etc/x-ui/install-result.env"
+    local url_host="${host:-SERVER_IP_UNKNOWN}"
+    install -d -m 755 /etc/x-ui 2> /dev/null
+    local prev_umask
+    prev_umask=$(umask)
+    umask 077
+    if ! {
+        printf 'XUI_USERNAME=%q\n' "$u"
+        printf 'XUI_PASSWORD=%q\n' "$p"
+        printf 'XUI_PANEL_PORT=%q\n' "$port"
+        printf 'XUI_WEB_BASE_PATH=%q\n' "$wbp"
+        printf 'XUI_ACCESS_URL=%q\n' "${scheme}://${url_host}:${port}/${wbp}"
+        printf 'XUI_API_TOKEN=%q\n' "$token"
+        printf 'XUI_DB_TYPE=%q\n' "$dbtype"
+    } > "$result_file"; then
+        umask "$prev_umask"
+        echo -e "${yellow}Warning: failed to write ${result_file}.${plain}" >&2
+        return 1
+    fi
+    umask "$prev_umask"
+    chmod 600 "$result_file" 2> /dev/null
+    chown root:root "$result_file" 2> /dev/null || true
+    echo -e "${green}Install result written to ${result_file} (mode 600).${plain}"
 }
 
 
@@ -402,7 +378,7 @@ setup_ssl_certificate() {
     echo -e "${yellow}Note: Port 80 must be open and accessible from the internet${plain}"
 
     ~/.acme.sh/acme.sh --set-default-ca --server letsencrypt --force > /dev/null 2>&1
-    ~/.acme.sh/acme.sh --issue -d ${domain} --listen-v6 --standalone --httpport 80 --force
+    ~/.acme.sh/acme.sh --issue -d ${domain} $(acme_listen_flag) --standalone --httpport 80 --force
 
     if [ $? -ne 0 ]; then
         echo -e "${yellow}Failed to issue certificate for ${domain}${plain}"
@@ -489,7 +465,7 @@ setup_ip_certificate() {
 
     # Choose port for HTTP-01 listener (default 80, prompt override)
     local WebPort=""
-    read -rp "Port to use for ACME HTTP-01 listener (default 80): " WebPort
+    prompt_or_default WebPort "Port to use for ACME HTTP-01 listener (default 80): " "80" XUI_ACME_HTTP_PORT
     WebPort="${WebPort:-80}"
     if ! [[ "${WebPort}" =~ ^[0-9]+$ ]] || ((WebPort < 1 || WebPort > 65535)); then
         echo -e "${red}Invalid port provided. Falling back to 80.${plain}"
@@ -506,6 +482,10 @@ setup_ip_certificate() {
             echo -e "${yellow}Port ${WebPort} is in use.${plain}"
 
             local alt_port=""
+            if [[ "$NONINTERACTIVE" == "1" ]]; then
+                echo -e "${red}Port ${WebPort} is busy; cannot proceed in non-interactive mode.${plain}"
+                return 1
+            fi
             read -rp "Enter another port for acme.sh standalone listener (leave empty to abort): " alt_port
             alt_port="${alt_port// /}"
             if [[ -z "${alt_port}" ]]; then
@@ -527,6 +507,7 @@ setup_ip_certificate() {
     # Issue certificate with shortlived profile
     echo -e "${green}Issuing IP certificate for ${ipv4}...${plain}"
     ~/.acme.sh/acme.sh --set-default-ca --server letsencrypt --force > /dev/null 2>&1
+    [[ -n "${XUI_ACME_EMAIL:-}" ]] && ~/.acme.sh/acme.sh --register-account -m "${XUI_ACME_EMAIL}" > /dev/null 2>&1
 
     ~/.acme.sh/acme.sh --issue \
         ${domain_args} \
@@ -615,22 +596,30 @@ ssl_cert_issue() {
 
     # get the domain here, and we need to verify it
     local domain=""
-    while true; do
-        read -rp "Please enter your domain name: " domain
-        domain="${domain// /}" # Trim whitespace
-
-        if [[ -z "$domain" ]]; then
-            echo -e "${red}Domain name cannot be empty. Please try again.${plain}"
-            continue
+    if [[ "$NONINTERACTIVE" == "1" ]]; then
+        domain="${XUI_DOMAIN// /}"
+        if [[ -z "$domain" ]] || ! is_domain "$domain"; then
+            echo -e "${red}XUI_SSL_MODE=domain requires a valid XUI_DOMAIN (got: '${XUI_DOMAIN:-}').${plain}"
+            return 1
         fi
+    else
+        while true; do
+            read -rp "Please enter your domain name: " domain
+            domain="${domain// /}" # Trim whitespace
 
-        if ! is_domain "$domain"; then
-            echo -e "${red}Invalid domain format: ${domain}. Please enter a valid domain name.${plain}"
-            continue
-        fi
+            if [[ -z "$domain" ]]; then
+                echo -e "${red}Domain name cannot be empty. Please try again.${plain}"
+                continue
+            fi
 
-        break
-    done
+            if ! is_domain "$domain"; then
+                echo -e "${red}Invalid domain format: ${domain}. Please enter a valid domain name.${plain}"
+                continue
+            fi
+
+            break
+        done
+    fi
     echo -e "${green}Your domain is: ${domain}, checking it...${plain}"
     SSL_ISSUED_DOMAIN="${domain}"
 
@@ -672,7 +661,7 @@ ssl_cert_issue() {
 
     # get the port number for the standalone server
     local WebPort=80
-    read -rp "Please choose which port to use (default is 80): " WebPort
+    prompt_or_default WebPort "Please choose which port to use (default is 80): " "80" XUI_ACME_HTTP_PORT
     if [[ ${WebPort} -gt 65535 || ${WebPort} -lt 1 ]]; then
         echo -e "${yellow}Your input ${WebPort} is invalid, will use default port 80.${plain}"
         WebPort=80
@@ -686,7 +675,8 @@ ssl_cert_issue() {
     if [[ ${cert_exists} -eq 0 ]]; then
         # issue the certificate
         ~/.acme.sh/acme.sh --set-default-ca --server letsencrypt --force
-        ~/.acme.sh/acme.sh --issue -d ${domain} --listen-v6 --standalone --httpport ${WebPort} --force
+        [[ -n "${XUI_ACME_EMAIL:-}" ]] && ~/.acme.sh/acme.sh --register-account -m "${XUI_ACME_EMAIL}" > /dev/null 2>&1
+        ~/.acme.sh/acme.sh --issue -d ${domain} $(acme_listen_flag) --standalone --httpport ${WebPort} --force
         if [ $? -ne 0 ]; then
             echo -e "${red}Issuing certificate failed, please check logs.${plain}"
             rm -rf ~/.acme.sh/${domain} ~/.acme.sh/${domain}_ecc
@@ -703,7 +693,11 @@ ssl_cert_issue() {
     reloadCmd="systemctl restart x-ui || rc-service x-ui restart"
     echo -e "${green}Default --reloadcmd for ACME is: ${yellow}systemctl restart x-ui || rc-service x-ui restart${plain}"
     echo -e "${green}This command will run on every certificate issue and renew.${plain}"
-    read -rp "Would you like to modify --reloadcmd for ACME? (y/n): " setReloadcmd
+    if [[ "$NONINTERACTIVE" == "1" ]]; then
+        setReloadcmd="n"
+    else
+        read -rp "Would you like to modify --reloadcmd for ACME? (y/n): " setReloadcmd
+    fi
     if [[ "$setReloadcmd" == "y" || "$setReloadcmd" == "Y" ]]; then
         echo -e "\n${green}\t1.${plain} Preset: systemctl reload nginx ; systemctl restart x-ui"
         echo -e "${green}\t2.${plain} Input your own command"
@@ -769,7 +763,11 @@ ssl_cert_issue() {
     systemctl start x-ui 2> /dev/null || rc-service x-ui start 2> /dev/null
 
     # Prompt user to set panel paths after successful certificate installation
-    read -rp "Would you like to set this certificate for the panel? (y/n): " setPanel
+    if [[ "$NONINTERACTIVE" == "1" ]]; then
+        setPanel="y"
+    else
+        read -rp "Would you like to set this certificate for the panel? (y/n): " setPanel
+    fi
     if [[ "$setPanel" == "y" || "$setPanel" == "Y" ]]; then
         local webCertFile="/root/cert/${domain}/fullchain.pem"
         local webKeyFile="/root/cert/${domain}/privkey.pem"
@@ -810,12 +808,24 @@ prompt_and_setup_ssl() {
     echo -e "${green}4.${plain} Skip SSL (advanced — behind reverse proxy / SSH tunnel only)"
     echo -e "${blue}Note:${plain} Options 1 & 2 require port 80 open. Option 3 requires manual paths."
     echo -e "${blue}Note:${plain} Option 4 serves the panel over plain HTTP — only safe behind nginx/Caddy or an SSH tunnel."
-    read -rp "Choose an option (default 2 for IP): " ssl_choice
-    ssl_choice="${ssl_choice// /}" # Trim whitespace
+    if [[ "$NONINTERACTIVE" == "1" ]]; then
+        case "${XUI_SSL_MODE:-none}" in
+            domain) ssl_choice="1" ;;
+            ip) ssl_choice="2" ;;
+            none | "") ssl_choice="4" ;;
+            *)
+                echo -e "${yellow}Unknown XUI_SSL_MODE='${XUI_SSL_MODE}', defaulting to none (HTTP).${plain}"
+                ssl_choice="4"
+                ;;
+        esac
+    else
+        read -rp "Choose an option (default 2 for IP): " ssl_choice
+        ssl_choice="${ssl_choice// /}" # Trim whitespace
 
-    # Default to 2 (IP cert) if input is empty or invalid (not 1, 3 or 4)
-    if [[ "$ssl_choice" != "1" && "$ssl_choice" != "3" && "$ssl_choice" != "4" ]]; then
-        ssl_choice="2"
+        # Default to 2 (IP cert) if input is empty or invalid (not 1, 3 or 4)
+        if [[ "$ssl_choice" != "1" && "$ssl_choice" != "3" && "$ssl_choice" != "4" ]]; then
+            ssl_choice="2"
+        fi
     fi
 
     case "$ssl_choice" in
@@ -846,7 +856,7 @@ prompt_and_setup_ssl() {
 
             # Ask for optional IPv6
             local ipv6_addr=""
-            read -rp "Do you have an IPv6 address to include? (leave empty to skip): " ipv6_addr
+            prompt_or_default ipv6_addr "Do you have an IPv6 address to include? (leave empty to skip): " "" XUI_SSL_IPV6
             ipv6_addr="${ipv6_addr// /}" # Trim whitespace
 
             # Stop panel if running (port 80 needed)
@@ -938,7 +948,12 @@ prompt_and_setup_ssl() {
             SSL_HOST="${server_ip}"
 
             local bind_local=""
-            read -rp "Bind the panel to 127.0.0.1 only? (recommended — forces SSH tunnel / reverse-proxy access) [y/N]: " bind_local
+            if [[ "$NONINTERACTIVE" == "1" ]]; then
+                # Cloud images must stay reachable on their public interface.
+                bind_local="n"
+            else
+                read -rp "Bind the panel to 127.0.0.1 only? (recommended — forces SSH tunnel / reverse-proxy access) [y/N]: " bind_local
+            fi
             if [[ "$bind_local" == "y" || "$bind_local" == "Y" ]]; then
                 ${xui_folder}/x-ui setting -listenIP "127.0.0.1" > /dev/null 2>&1
                 SSL_HOST="127.0.0.1"
@@ -993,22 +1008,29 @@ config_after_install() {
     done
 
     if [[ -z "$server_ip" ]]; then
-        echo -e "${yellow}Could not auto-detect server IP from any provider.${plain}"
-        while [[ -z "$server_ip" ]]; do
-            read -rp "Please enter your server's public IPv4 address: " server_ip
-            server_ip="${server_ip// /}"
-            if [[ ! "$server_ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-                echo -e "${red}Invalid IPv4 address. Please try again.${plain}"
-                server_ip=""
-            fi
-        done
+        if [[ "$NONINTERACTIVE" == "1" ]]; then
+            # Panel binds 0.0.0.0 regardless; the IP is only used to compose the
+            # displayed access URL. Fall back to XUI_SERVER_IP or leave blank.
+            server_ip="${XUI_SERVER_IP:-}"
+        else
+            echo -e "${yellow}Could not auto-detect server IP from any provider.${plain}"
+            while [[ -z "$server_ip" ]]; do
+                read -rp "Please enter your server's public IPv4 address: " server_ip
+                server_ip="${server_ip// /}"
+                if [[ ! "$server_ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+                    echo -e "${red}Invalid IPv4 address. Please try again.${plain}"
+                    server_ip=""
+                fi
+            done
+        fi
     fi
 
     if [[ ${#existing_webBasePath} -lt 4 ]]; then
         if [[ "$existing_hasDefaultCredential" == "true" ]]; then
-            local config_webBasePath=$(gen_random_string 18)
-            local config_username=$(gen_random_string 10)
-            local config_password=$(gen_random_string 10)
+            local config_webBasePath="${XUI_WEB_BASE_PATH:-$(gen_random_string 18)}"
+            local config_username="${XUI_USERNAME:-$(gen_random_string 10)}"
+            local config_password="${XUI_PASSWORD:-$(gen_random_string 10)}"
+            local config_port=""
 
             local db_label="SQLite (/etc/x-ui/x-ui.db)"
             echo ""
@@ -1017,8 +1039,16 @@ config_after_install() {
             echo -e "${green}═══════════════════════════════════════════${plain}"
             echo -e "  1) SQLite     (default — recommended for < 500 clients)"
             echo -e "  2) PostgreSQL (recommended for high client counts / many nodes)"
-            read -rp "Choose [1]: " db_choice
-            db_choice="${db_choice:-1}"
+            if [[ "$NONINTERACTIVE" == "1" ]]; then
+                if [[ "${XUI_DB_TYPE:-sqlite}" == "postgres" ]]; then
+                    db_choice="2"
+                else
+                    db_choice="1"
+                fi
+            else
+                read -rp "Choose [1]: " db_choice
+                db_choice="${db_choice:-1}"
+            fi
             if [[ "$db_choice" == "2" ]]; then
                 local xui_env_file
                 case "${release}" in
@@ -1037,6 +1067,30 @@ config_after_install() {
                 local pg_mode=""
                 local pg_local_installed=0
                 while [[ -z "$xui_dsn" ]]; do
+                    if [[ "$NONINTERACTIVE" == "1" ]]; then
+                        if [[ -n "${XUI_DB_DSN:-}" ]]; then
+                            xui_dsn="${XUI_DB_DSN}"
+                            db_label="PostgreSQL (external)"
+                            break
+                        fi
+                        echo -e "${yellow}Installing PostgreSQL locally (non-interactive)...${plain}"
+                        local pg_cred_file
+                        pg_cred_file=$(mktemp 2> /dev/null) || pg_cred_file=$(mktemp -t x-ui-pg-creds.XXXXXXXX)
+                        if [[ -n "${pg_cred_file}" ]] && xui_dsn=$(PG_CRED_FILE="${pg_cred_file}" install_postgres_local); then
+                            pg_local_installed=1
+                            if [[ -r "${pg_cred_file}" ]]; then
+                                # shellcheck disable=SC1090
+                                source "${pg_cred_file}"
+                            fi
+                            rm -f "${pg_cred_file}"
+                            db_label="PostgreSQL (${PG_USER}@${PG_HOST}:${PG_PORT}/${PG_DB})"
+                            break
+                        fi
+                        rm -f "${pg_cred_file}"
+                        echo -e "${red}PostgreSQL installation failed in non-interactive mode; aborting.${plain}"
+                        echo -e "${yellow}Set XUI_DB_DSN to use an existing server, or XUI_DB_TYPE=sqlite.${plain}"
+                        exit 1
+                    fi
                     echo ""
                     echo -e "  1) Install PostgreSQL locally and create a dedicated user/db (recommended)"
                     echo -e "  2) Use an existing PostgreSQL server (enter DSN)"
@@ -1106,13 +1160,23 @@ EOF
                 fi
             fi
 
-            read -rp "Would you like to customize the Panel Port settings? (If not, a random port will be applied) [y/n]: " config_confirm
-            if [[ "${config_confirm}" == "y" || "${config_confirm}" == "Y" ]]; then
-                read -rp "Please set up the panel port: " config_port
-                echo -e "${yellow}Your Panel Port is: ${config_port}${plain}"
+            if [[ "$NONINTERACTIVE" == "1" ]]; then
+                if [[ -n "${XUI_PANEL_PORT:-}" ]]; then
+                    config_port="${XUI_PANEL_PORT}"
+                    echo -e "${yellow}Your Panel Port is: ${config_port}${plain}"
+                else
+                    config_port=$(shuf -i 1024-62000 -n 1)
+                    echo -e "${yellow}Generated random port: ${config_port}${plain}"
+                fi
             else
-                local config_port=$(shuf -i 1024-62000 -n 1)
-                echo -e "${yellow}Generated random port: ${config_port}${plain}"
+                read -rp "Would you like to customize the Panel Port settings? (If not, a random port will be applied) [y/n]: " config_confirm
+                if [[ "${config_confirm}" == "y" || "${config_confirm}" == "Y" ]]; then
+                    read -rp "Please set up the panel port: " config_port
+                    echo -e "${yellow}Your Panel Port is: ${config_port}${plain}"
+                else
+                    config_port=$(shuf -i 1024-62000 -n 1)
+                    echo -e "${yellow}Generated random port: ${config_port}${plain}"
+                fi
             fi
 
             ${xui_folder}/x-ui setting -username "${config_username}" -password "${config_password}" -port "${config_port}" -webBasePath "${config_webBasePath}"
@@ -1179,6 +1243,14 @@ EOF
                 echo -e "${yellow}⚠ Save the password — it is not stored anywhere else in plain text.${plain}"
                 unset PG_USER PG_PASS PG_HOST PG_PORT PG_DB
             fi
+
+            # Persist a machine-parseable credentials file for cloud-init / MOTD.
+            : "${SSL_SCHEME:=https}"
+            : "${SSL_HOST:=${server_ip}}"
+            local db_type_out="sqlite"
+            [[ "$db_choice" == "2" ]] && db_type_out="postgres"
+            write_install_result "${config_username}" "${config_password}" "${config_port}" \
+                "${config_webBasePath}" "${SSL_SCHEME}" "${SSL_HOST}" "${config_apiToken}" "${db_type_out}"
         else
             local config_webBasePath=$(gen_random_string 18)
             echo -e "${yellow}WebBasePath is missing or too short. Generating a new one...${plain}"
@@ -1202,8 +1274,8 @@ EOF
         fi
     else
         if [[ "$existing_hasDefaultCredential" == "true" ]]; then
-            local config_username=$(gen_random_string 10)
-            local config_password=$(gen_random_string 10)
+            local config_username="${XUI_USERNAME:-$(gen_random_string 10)}"
+            local config_password="${XUI_PASSWORD:-$(gen_random_string 10)}"
 
             echo -e "${yellow}Default credentials detected. Security update required...${plain}"
             ${xui_folder}/x-ui setting -username "${config_username}" -password "${config_password}"
@@ -1212,6 +1284,14 @@ EOF
             echo -e "${green}Username: ${config_username}${plain}"
             echo -e "${green}Password: ${config_password}${plain}"
             echo -e "###############################################"
+
+            # Persist a machine-parseable credentials file for cloud-init / MOTD.
+            local config_apiToken
+            config_apiToken=$(${xui_folder}/x-ui setting -getApiToken true | grep -Eo 'apiToken: .+' | awk '{print $2}')
+            : "${SSL_SCHEME:=https}"
+            : "${SSL_HOST:=${server_ip}}"
+            write_install_result "${config_username}" "${config_password}" "${existing_port}" \
+                "${existing_webBasePath}" "${SSL_SCHEME}" "${SSL_HOST}" "${config_apiToken}" "${XUI_DB_TYPE:-sqlite}"
         else
             echo -e "${green}Username, Password, and WebBasePath are properly set.${plain}"
         fi
@@ -1236,63 +1316,78 @@ EOF
     ${xui_folder}/x-ui migrate
 }
 
+# setup_fail2ban auto-installs and configures fail2ban for the IP Limit feature
+# by invoking the freshly installed x-ui CLI. IP Limit is load-bearing on
+# fail2ban (without it the panel disables the limitIp field and zeroes existing
+# limits), so a fresh install should make it work out of the box, just like the
+# Docker image already does. Non-fatal by design: a fail2ban failure must never
+# abort the panel install.
+setup_fail2ban() {
+    if [[ -n "${XUI_ENABLE_FAIL2BAN+x}" && "${XUI_ENABLE_FAIL2BAN}" != "true" ]]; then
+        echo -e "${yellow}XUI_ENABLE_FAIL2BAN=${XUI_ENABLE_FAIL2BAN}, skipping Fail2ban auto-setup.${plain}"
+        return 0
+    fi
+
+    if [[ ! -x /usr/bin/x-ui ]]; then
+        echo -e "${yellow}x-ui CLI not found; skipping Fail2ban auto-setup.${plain}"
+        return 0
+    fi
+
+    echo -e "${green}Setting up Fail2ban for the IP Limit feature...${plain}"
+    if /usr/bin/x-ui setup-fail2ban; then
+        echo -e "${green}Fail2ban setup complete.${plain}"
+    else
+        echo -e "${yellow}Fail2ban setup did not finish; IP Limit stays disabled until you run 'x-ui' and open the IP Limit menu. Continuing.${plain}"
+    fi
+    return 0
+}
+
 install_x-ui() {
     cd ${xui_folder%/x-ui}/
 
-    # Download resources. Authenticated GitHub API access is used for
-    # private repositories; public curl URLs remain available as a fallback.
-    local target_arch asset_name archive_path checksum_name checksum_path
-    target_arch="$(arch)"
-    asset_name="x-ui-linux-${target_arch}.tar.gz"
-    archive_path="${xui_folder}-linux-${target_arch}.tar.gz"
-    checksum_name="${asset_name}.sha256"
-    checksum_path="${archive_path}.sha256"
-
-    if [[ $# -eq 0 || -z "${1:-}" ]]; then
-        if ! tag_version="$(heimdall_latest_release_tag)" || [[ -z "$tag_version" ]]; then
-            heimdall_private_access_error
-            echo -e "${red}Failed to fetch the latest Heimdall release.${plain}"
+    # Download resources
+    if [ $# == 0 ]; then
+        tag_version=$(curl -Ls --retry 5 --retry-delay 3 --connect-timeout 15 --max-time 60 "https://api.github.com/repos/sh7CBAC/Heimdall/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
+        if [[ ! -n "$tag_version" ]]; then
+            echo -e "${red}Failed to fetch x-ui version, it may be due to GitHub API restrictions, please try it later${plain}"
             exit 1
         fi
-        echo -e "Got Heimdall latest version: ${tag_version}, beginning the installation..."
+        echo -e "Got x-ui latest version: ${tag_version}, beginning the installation..."
+        curl -fLR --retry 5 --retry-delay 3 --connect-timeout 15 --max-time 300 -o ${xui_folder}-linux-$(arch).tar.gz https://github.com/sh7CBAC/Heimdall/releases/download/${tag_version}/x-ui-linux-$(arch).tar.gz
+        if [[ $? -ne 0 ]]; then
+            echo -e "${red}Downloading x-ui failed, please be sure that your server can access GitHub ${plain}"
+            exit 1
+        fi
     else
-        tag_version="$1"
-        tag_version_numeric="${tag_version#v}"
-        min_version="1.0.0"
+        tag_version=$1
+        # The rolling dev channel ships under a fixed, non-semver tag that is
+        # force-moved to the latest main commit on every push. Accept `dev` as a
+        # convenient alias and skip the numeric floor check for it.
+        if [[ "$tag_version" == "dev" || "$tag_version" == "dev-latest" ]]; then
+            tag_version="dev-latest"
+            echo -e "${yellow}Installing the rolling dev build (tag: dev-latest). This is a per-commit pre-release, not a stable version.${plain}"
+        else
+            tag_version_numeric=${tag_version#v}
+            min_version="2.3.5"
 
-        if [[ "$(printf '%s\n' "$min_version" "$tag_version_numeric" | sort -V | head -n1)" != "$min_version" ]]; then
-            echo -e "${red}Please use Heimdall ${min_version} or newer.${plain}"
-            exit 1
+            if [[ "$(printf '%s\n' "$min_version" "$tag_version_numeric" | sort -V | head -n1)" != "$min_version" ]]; then
+                echo -e "${red}Please use a newer version (at least v2.3.5). Exiting installation.${plain}"
+                exit 1
+            fi
         fi
+
+        url="https://github.com/sh7CBAC/Heimdall/releases/download/${tag_version}/x-ui-linux-$(arch).tar.gz"
         echo -e "Beginning to install Heimdall ${tag_version}"
-    fi
-
-    if ! heimdall_download_release_asset "$tag_version" "$asset_name" "$archive_path"; then
-        heimdall_private_access_error
-        echo -e "${red}Failed to download ${asset_name} from release ${tag_version}.${plain}"
-        exit 1
-    fi
-
-    if heimdall_download_release_asset "$tag_version" "$checksum_name" "$checksum_path"; then
-        if ! (cd "$(dirname "$archive_path")" && sha256sum -c "$(basename "$checksum_path")"); then
-            echo -e "${red}SHA256 verification failed for ${asset_name}.${plain}"
-            rm -f "$archive_path" "$checksum_path"
+        curl -fLR --retry 5 --retry-delay 3 --connect-timeout 15 --max-time 300 -o ${xui_folder}-linux-$(arch).tar.gz ${url}
+        if [[ $? -ne 0 ]]; then
+            echo -e "${red}Download x-ui ${tag_version} failed, please check if the version exists ${plain}"
             exit 1
         fi
-        rm -f "$checksum_path"
-    else
-        echo -e "${yellow}Checksum asset not found; continuing without SHA256 verification.${plain}"
     fi
-
-    if ! heimdall_download_repo_file "x-ui.sh" "/usr/bin/x-ui-temp"; then
-        heimdall_private_access_error
-        echo -e "${red}Failed to download x-ui.sh.${plain}"
+    curl -fLRo /usr/bin/x-ui-temp https://raw.githubusercontent.com/sh7CBAC/Heimdall/main/x-ui.sh
+    if [[ $? -ne 0 ]]; then
+        echo -e "${red}Failed to download x-ui.sh${plain}"
         exit 1
-    fi
-
-    if ! heimdall_download_repo_file "y-ui.sh" "/usr/bin/y-ui-temp"; then
-        rm -f /usr/bin/y-ui-temp
-        echo -e "${yellow}Warning: failed to download y-ui.sh from repository. Will try release asset fallback.${plain}"
     fi
 
     # Stop x-ui service and remove old resources
@@ -1318,10 +1413,26 @@ install_x-ui() {
 
     cd x-ui
     chmod +x x-ui
-    chmod +x x-ui.sh
-    if [ -f y-ui.sh ]; then
-        chmod +x y-ui.sh
+    # Install Y-UI helper scripts from the release package when present.
+    mkdir -p /usr/local/bin > /dev/null 2>&1
+
+    if [ -f "y-ui.sh" ]; then
+        chmod +x y-ui.sh > /dev/null 2>&1
+        cp -f y-ui.sh /usr/bin/y-ui > /dev/null 2>&1
+        chmod +x /usr/bin/y-ui > /dev/null 2>&1
+    else
+        echo -e "${yellow}Warning: y-ui.sh was not found in the package.${plain}"
     fi
+
+    if [ -f "y-ui-migration-center.py" ]; then
+        chmod +x y-ui-migration-center.py > /dev/null 2>&1
+        cp -f y-ui-migration-center.py /usr/local/bin/y-ui-migration-center > /dev/null 2>&1
+        chmod +x /usr/local/bin/y-ui-migration-center > /dev/null 2>&1
+    else
+        echo -e "${yellow}Warning: y-ui-migration-center.py was not found in the package.${plain}"
+    fi
+
+    chmod +x x-ui.sh
 
     # Check the system's architecture and rename the file accordingly
     if [[ $(arch) == "armv5" || $(arch) == "armv6" || $(arch) == "armv7" ]]; then
@@ -1342,16 +1453,6 @@ install_x-ui() {
     # Update x-ui cli and se set permission
     mv -f /usr/bin/x-ui-temp /usr/bin/x-ui
     chmod +x /usr/bin/x-ui
-
-    if [ -f /usr/bin/y-ui-temp ]; then
-        mv -f /usr/bin/y-ui-temp /usr/bin/y-ui
-        chmod +x /usr/bin/y-ui
-    elif [ -f y-ui.sh ]; then
-        cp -f y-ui.sh /usr/bin/y-ui
-        chmod +x /usr/bin/y-ui
-    else
-        echo -e "${yellow}Warning: y-ui.sh was not found. Hidden Infrastructure CLI will not be installed.${plain}"
-    fi
     mkdir -p /var/log/x-ui
     config_after_install
 
@@ -1370,9 +1471,9 @@ install_x-ui() {
     fi
 
     if [[ $release == "alpine" ]]; then
-        if ! heimdall_download_repo_file "x-ui.rc" "/etc/init.d/x-ui"; then
-            heimdall_private_access_error
-            echo -e "${red}Failed to download x-ui.rc.${plain}"
+        curl -fLRo /etc/init.d/x-ui https://raw.githubusercontent.com/sh7CBAC/Heimdall/main/x-ui.rc
+        if [[ $? -ne 0 ]]; then
+            echo -e "${red}Failed to download x-ui.rc${plain}"
             exit 1
         fi
         chmod +x /etc/init.d/x-ui
@@ -1427,13 +1528,13 @@ install_x-ui() {
             echo -e "${yellow}Service files not found in tar.gz, downloading from GitHub...${plain}"
             case "${release}" in
                 ubuntu | debian | armbian)
-                    heimdall_download_repo_file "x-ui.service.debian" "${xui_service}/x-ui.service"
+                    curl -fLRo ${xui_service}/x-ui.service https://raw.githubusercontent.com/sh7CBAC/Heimdall/main/x-ui.service.debian > /dev/null 2>&1
                     ;;
                 arch | manjaro | parch)
-                    heimdall_download_repo_file "x-ui.service.arch" "${xui_service}/x-ui.service"
+                    curl -fLRo ${xui_service}/x-ui.service https://raw.githubusercontent.com/sh7CBAC/Heimdall/main/x-ui.service.arch > /dev/null 2>&1
                     ;;
                 *)
-                    heimdall_download_repo_file "x-ui.service.rhel" "${xui_service}/x-ui.service"
+                    curl -fLRo ${xui_service}/x-ui.service https://raw.githubusercontent.com/sh7CBAC/Heimdall/main/x-ui.service.rhel > /dev/null 2>&1
                     ;;
             esac
 
@@ -1456,6 +1557,10 @@ install_x-ui() {
             exit 1
         fi
     fi
+
+    # IP Limit relies on fail2ban; install + configure it now so the feature
+    # works out of the box (no-op when XUI_ENABLE_FAIL2BAN=false). Never fatal.
+    setup_fail2ban
 
     echo -e "${green}x-ui ${tag_version}${plain} installation finished, it is running now..."
     echo -e ""
@@ -1481,70 +1586,4 @@ install_x-ui() {
 
 echo -e "${green}Running...${plain}"
 install_base
-install_x-ui "$@"
-
-# ---- custom visibility config ----
-
-case "${release}" in
-    ubuntu | debian | armbian)
-        xui_env_file="/etc/default/x-ui"
-        ;;
-    arch | manjaro | parch | alpine)
-        xui_env_file="/etc/conf.d/x-ui"
-        ;;
-    *)
-        xui_env_file="/etc/sysconfig/x-ui"
-        ;;
-esac
-
-mkdir -p "$(dirname "${xui_env_file}")"
-touch "${xui_env_file}"
-
-set_xui_env_default() {
-    local key="$1"
-    local value="$2"
-
-    if ! grep -q "^${key}=" "${xui_env_file}"; then
-        printf '%s=%s\n' "${key}" "${value}" >> "${xui_env_file}"
-    fi
-}
-
-# Hidden-item rules:
-#
-# 1) Hide one exact value:
-#    XUI_HIDDEN_INBOUND_REMARKS=inbound-1
-#
-# 2) Hide multiple exact values (comma-separated):
-#    XUI_HIDDEN_OUTBOUND_TAGS=outbound-1,outbound-2,outbound-3
-#
-# 3) Hide every value starting with a prefix (put * at the end):
-#    XUI_HIDDEN_CLIENT_EMAILS=system-*,tunnel-*
-#
-# 4) Combine exact and prefix rules:
-#    XUI_HIDDEN_CLIENT_EMAILS=admin,system-*,tunnel-*
-#
-# Spaces around comma-separated values are trimmed, but values without spaces
-# are recommended. Leave a value empty to disable hiding for that item type.
-# Suffix rules such as *-internal and contains rules such as *internal* are not
-# supported by the current implementation.
-
-set_xui_env_default "XUI_HIDDEN_INBOUND_REMARKS" ""
-set_xui_env_default "XUI_HIDDEN_OUTBOUND_TAGS" ""
-set_xui_env_default "XUI_HIDDEN_BALANCER_TAGS" ""
-set_xui_env_default "XUI_HIDDEN_CLIENT_EMAILS" ""
-set_xui_env_default "XRAY_VMESS_AEAD_FORCED" "false"
-
-if [[ "${release}" != "alpine" ]] && [[ -f "${xui_service}/x-ui.service" ]]; then
-    if ! grep -Fqx "EnvironmentFile=-${xui_env_file}" "${xui_service}/x-ui.service"; then
-        sed -i \
-            "/^\[Service\]/a EnvironmentFile=-${xui_env_file}" \
-            "${xui_service}/x-ui.service"
-    fi
-
-    systemctl daemon-reload
-    systemctl restart x-ui
-elif [[ "${release}" == "alpine" ]]; then
-    rc-service x-ui restart
-fi
-
-# ---- end custom visibility config ----
+install_x-ui $1

@@ -8,6 +8,71 @@ yellow='\033[0;33m'
 blue='\033[0;34m'
 plain='\033[0m'
 
+### HEIMDALL UI HELPERS ###
+ui_rule() {
+    local width="${YUI_BOX_WIDTH:-44}"
+    local line=""
+    local i
+    for ((i=0; i<width; i++)); do
+        line="${line}─"
+    done
+    printf '[38;5;141m%s[0m
+' "$line"
+}
+
+ui_box_header() {
+    local title="$1"
+    local width="${YUI_BOX_WIDTH:-44}"
+    local title_len="${#title}"
+
+    if [ "$title_len" -gt "$width" ]; then
+        width=$((title_len + 2))
+    fi
+
+    local left=$(( (width - title_len) / 2 ))
+    local right=$(( width - title_len - left ))
+    local line=""
+    local i
+
+    for ((i=0; i<width; i++)); do
+        line="${line}─"
+    done
+
+    printf '
+'
+    printf '[38;5;141m╭%s╮[0m
+' "$line"
+    printf '[38;5;141m│%*s%s%*s│[0m
+' "$left" "" "$title" "$right" ""
+    printf '[38;5;141m╰%s╯[0m
+' "$line"
+}
+
+ui_title() {
+    local title="$1"
+    printf '
+'
+    printf '[38;5;141m%s[0m
+' "$title"
+    printf '[38;5;141m──────────────────────────────────────────────[0m
+'
+}
+
+ui_item() {
+    local num="$1"
+    local label="$2"
+    local color="117"
+
+    if [ "$num" = "0" ]; then
+        color="203"
+    fi
+
+    printf '  [38;5;%sm%s)[0m %s
+' "$color" "$num" "$label"
+}
+### END HEIMDALL UI HELPERS ###
+
+
 clear_screen() {
     if [[ -t 1 ]]; then
         printf '\033[2J\033[3J\033[H'
@@ -24,7 +89,7 @@ error() {
 
 pause_screen() {
     echo
-    read -r -p "Press Enter to return..." _
+    true
 }
 
 if [[ "${EUID}" -ne 0 ]]; then
@@ -272,11 +337,13 @@ configure_hidden_target() {
         echo
         echo "Current value: ${current_value}"
         echo
-        echo "1. Replace the complete list"
-        echo "2. Add one or more values"
-        echo "3. Remove one or more values"
-        echo "4. Clear the list"
-        echo "0. Back"
+        ui_item 1 "Replace the complete list"
+        ui_item 2 "Add one or more values"
+        ui_item 3 "Remove one or more values"
+        ui_item 4 "Clear the list"
+        printf '
+'
+        ui_item 0 "Back"
         echo
         read -r -p "Choose an action [0-4]: " action
 
@@ -343,16 +410,18 @@ hidden_items_menu() {
 
     while true; do
         clear_screen
-        echo -e "${blue}Hidden Infrastructure Management${plain}"
+        ui_title "Hidden Infrastructure"
         echo
-        echo "1. Manage inbound remarks"
-        echo "2. Manage outbound tags"
-        echo "3. Manage balancer tags"
-        echo "4. Manage client emails"
-        echo "5. Show current hidden configuration"
-        echo "0. Back to main menu"
+        ui_item 1 "Manage inbound remarks"
+        ui_item 2 "Manage outbound tags"
+        ui_item 3 "Manage balancer tags"
+        ui_item 4 "Manage client emails"
+        ui_item 5 "Show current hidden configuration"
+        printf '
+'
+        ui_item 0 "Back to main menu"
         echo
-        read -r -p "Choose an option [0-5]: " choice
+        ui_rule; read -r -p "$(printf '\033[1;38;5;141mChoose an option [0-5]: \033[0m')" choice || return 0
 
         case "${choice}" in
             1)
@@ -395,12 +464,18 @@ main_menu() {
 
     while true; do
         clear_screen
-        echo -e "${blue}Y-UI Management Script${plain}"
-        echo
-        echo "1. Hidden Infrastructure Management"
-        echo "0. Exit"
-        echo
-        read -r -p "Choose an option [0-1]: " choice
+        printf '\n'
+        printf '\n'
+        ui_box_header "Y-UI Management Center"
+        printf '\n'
+        printf '  \033[38;5;117m1)\033[0m  Hidden Infrastructure\n'
+        printf '  \033[38;5;117m2)\033[0m  Migration Center\n'
+        printf '
+'
+        printf '  \033[38;5;203m0)\033[0m  Exit\n'
+        printf '\n'
+        printf '\033[38;5;141m──────────────────────────────────────────────\033[0m\n'
+        read -r -p "$(printf '\033[1;38;5;141mChoose an option [0-2]: \033[0m')" choice || exit 0
 
         case "${choice}" in
             1)

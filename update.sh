@@ -854,6 +854,33 @@ config_after_update() {
     fi
 }
 
+# setup_fail2ban auto-installs and configures fail2ban for the IP Limit feature
+# by invoking the freshly downloaded x-ui CLI. IP Limit is load-bearing on
+# fail2ban (without it the panel disables the limitIp field and zeroes existing
+# limits), so updating an older install should make it work without a manual
+# trip through the IP Limit menu. Non-fatal: a fail2ban failure must never abort
+# the update. XUI_ENABLE_FAIL2BAN is honored (load_xui_env exports it from the
+# persisted env file, so a deliberate opt-out survives updates).
+setup_fail2ban() {
+    if [[ -n "${XUI_ENABLE_FAIL2BAN+x}" && "${XUI_ENABLE_FAIL2BAN}" != "true" ]]; then
+        echo -e "${yellow}XUI_ENABLE_FAIL2BAN=${XUI_ENABLE_FAIL2BAN}, skipping Fail2ban auto-setup.${plain}"
+        return 0
+    fi
+
+    if [[ ! -x /usr/bin/x-ui ]]; then
+        echo -e "${yellow}x-ui CLI not found; skipping Fail2ban auto-setup.${plain}"
+        return 0
+    fi
+
+    echo -e "${green}Setting up Fail2ban for the IP Limit feature...${plain}"
+    if /usr/bin/x-ui setup-fail2ban; then
+        echo -e "${green}Fail2ban setup complete.${plain}"
+    else
+        echo -e "${yellow}Fail2ban setup did not finish; IP Limit stays disabled until you run 'x-ui' and open the IP Limit menu. Continuing.${plain}"
+    fi
+    return 0
+}
+
 update_x-ui() {
     cd ${xui_folder%/x-ui}/
 
@@ -868,22 +895,21 @@ update_x-ui() {
 
     echo -e "${green}Downloading new x-ui version...${plain}"
 
-    tag_version=$(${curl_bin} -Ls "https://api.github.com/repos/sh7CBAC/Heimdall/releases/latest" 2> /dev/null | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
-    if [[ ! -n "$tag_version" ]]; then
-        echo -e "${yellow}Trying to fetch version with IPv4...${plain}"
-        tag_version=$(${curl_bin} -4 -Ls "https://api.github.com/repos/sh7CBAC/Heimdall/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
+    # XUI_UPDATE_TAG lets the panel target a specific Heimdall release tag
+    # such as dev-latest or a stable v* tag. Empty keeps latest stable.
+    if [[ -n "${XUI_UPDATE_TAG}" ]]; then
+        tag_version="${XUI_UPDATE_TAG}"
+        echo -e "${green}Using update tag: ${tag_version}${plain}"
+    else
+        tag_version=$(${curl_bin} -Ls "https://api.github.com/repos/sh7CBAC/Heimdall/releases/latest" 2> /dev/null | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
         if [[ ! -n "$tag_version" ]]; then
-            _fail "ERROR: Failed to fetch x-ui version, it may be due to GitHub API restrictions, please try it later"
+            _fail "ERROR: Failed to fetch Heimdall version, it may be due to GitHub API restrictions, please try it later"
         fi
     fi
-    echo -e "Got Heimdall latest version: ${tag_version}, beginning the installation..."
+    echo -e "Got x-ui latest version: ${tag_version}, beginning the installation..."
     ${curl_bin} -fLRo ${xui_folder}-linux-$(arch).tar.gz https://github.com/sh7CBAC/Heimdall/releases/download/${tag_version}/x-ui-linux-$(arch).tar.gz 2> /dev/null
     if [[ $? -ne 0 ]]; then
-        echo -e "${yellow}Trying to fetch version with IPv4...${plain}"
-        ${curl_bin} -4fLRo ${xui_folder}-linux-$(arch).tar.gz https://github.com/sh7CBAC/Heimdall/releases/download/${tag_version}/x-ui-linux-$(arch).tar.gz 2> /dev/null
-        if [[ $? -ne 0 ]]; then
-            _fail "ERROR: Failed to download x-ui, please be sure that your server can access GitHub"
-        fi
+        _fail "ERROR: Failed to download x-ui, please be sure that your server can access GitHub"
     fi
 
     if [[ -e ${xui_folder}/ ]]; then
@@ -938,6 +964,25 @@ update_x-ui() {
     rm x-ui-linux-$(arch).tar.gz -f > /dev/null 2>&1
     cd x-ui > /dev/null 2>&1
     chmod +x x-ui > /dev/null 2>&1
+    # Install Y-UI helper scripts from the release package when present.
+    mkdir -p /usr/local/bin > /dev/null 2>&1
+
+    if [ -f "y-ui.sh" ]; then
+        chmod +x y-ui.sh > /dev/null 2>&1
+        cp -f y-ui.sh /usr/bin/y-ui > /dev/null 2>&1
+        chmod +x /usr/bin/y-ui > /dev/null 2>&1
+    else
+        echo -e "${yellow}Warning: y-ui.sh was not found in the package.${plain}"
+    fi
+
+    if [ -f "y-ui-migration-center.py" ]; then
+        chmod +x y-ui-migration-center.py > /dev/null 2>&1
+        cp -f y-ui-migration-center.py /usr/local/bin/y-ui-migration-center > /dev/null 2>&1
+        chmod +x /usr/local/bin/y-ui-migration-center > /dev/null 2>&1
+    else
+        echo -e "${yellow}Warning: y-ui-migration-center.py was not found in the package.${plain}"
+    fi
+
 
     # Check the system's architecture and rename the file accordingly
     if [[ $(arch) == "armv5" || $(arch) == "armv6" || $(arch) == "armv7" ]]; then
@@ -950,32 +995,11 @@ update_x-ui() {
     echo -e "${green}Downloading and installing x-ui.sh script...${plain}"
     ${curl_bin} -fLRo /usr/bin/x-ui https://raw.githubusercontent.com/sh7CBAC/Heimdall/main/x-ui.sh > /dev/null 2>&1
     if [[ $? -ne 0 ]]; then
-        echo -e "${yellow}Trying to fetch x-ui with IPv4...${plain}"
-        ${curl_bin} -4fLRo /usr/bin/x-ui https://raw.githubusercontent.com/sh7CBAC/Heimdall/main/x-ui.sh > /dev/null 2>&1
-        if [[ $? -ne 0 ]]; then
-            _fail "ERROR: Failed to download x-ui.sh script, please be sure that your server can access GitHub"
-        fi
+        _fail "ERROR: Failed to download x-ui.sh script, please be sure that your server can access GitHub"
     fi
 
     chmod +x ${xui_folder}/x-ui.sh > /dev/null 2>&1
-    if [ -f "${xui_folder}/y-ui.sh" ]; then
-        chmod +x ${xui_folder}/y-ui.sh > /dev/null 2>&1
-    fi
     chmod +x /usr/bin/x-ui > /dev/null 2>&1
-
-    echo -e "${green}Downloading and installing y-ui.sh script...${plain}"
-    if ! ${curl_bin} -fLRo /usr/bin/y-ui https://raw.githubusercontent.com/sh7CBAC/Heimdall/main/y-ui.sh > /dev/null 2>&1; then
-        if ! ${curl_bin} -4fLRo /usr/bin/y-ui https://raw.githubusercontent.com/sh7CBAC/Heimdall/main/y-ui.sh > /dev/null 2>&1; then
-            if [ -f "${xui_folder}/y-ui.sh" ]; then
-                cp -f "${xui_folder}/y-ui.sh" /usr/bin/y-ui > /dev/null 2>&1
-            else
-                echo -e "${yellow}Warning: failed to install y-ui.sh. Hidden Infrastructure CLI was not updated.${plain}"
-            fi
-        fi
-    fi
-    if [ -f /usr/bin/y-ui ]; then
-        chmod +x /usr/bin/y-ui > /dev/null 2>&1
-    fi
     mkdir -p /var/log/x-ui > /dev/null 2>&1
 
     echo -e "${green}Changing owner...${plain}"
@@ -990,10 +1014,7 @@ update_x-ui() {
         echo -e "${green}Downloading and installing startup unit x-ui.rc...${plain}"
         ${curl_bin} -fLRo /etc/init.d/x-ui https://raw.githubusercontent.com/sh7CBAC/Heimdall/main/x-ui.rc > /dev/null 2>&1
         if [[ $? -ne 0 ]]; then
-            ${curl_bin} -4fLRo /etc/init.d/x-ui https://raw.githubusercontent.com/sh7CBAC/Heimdall/main/x-ui.rc > /dev/null 2>&1
-            if [[ $? -ne 0 ]]; then
-                _fail "ERROR: Failed to download startup unit x-ui.rc, please be sure that your server can access GitHub"
-            fi
+            _fail "ERROR: Failed to download startup unit x-ui.rc, please be sure that your server can access GitHub"
         fi
         chmod +x /etc/init.d/x-ui > /dev/null 2>&1
         chown root:root /etc/init.d/x-ui > /dev/null 2>&1
@@ -1044,13 +1065,13 @@ update_x-ui() {
                 echo -e "${yellow}Service files not found in tar.gz, downloading from GitHub...${plain}"
                 case "${release}" in
                     ubuntu | debian | armbian)
-                        ${curl_bin} -4fLRo ${xui_service}/x-ui.service https://raw.githubusercontent.com/sh7CBAC/Heimdall/main/x-ui.service.debian > /dev/null 2>&1
+                        ${curl_bin} -fLRo ${xui_service}/x-ui.service https://raw.githubusercontent.com/sh7CBAC/Heimdall/main/x-ui.service.debian > /dev/null 2>&1
                         ;;
                     arch | manjaro | parch)
-                        ${curl_bin} -4fLRo ${xui_service}/x-ui.service https://raw.githubusercontent.com/sh7CBAC/Heimdall/main/x-ui.service.arch > /dev/null 2>&1
+                        ${curl_bin} -fLRo ${xui_service}/x-ui.service https://raw.githubusercontent.com/sh7CBAC/Heimdall/main/x-ui.service.arch > /dev/null 2>&1
                         ;;
                     *)
-                        ${curl_bin} -4fLRo ${xui_service}/x-ui.service https://raw.githubusercontent.com/sh7CBAC/Heimdall/main/x-ui.service.rhel > /dev/null 2>&1
+                        ${curl_bin} -fLRo ${xui_service}/x-ui.service https://raw.githubusercontent.com/sh7CBAC/Heimdall/main/x-ui.service.rhel > /dev/null 2>&1
                         ;;
                 esac
 
@@ -1069,7 +1090,20 @@ update_x-ui() {
 
     config_after_update
 
-    echo -e "${green}x-ui ${tag_version}${plain} update finished, it is running now..."
+    # IP Limit relies on fail2ban; install + configure it now so the feature
+    # works out of the box on update too (no-op when XUI_ENABLE_FAIL2BAN=false).
+    # Never fatal.
+    setup_fail2ban
+
+    
+    installed_xui_version=$(${xui_folder}/x-ui -v 2> /dev/null | tr -d '[:space:]' || true)
+    expected_xui_version="${tag_version#v}"
+    installed_xui_version="${installed_xui_version#v}"
+    if [[ -z "${installed_xui_version}" || "${installed_xui_version}" != "${expected_xui_version}" ]]; then
+        _fail "ERROR: Installed HEIMDALL version verification failed. expected=${expected_xui_version}, got=${installed_xui_version:-unknown}"
+    fi
+
+    echo -e "${green}x-ui ${tag_version}${plain} updating finished, it is running now..."
     echo -e ""
     echo -e "┌───────────────────────────────────────────────────────┐
 │  ${blue}x-ui control menu usages (subcommands):${plain}              │
