@@ -719,7 +719,9 @@
           "responseHeader": "响应头"
         }
       },
-      "sniffingDestOverride": "目标覆盖"
+      "sniffingDestOverride": "目标覆盖",
+      "usageMultiplier": "倍率",
+      "usageMultiplierHelp": "客户端流量计费倍率"
     },
     "clients": {
       "tabBasics": "基本",

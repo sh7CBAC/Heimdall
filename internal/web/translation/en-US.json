@@ -746,7 +746,9 @@
           "responseHeader": "Response Header"
         }
       },
-      "sniffingDestOverride": "Destination override"
+      "sniffingDestOverride": "Destination override",
+      "usageMultiplier": "Factor",
+      "usageMultiplierHelp": "Client usage billing factor"
     },
     "clients": {
       "tabBasics": "Basics",

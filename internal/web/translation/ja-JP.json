@@ -719,7 +719,9 @@
           "responseHeader": "レスポンスヘッダー"
         }
       },
-      "sniffingDestOverride": "宛先のオーバーライド"
+      "sniffingDestOverride": "宛先のオーバーライド",
+      "usageMultiplier": "倍率",
+      "usageMultiplierHelp": "クライアント使用量の計算倍率"
     },
     "clients": {
       "tabBasics": "基本",

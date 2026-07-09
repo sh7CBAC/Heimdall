@@ -719,7 +719,9 @@
           "responseHeader": "Header Respons"
         }
       },
-      "sniffingDestOverride": "Penggantian tujuan"
+      "sniffingDestOverride": "Penggantian tujuan",
+      "usageMultiplier": "Faktor",
+      "usageMultiplierHelp": "Faktor perhitungan trafik klien"
     },
     "clients": {
       "tabBasics": "Dasar",

@@ -719,7 +719,9 @@
           "responseHeader": "響應頭"
         }
       },
-      "sniffingDestOverride": "目標覆寫"
+      "sniffingDestOverride": "目標覆寫",
+      "usageMultiplier": "倍率",
+      "usageMultiplierHelp": "客戶端流量計費倍率"
     },
     "clients": {
       "tabBasics": "基本",

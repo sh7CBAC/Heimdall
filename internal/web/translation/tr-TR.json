@@ -719,7 +719,9 @@
           "responseHeader": "Yanıt Başlığı"
         }
       },
-      "sniffingDestOverride": "Hedef geçersiz kılma"
+      "sniffingDestOverride": "Hedef geçersiz kılma",
+      "usageMultiplier": "Çarpan",
+      "usageMultiplierHelp": "İstemci kullanım hesaplama çarpanı"
     },
     "clients": {
       "tabBasics": "Temel",

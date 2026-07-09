@@ -719,7 +719,9 @@
           "responseHeader": "Заголовок відповіді"
         }
       },
-      "sniffingDestOverride": "Перевизначення призначення"
+      "sniffingDestOverride": "Перевизначення призначення",
+      "usageMultiplier": "Множник",
+      "usageMultiplierHelp": "Множник обліку трафіку клієнта"
     },
     "clients": {
       "tabBasics": "Основні",

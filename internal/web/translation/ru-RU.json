@@ -719,7 +719,9 @@
           "responseHeader": "Заголовок ответа"
         }
       },
-      "sniffingDestOverride": "Переопределение назначения"
+      "sniffingDestOverride": "Переопределение назначения",
+      "usageMultiplier": "Множитель",
+      "usageMultiplierHelp": "Множитель учёта трафика клиента"
     },
     "clients": {
       "tabBasics": "Основные",

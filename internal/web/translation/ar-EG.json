@@ -719,7 +719,9 @@
           "responseHeader": "رأس الرد"
         }
       },
-      "sniffingDestOverride": "تجاوز الوجهة"
+      "sniffingDestOverride": "تجاوز الوجهة",
+      "usageMultiplier": "المعامل",
+      "usageMultiplierHelp": "معامل احتساب استهلاك العميل"
     },
     "clients": {
       "tabBasics": "أساسي",

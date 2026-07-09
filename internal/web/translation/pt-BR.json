@@ -719,7 +719,9 @@
           "responseHeader": "Cabeçalho da Resposta"
         }
       },
-      "sniffingDestOverride": "Substituição de destino"
+      "sniffingDestOverride": "Substituição de destino",
+      "usageMultiplier": "Fator",
+      "usageMultiplierHelp": "Fator de cálculo de uso do cliente"
     },
     "clients": {
       "tabBasics": "Básico",

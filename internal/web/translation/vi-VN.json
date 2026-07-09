@@ -719,7 +719,9 @@
           "responseHeader": "Header phản hồi"
         }
       },
-      "sniffingDestOverride": "Ghi đè đích"
+      "sniffingDestOverride": "Ghi đè đích",
+      "usageMultiplier": "Hệ số",
+      "usageMultiplierHelp": "Hệ số tính lưu lượng client"
     },
     "clients": {
       "tabBasics": "Cơ bản",

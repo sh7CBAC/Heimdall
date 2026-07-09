@@ -747,7 +747,9 @@
           "responseHeader": "سربرگ پاسخ"
         }
       },
-      "sniffingDestOverride": "بازنویسی مقصد"
+      "sniffingDestOverride": "بازنویسی مقصد",
+      "usageMultiplier": "ضریب",
+      "usageMultiplierHelp": "ضریب محاسبه مصرف کلاینت"
     },
     "clients": {
       "tabBasics": "پایه",
