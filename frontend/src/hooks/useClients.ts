@@ -295,7 +295,9 @@ export function useClients() {
       const validated = parseMsg(msg, OnlinesSchema, "clients/onlines");
       return Array.isArray(validated.obj) ? validated.obj : [];
     },
-    staleTime: Infinity,
+    staleTime: 5000,
+    refetchInterval: 5000,
+    refetchIntervalInBackground: false,
   });
 
   const clients = listQuery.data?.items ?? [];

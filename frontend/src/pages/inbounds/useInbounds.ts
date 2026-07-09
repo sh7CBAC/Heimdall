@@ -136,25 +136,33 @@ export function useInbounds() {
   const onlinesQuery = useQuery({
     queryKey: keys.clients.onlines(),
     queryFn: fetchOnlineClients,
-    staleTime: Infinity,
+    staleTime: 5000,
+    refetchInterval: 5000,
+    refetchIntervalInBackground: false,
   });
 
   const onlinesByGuidQuery = useQuery({
     queryKey: keys.clients.onlinesByGuid(),
     queryFn: fetchOnlineClientsByGuid,
-    staleTime: Infinity,
+    staleTime: 5000,
+    refetchInterval: 5000,
+    refetchIntervalInBackground: false,
   });
 
   const activeInboundsQuery = useQuery({
     queryKey: keys.clients.activeInbounds(),
     queryFn: fetchActiveInboundsByNode,
-    staleTime: Infinity,
+    staleTime: 5000,
+    refetchInterval: 5000,
+    refetchIntervalInBackground: false,
   });
 
   const lastOnlineQuery = useQuery({
     queryKey: keys.clients.lastOnline(),
     queryFn: fetchLastOnlineMap,
-    staleTime: Infinity,
+    staleTime: 5000,
+    refetchInterval: 5000,
+    refetchIntervalInBackground: false,
   });
 
   const defaultsQuery = useQuery({
