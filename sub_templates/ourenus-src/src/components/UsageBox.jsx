@@ -70,9 +70,9 @@ const UsageBox = ({ type, value, total, remaining, connectionLimit }) => {
 
   const remainingParsed = parseValue(remaining);
   const totalParsed = parseValue(total || "");
-    const remainingIsInfinity = remainingParsed.text === t("infinity");
+  const remainingIsInfinity = remainingParsed.text === t("infinity");
   const totalIsInfinity = totalParsed.text === t("infinity");
-const connectionDisplay = getConnectionLimitDisplay();
+  const connectionDisplay = getConnectionLimitDisplay();
 
   return (
     <BoxS>
@@ -112,8 +112,8 @@ const connectionDisplay = getConnectionLimitDisplay();
           }}
         >
           {remainingIsInfinity
-              ? remainingParsed.text
-              : remainingParsed.number}
+            ? remainingParsed.text
+            : remainingParsed.number}
         </Typography>
         <Typography
           variant="h6"
@@ -204,8 +204,8 @@ const connectionDisplay = getConnectionLimitDisplay();
           </Typography>
           <Typography variant="h6" component="div">
             {totalIsInfinity
-                ? totalParsed.text
-                : totalParsed.number}
+              ? totalParsed.text
+              : totalParsed.number}
           </Typography>
           <Typography
             variant="h6"
