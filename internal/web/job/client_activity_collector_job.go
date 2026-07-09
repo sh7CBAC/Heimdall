@@ -550,6 +550,34 @@ func (c *ClientActivityCollector) persist(
 		clientsByID[client.Id] = client
 	}
 
+	var statEmailRows []struct {
+		ClientID  int    `gorm:"column:client_id"`
+		StatEmail string `gorm:"column:stat_email"`
+	}
+	if err := db.
+		Table("client_inbound_traffics").
+		Select("client_id, stat_email").
+		Where("client_id IN ? AND stat_email <> ''", clientIDs).
+		Find(&statEmailRows).
+		Error; err != nil {
+		return err
+	}
+
+	statEmailsByClient := make(
+		map[int]map[string]struct{},
+		len(statEmailRows),
+	)
+	for _, row := range statEmailRows {
+		statEmail := strings.TrimSpace(row.StatEmail)
+		if statEmail == "" {
+			continue
+		}
+		if statEmailsByClient[row.ClientID] == nil {
+			statEmailsByClient[row.ClientID] = make(map[string]struct{})
+		}
+		statEmailsByClient[row.ClientID][statEmail] = struct{}{}
+	}
+
 	now := time.Now().UnixMilli()
 
 	rows := make(
@@ -566,11 +594,18 @@ func (c *ClientActivityCollector) persist(
 		client, clientFound :=
 			clientsByID[event.ClientID]
 
+		emailMatches := client.Email == event.Email
+		if !emailMatches {
+			if statEmails, ok := statEmailsByClient[event.ClientID]; ok {
+				_, emailMatches = statEmails[event.Email]
+			}
+		}
+
 		if !settingFound ||
 			!clientFound ||
 			!setting.Enabled ||
 			!client.Enable ||
-			client.Email != event.Email ||
+			!emailMatches ||
 			setting.Generation != event.Generation ||
 			setting.DataEpoch != event.DataEpoch {
 			continue
