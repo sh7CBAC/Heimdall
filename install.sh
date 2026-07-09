@@ -1413,6 +1413,25 @@ install_x-ui() {
 
     cd x-ui
     chmod +x x-ui
+    # Install Y-UI helper scripts from the release package when present.
+    mkdir -p /usr/local/bin > /dev/null 2>&1
+
+    if [ -f "y-ui.sh" ]; then
+        chmod +x y-ui.sh > /dev/null 2>&1
+        cp -f y-ui.sh /usr/bin/y-ui > /dev/null 2>&1
+        chmod +x /usr/bin/y-ui > /dev/null 2>&1
+    else
+        echo -e "${yellow}Warning: y-ui.sh was not found in the package.${plain}"
+    fi
+
+    if [ -f "y-ui-migration-center.py" ]; then
+        chmod +x y-ui-migration-center.py > /dev/null 2>&1
+        cp -f y-ui-migration-center.py /usr/local/bin/y-ui-migration-center > /dev/null 2>&1
+        chmod +x /usr/local/bin/y-ui-migration-center > /dev/null 2>&1
+    else
+        echo -e "${yellow}Warning: y-ui-migration-center.py was not found in the package.${plain}"
+    fi
+
     chmod +x x-ui.sh
 
     # Check the system's architecture and rename the file accordingly

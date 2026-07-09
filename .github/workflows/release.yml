@@ -116,6 +116,9 @@ jobs:
           cp x-ui.service.arch x-ui/
           cp x-ui.service.rhel x-ui/
           cp x-ui.sh x-ui/
+          cp y-ui.sh x-ui/
+          cp y-ui-migration-center.py x-ui/
+          chmod +x x-ui/y-ui.sh x-ui/y-ui-migration-center.py
           mv x-ui/xui-release x-ui/x-ui
           mkdir x-ui/bin
           cd x-ui/bin

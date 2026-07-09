@@ -964,6 +964,25 @@ update_x-ui() {
     rm x-ui-linux-$(arch).tar.gz -f > /dev/null 2>&1
     cd x-ui > /dev/null 2>&1
     chmod +x x-ui > /dev/null 2>&1
+    # Install Y-UI helper scripts from the release package when present.
+    mkdir -p /usr/local/bin > /dev/null 2>&1
+
+    if [ -f "y-ui.sh" ]; then
+        chmod +x y-ui.sh > /dev/null 2>&1
+        cp -f y-ui.sh /usr/bin/y-ui > /dev/null 2>&1
+        chmod +x /usr/bin/y-ui > /dev/null 2>&1
+    else
+        echo -e "${yellow}Warning: y-ui.sh was not found in the package.${plain}"
+    fi
+
+    if [ -f "y-ui-migration-center.py" ]; then
+        chmod +x y-ui-migration-center.py > /dev/null 2>&1
+        cp -f y-ui-migration-center.py /usr/local/bin/y-ui-migration-center > /dev/null 2>&1
+        chmod +x /usr/local/bin/y-ui-migration-center > /dev/null 2>&1
+    else
+        echo -e "${yellow}Warning: y-ui-migration-center.py was not found in the package.${plain}"
+    fi
+
 
     # Check the system's architecture and rename the file accordingly
     if [[ $(arch) == "armv5" || $(arch) == "armv6" || $(arch) == "armv7" ]]; then
