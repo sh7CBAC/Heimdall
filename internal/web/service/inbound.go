@@ -701,6 +701,7 @@ func (s *InboundService) AddInbound(inbound *model.Inbound) (*model.Inbound, boo
 		return inbound, false, err
 	}
 	inbound.SubSortIndex = normalizeSubSortIndex(inbound.SubSortIndex)
+	inbound.UsageMultiplier = normalizeInboundUsageMultiplier(inbound.UsageMultiplier)
 	if err := normalizeInboundShareAddressStrict(inbound); err != nil {
 		return inbound, false, err
 	}
@@ -1230,6 +1231,8 @@ func (s *InboundService) UpdateInbound(inbound *model.Inbound) (*model.Inbound, 
 		oldInbound.Enable = inbound.Enable
 		oldInbound.ExpiryTime = inbound.ExpiryTime
 		oldInbound.TrafficReset = inbound.TrafficReset
+		oldInbound.UsageMultiplier = normalizeInboundUsageMultiplier(inbound.UsageMultiplier)
+		inbound.UsageMultiplier = oldInbound.UsageMultiplier
 		oldInbound.Listen = inbound.Listen
 		oldInbound.Port = inbound.Port
 		oldInbound.Protocol = inbound.Protocol
@@ -1494,7 +1497,7 @@ func (s *InboundService) GetInboundTags() (string, error) {
 func (s *InboundService) GetClientReverseTags() (string, error) {
 	db := database.GetDB()
 	var inbounds []model.Inbound
-	err := db.Model(model.Inbound{}).Select("settings", "usage_multiplier").Where("protocol = ?", "vless").Find(&inbounds).Error
+	err := db.Model(model.Inbound{}).Select("settings").Where("protocol = ?", "vless").Find(&inbounds).Error
 	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 		return "[]", err
 	}
