@@ -70,7 +70,9 @@ const UsageBox = ({ type, value, total, remaining, connectionLimit }) => {
 
   const remainingParsed = parseValue(remaining);
   const totalParsed = parseValue(total || "");
-  const connectionDisplay = getConnectionLimitDisplay();
+    const remainingIsInfinity = remainingParsed.text === t("infinity");
+  const totalIsInfinity = totalParsed.text === t("infinity");
+const connectionDisplay = getConnectionLimitDisplay();
 
   return (
     <BoxS>
@@ -109,9 +111,9 @@ const UsageBox = ({ type, value, total, remaining, connectionLimit }) => {
             fontWeight: "700",
           }}
         >
-          {remainingParsed.text === t("infinity")
-            ? remainingParsed.text
-            : remainingParsed.number}
+          {remainingIsInfinity
+              ? remainingParsed.text
+              : remainingParsed.number}
         </Typography>
         <Typography
           variant="h6"
@@ -124,7 +126,7 @@ const UsageBox = ({ type, value, total, remaining, connectionLimit }) => {
           }}
           fontWeight={"lighter"}
         >
-          {remainingParsed.text}
+          {remainingIsInfinity ? "" : remainingParsed.text}
         </Typography>
       </Grid>
 
@@ -201,9 +203,9 @@ const UsageBox = ({ type, value, total, remaining, connectionLimit }) => {
             {totaltitle}
           </Typography>
           <Typography variant="h6" component="div">
-            {totalParsed.text === t("infinity")
-              ? totalParsed.text
-              : totalParsed.number}
+            {totalIsInfinity
+                ? totalParsed.text
+                : totalParsed.number}
           </Typography>
           <Typography
             variant="h6"
@@ -214,7 +216,7 @@ const UsageBox = ({ type, value, total, remaining, connectionLimit }) => {
               opacity: 0.6,
             }}
           >
-            {totalParsed.text}
+            {totalIsInfinity ? "" : totalParsed.text}
           </Typography>
         </Grid>
       )}
