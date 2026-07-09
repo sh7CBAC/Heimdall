@@ -1023,9 +1023,23 @@ func (s *InboundService) GetClientsLastOnline() (map[string]int64, error) {
 // xray.Process for why the local sets are kept separate from the shared
 // last_online column.
 func (s *InboundService) RefreshLocalOnlineClients(activeEmails, activeInboundTags []string) {
-	if p != nil {
-		p.RefreshLocalOnline(activeEmails, activeInboundTags, time.Now().UnixMilli(), onlineGracePeriodMs)
+	if p == nil {
+		return
 	}
+
+	now := time.Now().UnixMilli()
+	resolvedEmails := activeEmails
+
+	if len(activeEmails) > 0 {
+		logicalEmails, err := s.resolveRuntimeEmailsForLastOnline(database.GetDB(), activeEmails, now)
+		if err != nil {
+			logger.Warning("resolve runtime emails for local online clients failed:", err)
+		} else {
+			resolvedEmails = logicalEmails
+		}
+	}
+
+	p.RefreshLocalOnline(resolvedEmails, activeInboundTags, now, onlineGracePeriodMs)
 }
 
 func (s *InboundService) FilterAndSortClientEmails(emails []string) ([]string, []string, error) {
