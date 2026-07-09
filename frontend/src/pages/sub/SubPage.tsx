@@ -181,7 +181,7 @@ export default function SubPage() {
       key: 'expiry',
       label: t('subscription.expiry'),
       children: expireMs === 0
-        ? ''
+        ? t('subscription.noExpiry')
         : IntlUtil.formatDate(expireMs, datepicker),
     });
     return items;
