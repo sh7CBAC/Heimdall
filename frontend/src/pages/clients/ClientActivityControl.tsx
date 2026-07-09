@@ -20,6 +20,7 @@ import {
 } from 'antd';
 import {
   DeleteOutlined,
+  DownloadOutlined,
   EyeOutlined,
   PlayCircleOutlined,
   ReloadOutlined,
@@ -189,6 +190,102 @@ export default function ClientActivityControl({
     if (!activityOpen) return;
     void loadActivity(1);
   }, [activityOpen, loadActivity]);
+
+  const downloadActivityJson = useCallback(async () => {
+    if (!email) return;
+
+    try {
+      const requestedPageSize = Math.max(
+        activity?.total || ACTIVITY_PAGE_SIZE,
+        ACTIVITY_PAGE_SIZE,
+      );
+
+      const query = new URLSearchParams({
+        page: '1',
+        pageSize: String(requestedPageSize),
+      });
+
+      const msg = await HttpUtil.get(
+        `/panel/api/clients/${encodedEmail}/activity?${query}`,
+        undefined,
+        { silent: true },
+      ) as ApiMsg;
+
+      if (!msg?.success) {
+        throw new Error(
+          msg?.msg || 'Failed to export Activity data.',
+        );
+      }
+
+      const parsed = parseClientActivityList(msg.obj);
+      if (!parsed) {
+        throw new Error('Invalid Activity export response.');
+      }
+
+      const records = parsed.items.map((item) => ({
+        destination: item.destination,
+        source_ip: item.sourceIp,
+        upload_bytes: item.uploadBytes,
+        download_bytes: item.downloadBytes,
+        upload_human: SizeFormatter.sizeFormat(item.uploadBytes),
+        download_human: SizeFormatter.sizeFormat(item.downloadBytes),
+      }));
+
+      const payload = {
+        schema_version: 1,
+        exported_at: new Date().toISOString(),
+        client: {
+          email,
+          activity_monitoring: parsed.enabled,
+          generation: parsed.generation,
+          data_epoch: parsed.dataEpoch,
+        },
+        summary: {
+          destination_count: parsed.total,
+          exported_record_count: records.length,
+          total_upload_bytes: records.reduce(
+            (sum, item) => sum + item.upload_bytes,
+            0,
+          ),
+          total_download_bytes: records.reduce(
+            (sum, item) => sum + item.download_bytes,
+            0,
+          ),
+        },
+        records,
+      };
+
+      const blob = new Blob(
+        [JSON.stringify(payload, null, 2)],
+        { type: 'application/json;charset=utf-8' },
+      );
+      const url = URL.createObjectURL(blob);
+      const safeEmail = email.replace(/[^a-zA-Z0-9._-]+/g, '_') || 'client';
+      const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const link = document.createElement('a');
+
+      link.href = url;
+      link.download = `client-activity-${safeEmail}-${stamp}.json`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+
+      messageApi.success(
+        t('pages.clients.activity.exportSuccess', {
+          defaultValue: 'Activity JSON downloaded.',
+        }),
+      );
+    } catch (error) {
+      messageApi.error(
+        error instanceof Error
+          ? error.message
+          : t('pages.clients.activity.exportFailed', {
+              defaultValue: 'Failed to download Activity JSON.',
+            }),
+      );
+    }
+  }, [activity?.total, email, encodedEmail, messageApi, t]);
 
   async function runAction(
     requestedAction: ActivityAction,
@@ -601,6 +698,16 @@ export default function ClientActivityControl({
             </Popconfirm>
 
             <div className="client-activity-footer-actions">
+              <Button
+                icon={<DownloadOutlined />}
+                disabled={controlsDisabled || !activity || activity.total === 0}
+                onClick={() => void downloadActivityJson()}
+              >
+                {t('pages.clients.activity.downloadJson', {
+                  defaultValue: 'Download JSON',
+                })}
+              </Button>
+
               <Button
                 icon={<ReloadOutlined />}
                 loading={activityLoading}
