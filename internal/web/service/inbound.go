@@ -1494,7 +1494,7 @@ func (s *InboundService) GetInboundTags() (string, error) {
 func (s *InboundService) GetClientReverseTags() (string, error) {
 	db := database.GetDB()
 	var inbounds []model.Inbound
-	err := db.Model(model.Inbound{}).Select("settings").Where("protocol = ?", "vless").Find(&inbounds).Error
+	err := db.Model(model.Inbound{}).Select("settings", "usage_multiplier").Where("protocol = ?", "vless").Find(&inbounds).Error
 	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 		return "[]", err
 	}
