@@ -387,6 +387,13 @@ func (s *ClientService) addInboundClient(inboundSvc *InboundService, data *model
 		return false, txErr
 	}
 
+	// SyncInbound above creates/updates the canonical clients/client_inbounds link.
+	// Refresh stat-email resolver rows before dynamic AddUser, otherwise Xray
+	// can emit hmstat_* traffic before accurate billing can resolve it.
+	if mapErr := inboundSvc.EnsureClientInboundTrafficMappingsForInbound(oldInbound.Id); mapErr != nil {
+		return false, mapErr
+	}
+
 	// Apply to the running runtime after commit — outside the serialized writer
 	// so a slow node call can't stall traffic accounting.
 	if oldInbound.NodeID == nil {
@@ -699,6 +706,13 @@ func (s *ClientService) UpdateInboundClient(inboundSvc *InboundService, data *mo
 		return nil
 	}); txErr != nil {
 		return false, txErr
+	}
+
+	// SyncInbound above creates/updates the canonical clients/client_inbounds link.
+	// Refresh stat-email resolver rows before dynamic AddUser, otherwise Xray
+	// can emit hmstat_* traffic before accurate billing can resolve it.
+	if mapErr := inboundSvc.EnsureClientInboundTrafficMappingsForInbound(oldInbound.Id); mapErr != nil {
+		return false, mapErr
 	}
 
 	// Apply to the running runtime after the DB is committed — outside the

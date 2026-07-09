@@ -438,6 +438,11 @@ func (s *InboundService) autoRenewClients(tx *gorm.DB) (bool, int64, error) {
 		if syncErr := s.clientService.SyncInbound(tx, ib.Id, cs); syncErr != nil {
 			logger.Warning("autoRenewClients sync clients: SyncInbound failed", syncErr)
 		}
+		for i := range cs {
+			if mapErr := s.upsertClientInboundTrafficMapping(tx, ib.Id, &cs[i]); mapErr != nil {
+				logger.Warning("autoRenewClients sync clients: client inbound mapping failed", mapErr)
+			}
+		}
 	}
 	err = tx.Save(traffics).Error
 	if err != nil {
