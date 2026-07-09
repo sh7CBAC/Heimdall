@@ -142,6 +142,63 @@ func (j *CheckClientIpJob) hasLimitIp() bool {
 	return false
 }
 
+func (j *CheckClientIpJob) resolveObservedRuntimeEmails(observed map[string]map[string]int64) map[string]map[string]int64 {
+	if len(observed) == 0 {
+		return observed
+	}
+
+	emails := make([]string, 0, len(observed))
+	for email := range observed {
+		emails = append(emails, email)
+	}
+
+	var rows []struct {
+		StatEmail string `gorm:"column:stat_email"`
+		Email     string `gorm:"column:email"`
+	}
+	if err := database.GetDB().
+		Model(&model.ClientInboundTraffic{}).
+		Select("stat_email, email").
+		Where("stat_email IN ?", emails).
+		Find(&rows).
+		Error; err != nil {
+		logger.Debug("[LimitIP] resolve runtime observed emails failed:", err)
+		return observed
+	}
+
+	logicalByRuntime := make(map[string]string, len(rows))
+	for _, row := range rows {
+		if row.StatEmail == "" || row.Email == "" {
+			continue
+		}
+		logicalByRuntime[row.StatEmail] = row.Email
+	}
+
+	if len(logicalByRuntime) == 0 {
+		return observed
+	}
+
+	resolved := make(map[string]map[string]int64, len(observed))
+	for email, ipTimestamps := range observed {
+		logicalEmail := email
+		if mapped, ok := logicalByRuntime[email]; ok {
+			logicalEmail = mapped
+		}
+
+		if _, exists := resolved[logicalEmail]; !exists {
+			resolved[logicalEmail] = make(map[string]int64, len(ipTimestamps))
+		}
+
+		for ip, timestamp := range ipTimestamps {
+			if existing, seen := resolved[logicalEmail][ip]; !seen || timestamp > existing {
+				resolved[logicalEmail][ip] = timestamp
+			}
+		}
+	}
+
+	return resolved
+}
+
 // processObserved runs collection + enforcement for one scan's observations
 // (email -> ip -> last-seen unix seconds). observedAreLive marks the
 // observations as live connections, which bypass the stale cutoff: a connection
@@ -150,6 +207,8 @@ func (j *CheckClientIpJob) hasLimitIp() bool {
 func (j *CheckClientIpJob) processObserved(observed map[string]map[string]int64, enforce, observedAreLive bool) bool {
 	shouldCleanLog := false
 	now := time.Now().Unix()
+	observed = j.resolveObservedRuntimeEmails(observed)
+
 	// attribution accumulates this scan's local observations per email so they can
 	// be recorded under this panel's own guid for cross-node IP attribution.
 	attribution := make(map[string][]model.ClientIpEntry, len(observed))
