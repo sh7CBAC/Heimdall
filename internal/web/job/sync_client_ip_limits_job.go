@@ -14,7 +14,6 @@ import (
 
 	"github.com/mhsanaei/3x-ui/v3/internal/config"
 	"github.com/mhsanaei/3x-ui/v3/internal/database"
-	"github.com/mhsanaei/3x-ui/v3/internal/database/model"
 	"github.com/mhsanaei/3x-ui/v3/internal/logger"
 )
 
@@ -90,9 +89,12 @@ func loadClientIPLimitRows() ([]clientIPLimitRow, error) {
 	}
 
 	var rows []clientIPLimitRow
-	err := db.Model(&model.ClientRecord{}).
-		Select("email, limit_ip").
-		Where("enable = ? AND limit_ip > ?", true, 0).
+	err := db.Table("clients AS clients").
+		Select("COALESCE(client_inbound_traffics.stat_email, clients.email) AS email, clients.limit_ip").
+		Joins("JOIN client_inbounds ON client_inbounds.client_id = clients.id").
+		Joins("JOIN inbounds ON inbounds.id = client_inbounds.inbound_id").
+		Joins("LEFT JOIN client_inbound_traffics ON client_inbound_traffics.client_id = clients.id AND client_inbound_traffics.inbound_id = client_inbounds.inbound_id").
+		Where("clients.enable = ? AND inbounds.enable = ? AND clients.limit_ip > ?", true, true, 0).
 		Order("email ASC").
 		Scan(&rows).Error
 	if err != nil {

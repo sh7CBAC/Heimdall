@@ -11,7 +11,6 @@ import (
 
 	"github.com/mhsanaei/3x-ui/v3/internal/config"
 	"github.com/mhsanaei/3x-ui/v3/internal/database"
-	"github.com/mhsanaei/3x-ui/v3/internal/database/model"
 	"github.com/mhsanaei/3x-ui/v3/internal/logger"
 )
 
@@ -93,10 +92,14 @@ func loadClientSpeedLimitRows() ([]clientSpeedLimitRow, error) {
 	}
 
 	var rows []clientSpeedLimitRow
-	err := db.Model(&model.ClientRecord{}).
-		Select("email, upload_mbps, download_mbps").
+	err := db.Table("clients AS clients").
+		Select("COALESCE(client_inbound_traffics.stat_email, clients.email) AS email, clients.upload_mbps, clients.download_mbps").
+		Joins("JOIN client_inbounds ON client_inbounds.client_id = clients.id").
+		Joins("JOIN inbounds ON inbounds.id = client_inbounds.inbound_id").
+		Joins("LEFT JOIN client_inbound_traffics ON client_inbound_traffics.client_id = clients.id AND client_inbound_traffics.inbound_id = client_inbounds.inbound_id").
 		Where(
-			"enable = ? AND (upload_mbps > ? OR download_mbps > ?)",
+			"clients.enable = ? AND inbounds.enable = ? AND (clients.upload_mbps > ? OR clients.download_mbps > ?)",
+			true,
 			true,
 			0,
 			0,

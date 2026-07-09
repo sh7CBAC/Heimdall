@@ -115,19 +115,29 @@ func loadClientActivityMonitoringRows() (
 		Table(model.ClientActivitySetting{}.TableName()+" AS activity").
 		Select(
 			"clients.id AS client_id, "+
-				"clients.email AS email, "+
+				"COALESCE(client_inbound_traffics.stat_email, clients.email) AS email, "+
 				"activity.generation AS generation, "+
 				"activity.data_epoch AS data_epoch",
 		).
 		Joins(
 			"JOIN clients ON clients.id = activity.client_id",
 		).
+		Joins(
+			"JOIN client_inbounds ON client_inbounds.client_id = clients.id",
+		).
+		Joins(
+			"JOIN inbounds ON inbounds.id = client_inbounds.inbound_id",
+		).
+		Joins(
+			"LEFT JOIN client_inbound_traffics ON client_inbound_traffics.client_id = clients.id AND client_inbound_traffics.inbound_id = client_inbounds.inbound_id",
+		).
 		Where(
-			"activity.enabled = ? AND clients.enable = ?",
+			"activity.enabled = ? AND clients.enable = ? AND inbounds.enable = ?",
+			true,
 			true,
 			true,
 		).
-		Order("clients.email ASC").
+		Order("email ASC").
 		Scan(&rows).
 		Error
 	if err != nil {
