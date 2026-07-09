@@ -1956,7 +1956,8 @@
         "descRESET_DAYS": "トラフィックリセット周期（日数）",
         "descPROTOCOL": "インバウンドのプロトコル（VLESS、VMess、Trojan など）",
         "descTRANSPORT": "トランスポートネットワーク（tcp、ws、grpc など）",
-        "descSECURITY": "トランスポートのセキュリティ（TLS、REALITY、NONE）"
+        "descSECURITY": "トランスポートのセキュリティ（TLS、REALITY、NONE）",
+        "descFACTOR": "Inbound usage factor, for example 3x"
       },
       "toasts": {
         "list": "ホストの読み込みに失敗しました",

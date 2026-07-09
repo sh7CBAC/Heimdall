@@ -1956,7 +1956,8 @@
         "descRESET_DAYS": "Chu kỳ đặt lại lưu lượng tính theo ngày",
         "descPROTOCOL": "Giao thức inbound (VLESS, VMess, Trojan, …)",
         "descTRANSPORT": "Mạng truyền tải (tcp, ws, grpc, …)",
-        "descSECURITY": "Bảo mật truyền tải (TLS, REALITY, NONE)"
+        "descSECURITY": "Bảo mật truyền tải (TLS, REALITY, NONE)",
+        "descFACTOR": "Inbound usage factor, for example 3x"
       },
       "toasts": {
         "list": "Không tải được danh sách host",

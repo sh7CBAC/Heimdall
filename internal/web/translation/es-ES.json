@@ -1956,7 +1956,8 @@
         "descRESET_DAYS": "Periodo de reinicio de tráfico en días",
         "descPROTOCOL": "Protocolo del inbound (VLESS, VMess, Trojan, …)",
         "descTRANSPORT": "Red de transporte (tcp, ws, grpc, …)",
-        "descSECURITY": "Seguridad del transporte (TLS, REALITY, NONE)"
+        "descSECURITY": "Seguridad del transporte (TLS, REALITY, NONE)",
+        "descFACTOR": "Inbound usage factor, for example 3x"
       },
       "toasts": {
         "list": "Error al cargar los hosts",

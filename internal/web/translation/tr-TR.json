@@ -1956,7 +1956,8 @@
         "descRESET_DAYS": "Trafik sıfırlama periyodu (gün)",
         "descPROTOCOL": "Gelen bağlantı protokolü (VLESS, VMess, Trojan, …)",
         "descTRANSPORT": "Taşıma ağı (tcp, ws, grpc, …)",
-        "descSECURITY": "Taşıma güvenliği (TLS, REALITY, NONE)"
+        "descSECURITY": "Taşıma güvenliği (TLS, REALITY, NONE)",
+        "descFACTOR": "Inbound usage factor, for example 3x"
       },
       "toasts": {
         "list": "Host'lar yüklenemedi",

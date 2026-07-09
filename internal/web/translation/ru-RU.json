@@ -1956,7 +1956,8 @@
         "descRESET_DAYS": "Период сброса трафика в днях",
         "descPROTOCOL": "Протокол входящего (VLESS, VMess, Trojan, …)",
         "descTRANSPORT": "Транспортная сеть (tcp, ws, grpc, …)",
-        "descSECURITY": "Безопасность транспорта (TLS, REALITY, NONE)"
+        "descSECURITY": "Безопасность транспорта (TLS, REALITY, NONE)",
+        "descFACTOR": "Inbound usage factor, for example 3x"
       },
       "toasts": {
         "list": "Не удалось загрузить хосты",

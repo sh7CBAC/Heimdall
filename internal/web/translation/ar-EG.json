@@ -1956,7 +1956,8 @@
         "descRESET_DAYS": "فترة إعادة تعيين حركة المرور بالأيام",
         "descPROTOCOL": "بروتوكول الوارد (VLESS، VMess، Trojan، …)",
         "descTRANSPORT": "شبكة النقل (tcp، ws، grpc، …)",
-        "descSECURITY": "أمان النقل (TLS، REALITY، NONE)"
+        "descSECURITY": "أمان النقل (TLS، REALITY، NONE)",
+        "descFACTOR": "Inbound usage factor, for example 3x"
       },
       "toasts": {
         "list": "فشل تحميل المضيفات",

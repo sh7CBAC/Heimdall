@@ -1956,7 +1956,8 @@
         "descRESET_DAYS": "Periode reset trafik dalam hari",
         "descPROTOCOL": "Protokol inbound (VLESS, VMess, Trojan, …)",
         "descTRANSPORT": "Jaringan transport (tcp, ws, grpc, …)",
-        "descSECURITY": "Keamanan transport (TLS, REALITY, NONE)"
+        "descSECURITY": "Keamanan transport (TLS, REALITY, NONE)",
+        "descFACTOR": "Inbound usage factor, for example 3x"
       },
       "toasts": {
         "list": "Gagal memuat host",

@@ -1988,7 +1988,8 @@
         "descRESET_DAYS": "دورهٔ بازنشانی ترافیک به روز",
         "descPROTOCOL": "پروتکل اینباند (VLESS، VMess، Trojan، …)",
         "descTRANSPORT": "شبکهٔ انتقال (tcp، ws، grpc، …)",
-        "descSECURITY": "امنیت انتقال (TLS، REALITY، NONE)"
+        "descSECURITY": "امنیت انتقال (TLS، REALITY، NONE)",
+        "descFACTOR": "ضریب مصرف اینباند، مثل 3x"
       },
       "toasts": {
         "list": "بارگذاری میزبان‌ها ناموفق",

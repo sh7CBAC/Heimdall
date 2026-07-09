@@ -1956,7 +1956,8 @@
         "descRESET_DAYS": "流量重置周期（天）",
         "descPROTOCOL": "入站协议（VLESS、VMess、Trojan……）",
         "descTRANSPORT": "传输网络（tcp、ws、grpc……）",
-        "descSECURITY": "传输安全（TLS、REALITY、NONE）"
+        "descSECURITY": "传输安全（TLS、REALITY、NONE）",
+        "descFACTOR": "Inbound usage factor, for example 3x"
       },
       "toasts": {
         "list": "加载主机失败",

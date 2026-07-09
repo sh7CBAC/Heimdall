@@ -1956,7 +1956,8 @@
         "descRESET_DAYS": "Період скидання трафіку в днях",
         "descPROTOCOL": "Протокол вхідного (VLESS, VMess, Trojan, …)",
         "descTRANSPORT": "Транспортна мережа (tcp, ws, grpc, …)",
-        "descSECURITY": "Безпека транспорту (TLS, REALITY, NONE)"
+        "descSECURITY": "Безпека транспорту (TLS, REALITY, NONE)",
+        "descFACTOR": "Inbound usage factor, for example 3x"
       },
       "toasts": {
         "list": "Не вдалося завантажити хости",

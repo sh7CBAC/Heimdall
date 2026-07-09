@@ -1107,7 +1107,8 @@
         "descRESET_DAYS": "Traffic reset period in days",
         "descPROTOCOL": "Inbound protocol (VLESS, VMess, Trojan, …)",
         "descTRANSPORT": "Transport network (tcp, ws, grpc, …)",
-        "descSECURITY": "Transport security (TLS, REALITY, NONE)"
+        "descSECURITY": "Transport security (TLS, REALITY, NONE)",
+        "descFACTOR": "Inbound usage factor, for example 3x"
       },
       "toasts": {
         "list": "Failed to load hosts",

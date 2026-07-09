@@ -1956,7 +1956,8 @@
         "descRESET_DAYS": "Período de redefinição de tráfego em dias",
         "descPROTOCOL": "Protocolo da entrada (VLESS, VMess, Trojan, …)",
         "descTRANSPORT": "Rede de transporte (tcp, ws, grpc, …)",
-        "descSECURITY": "Segurança do transporte (TLS, REALITY, NONE)"
+        "descSECURITY": "Segurança do transporte (TLS, REALITY, NONE)",
+        "descFACTOR": "Inbound usage factor, for example 3x"
       },
       "toasts": {
         "list": "Falha ao carregar os hosts",

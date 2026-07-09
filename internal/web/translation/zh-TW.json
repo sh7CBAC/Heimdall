@@ -1956,7 +1956,8 @@
         "descRESET_DAYS": "流量重置週期（天）",
         "descPROTOCOL": "入站協定（VLESS、VMess、Trojan…）",
         "descTRANSPORT": "傳輸網路（tcp、ws、grpc…）",
-        "descSECURITY": "傳輸安全（TLS、REALITY、NONE）"
+        "descSECURITY": "傳輸安全（TLS、REALITY、NONE）",
+        "descFACTOR": "Inbound usage factor, for example 3x"
       },
       "toasts": {
         "list": "載入 Host 失敗",
