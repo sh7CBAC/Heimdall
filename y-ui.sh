@@ -464,22 +464,45 @@ main_menu() {
 
     while true; do
         clear_screen
-        printf '\n'
-        printf '\n'
         ui_box_header "Y-UI Management Center"
-        printf '\n'
-        printf '  \033[38;5;117m1)\033[0m  Hidden Infrastructure\n'
-        printf '  \033[38;5;117m2)\033[0m  Migration Center\n'
         printf '
 '
-        printf '  \033[38;5;203m0)\033[0m  Exit\n'
-        printf '\n'
-        printf '\033[38;5;141m──────────────────────────────────────────────\033[0m\n'
-        read -r -p "$(printf '\033[1;38;5;141mChoose an option [0-2]: \033[0m')" choice || exit 0
+        printf '  [38;5;117m1)[0m  Hidden Infrastructure
+'
+        printf '  [38;5;117m2)[0m  Migration Center
+'
+        printf '
+'
+        printf '  [38;5;203m0)[0m  Exit
+'
+        printf '
+'
+        printf '[38;5;141m──────────────────────────────────────────────[0m
+'
+        read -r -p "$(printf '[1;38;5;141mChoose an option [0-2]: [0m')" choice || exit 0
 
         case "${choice}" in
             1)
                 hidden_items_menu
+                ;;
+            2)
+                clear_screen
+                if command -v y-ui-migration-center >/dev/null 2>&1; then
+                    y-ui-migration-center --interactive
+                    rc=$?
+                elif [ -x /usr/local/bin/y-ui-migration-center ]; then
+                    /usr/local/bin/y-ui-migration-center --interactive
+                    rc=$?
+                else
+                    error "Migration Center command not found."
+                    rc=127
+                fi
+
+                printf '\n'
+                if [ "${rc:-0}" -ne 0 ]; then
+                    error "Migration Center exited with error code ${rc}."
+                fi
+                pause_screen
                 ;;
             0)
                 clear_screen
