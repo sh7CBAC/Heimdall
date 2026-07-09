@@ -498,6 +498,27 @@ func (j *CheckClientIpJob) updateInboundClientIps(inboundClientIps *model.Inboun
 }
 
 // disconnectClientTemporarily removes and re-adds a client to force disconnect banned connections
+func (j *CheckClientIpJob) resolveRuntimeEmailForInboundClient(inboundID int, clientEmail string) string {
+	var row struct {
+		StatEmail string `gorm:"column:stat_email"`
+	}
+
+	if err := database.GetDB().
+		Model(&model.ClientInboundTraffic{}).
+		Select("stat_email").
+		Where("inbound_id = ? AND email = ?", inboundID, clientEmail).
+		First(&row).
+		Error; err != nil {
+		return clientEmail
+	}
+
+	if row.StatEmail == "" {
+		return clientEmail
+	}
+
+	return row.StatEmail
+}
+
 func (j *CheckClientIpJob) disconnectClientTemporarily(inbound *model.Inbound, clientEmail string, clients []model.Client) {
 	var xrayAPI xray.XrayAPI
 	apiPort := j.resolveXrayAPIPort()
@@ -524,6 +545,14 @@ func (j *CheckClientIpJob) disconnectClientTemporarily(inbound *model.Inbound, c
 		return
 	}
 
+	runtimeEmail := j.resolveRuntimeEmailForInboundClient(inbound.Id, clientEmail)
+	if runtimeEmail == "" {
+		runtimeEmail = clientEmail
+	}
+	if runtimeEmail != clientEmail {
+		clientConfig["email"] = runtimeEmail
+	}
+
 	// Only perform remove/re-add for protocols supported by XrayAPI.AddUser
 	protocol := string(inbound.Protocol)
 	switch protocol {
@@ -548,9 +577,9 @@ func (j *CheckClientIpJob) disconnectClientTemporarily(inbound *model.Inbound, c
 	}
 
 	// Remove user to disconnect all connections
-	err = xrayAPI.RemoveUser(inbound.Tag, clientEmail)
+	err = xrayAPI.RemoveUser(inbound.Tag, runtimeEmail)
 	if err != nil {
-		logger.Warningf("[LIMIT_IP] Failed to remove user %s: %v", clientEmail, err)
+		logger.Warningf("[LIMIT_IP] Failed to remove user %s: %v", runtimeEmail, err)
 		return
 	}
 
@@ -560,7 +589,7 @@ func (j *CheckClientIpJob) disconnectClientTemporarily(inbound *model.Inbound, c
 	// Re-add user to allow new connections
 	err = xrayAPI.AddUser(protocol, inbound.Tag, clientConfig)
 	if err != nil {
-		logger.Warningf("[LIMIT_IP] Failed to re-add user %s: %v", clientEmail, err)
+		logger.Warningf("[LIMIT_IP] Failed to re-add user %s: %v", runtimeEmail, err)
 	}
 }
 
