@@ -85,7 +85,6 @@ import type { NodeRecord } from '@/api/queries/useNodesQuery';
 import ExternalProxyForm from './transport/external-proxy';
 import { createSubscriptionProfileDraft } from '@/lib/xray/subscription-profile';
 
-
 // Render a field label with a hover tooltip icon instead of an `extra` help line below.
 const labelWithHint = (label: string, hint: string) => (
   <span>
@@ -144,7 +143,7 @@ interface InboundFormModalProps {
   availableNodesFetched?: boolean;
 }
 
-function buildAddModeValues(): InboundFormValues {
+export function buildAddModeValues(): InboundFormValues {
   const settings = createDefaultInboundSettings('vless') ?? undefined;
   const port = RandomUtil.randomInteger(10000, 60000);
   const defaultAddress = typeof window !== 'undefined' ? window.location.hostname : '';

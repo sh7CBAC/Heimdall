@@ -4,6 +4,7 @@ import type { StreamSettings } from '@/schemas/api/inbound';
 import {
   createSubscriptionProfileDraft,
   expandSubscriptionProfileEndpoints,
+  planDefaultSubscriptionPortSync,
 } from '@/lib/xray/subscription-profile';
 
 function baseStream(): StreamSettings {
@@ -197,5 +198,83 @@ describe('subscription profile expansion', () => {
     if (endpoint.streamSettings.security !== 'tls') throw new Error('expected tls');
     expect(endpoint.streamSettings.tlsSettings.serverName).toBe('sni.example.com');
     expect(endpoint.streamSettings.tlsSettings.settings.fingerprint).toBe('firefox');
+  });
+});
+
+describe('default subscription profile port synchronization', () => {
+  it('updates the default profile when the inbound port changes', () => {
+    const initial = planDefaultSubscriptionPortSync(null, {
+      inboundPort: 49362,
+      profilePort: 49362,
+    });
+    const changed = planDefaultSubscriptionPortSync(initial.state, {
+      inboundPort: 1995,
+      profilePort: 49362,
+    });
+
+    expect(initial.state.linked).toBe(true);
+    expect(changed.setProfilePort).toBe(1995);
+    expect(changed.setInboundPort).toBeUndefined();
+  });
+
+  it('updates the inbound when the default profile port changes', () => {
+    const initial = planDefaultSubscriptionPortSync(null, {
+      inboundPort: 49362,
+      profilePort: 49362,
+    });
+    const changed = planDefaultSubscriptionPortSync(initial.state, {
+      inboundPort: 49362,
+      profilePort: 1995,
+    });
+
+    expect(changed.setInboundPort).toBe(1995);
+    expect(changed.setProfilePort).toBeUndefined();
+  });
+
+  it('keeps an existing divergent endpoint independent', () => {
+    const initial = planDefaultSubscriptionPortSync(null, {
+      inboundPort: 1995,
+      profilePort: 52096,
+    });
+    const changed = planDefaultSubscriptionPortSync(initial.state, {
+      inboundPort: 443,
+      profilePort: 52096,
+    });
+
+    expect(initial.state.linked).toBe(false);
+    expect(changed.state.linked).toBe(false);
+    expect(changed.setInboundPort).toBeUndefined();
+    expect(changed.setProfilePort).toBeUndefined();
+  });
+
+  it('preserves linkage while an input is temporarily empty', () => {
+    const initial = planDefaultSubscriptionPortSync(null, {
+      inboundPort: 49362,
+      profilePort: 49362,
+    });
+    const cleared = planDefaultSubscriptionPortSync(initial.state, {
+      inboundPort: 49362,
+      profilePort: null,
+    });
+    const typed = planDefaultSubscriptionPortSync(cleared.state, {
+      inboundPort: 49362,
+      profilePort: 1995,
+    });
+
+    expect(cleared.state.linked).toBe(true);
+    expect(typed.setInboundPort).toBe(1995);
+  });
+
+  it('relinks ports after a divergent pair becomes equal', () => {
+    const initial = planDefaultSubscriptionPortSync(null, {
+      inboundPort: 1995,
+      profilePort: 52096,
+    });
+    const relinked = planDefaultSubscriptionPortSync(initial.state, {
+      inboundPort: 1995,
+      profilePort: 1995,
+    });
+
+    expect(relinked.state.linked).toBe(true);
   });
 });

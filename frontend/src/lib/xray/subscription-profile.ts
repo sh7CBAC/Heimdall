@@ -217,3 +217,138 @@ export function expandSubscriptionProfileEndpoints(
       profile,
     }));
 }
+
+export interface DefaultSubscriptionPortPair {
+  inboundPort: number | null;
+  profilePort: number | null;
+}
+
+export interface DefaultSubscriptionPortSyncState
+  extends DefaultSubscriptionPortPair {
+  linked: boolean;
+  pending: DefaultSubscriptionPortPair | null;
+}
+
+export interface DefaultSubscriptionPortSyncPlan {
+  state: DefaultSubscriptionPortSyncState;
+  setInboundPort?: number;
+  setProfilePort?: number;
+}
+
+export function normalizeSubscriptionPort(value: unknown): number | null {
+  if (
+    typeof value !== 'number'
+    || !Number.isInteger(value)
+    || value < 1
+    || value > 65535
+  ) {
+    return null;
+  }
+  return value;
+}
+
+function portPairsEqual(
+  left: DefaultSubscriptionPortPair,
+  right: DefaultSubscriptionPortPair,
+): boolean {
+  return left.inboundPort === right.inboundPort
+    && left.profilePort === right.profilePort;
+}
+
+function portsAreLinked(pair: DefaultSubscriptionPortPair): boolean {
+  return pair.inboundPort !== null
+    && pair.profilePort !== null
+    && pair.inboundPort === pair.profilePort;
+}
+
+function createPortSyncState(
+  pair: DefaultSubscriptionPortPair,
+): DefaultSubscriptionPortSyncState {
+  return {
+    ...pair,
+    linked: portsAreLinked(pair),
+    pending: null,
+  };
+}
+
+// Profile zero is the default endpoint. While its port equals the inbound
+// port, editing either side keeps both synchronized. Existing imported or
+// intentionally divergent profiles remain independent until equalized again.
+export function planDefaultSubscriptionPortSync(
+  previous: DefaultSubscriptionPortSyncState | null,
+  current: DefaultSubscriptionPortPair,
+): DefaultSubscriptionPortSyncPlan {
+  if (previous === null) {
+    return { state: createPortSyncState(current) };
+  }
+
+  if (previous.pending !== null) {
+    if (portPairsEqual(current, previous.pending)) {
+      return {
+        state: {
+          ...current,
+          linked: true,
+          pending: null,
+        },
+      };
+    }
+
+    // setFieldValue can produce an intermediate render. Do not reverse the
+    // synchronization while waiting for the target field to update.
+    return { state: previous };
+  }
+
+  const inboundChanged = current.inboundPort !== previous.inboundPort;
+  const profileChanged = current.profilePort !== previous.profilePort;
+
+  if (!previous.linked) {
+    return { state: createPortSyncState(current) };
+  }
+
+  if (!inboundChanged && !profileChanged) {
+    return { state: previous };
+  }
+
+  if (inboundChanged && !profileChanged) {
+    if (current.inboundPort === null) {
+      return { state: previous };
+    }
+
+    const target = {
+      inboundPort: current.inboundPort,
+      profilePort: current.inboundPort,
+    };
+
+    return {
+      state: {
+        ...target,
+        linked: true,
+        pending: target,
+      },
+      setProfilePort: current.inboundPort,
+    };
+  }
+
+  if (profileChanged && !inboundChanged) {
+    if (current.profilePort === null) {
+      return { state: previous };
+    }
+
+    const target = {
+      inboundPort: current.profilePort,
+      profilePort: current.profilePort,
+    };
+
+    return {
+      state: {
+        ...target,
+        linked: true,
+        pending: target,
+      },
+      setInboundPort: current.profilePort,
+    };
+  }
+
+  // Initialization/import may change both values simultaneously.
+  return { state: createPortSyncState(current) };
+}

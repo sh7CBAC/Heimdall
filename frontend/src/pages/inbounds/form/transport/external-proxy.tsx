@@ -1,8 +1,14 @@
+import { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button, Form, Switch } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 
-import { createSubscriptionProfileDraft } from '@/lib/xray/subscription-profile';
+import {
+  createSubscriptionProfileDraft,
+  normalizeSubscriptionPort,
+  planDefaultSubscriptionPortSync,
+  type DefaultSubscriptionPortSyncState,
+} from '@/lib/xray/subscription-profile';
 
 import SubscriptionProfileEditor from './subscription-profile-editor';
 import './external-proxy.css';
@@ -14,7 +20,48 @@ function cloneProfile<T>(value: T): T {
 export default function ExternalProxyForm() {
   const { t } = useTranslation();
   const form = Form.useFormInstance();
-  const parentPort = Form.useWatch('port', form) ?? 443;
+  const watchedParentPort = Form.useWatch('port', form);
+  const parentPort = watchedParentPort ?? 443;
+  const watchedProfiles = Form.useWatch(
+    ['streamSettings', 'externalProxy'],
+    form,
+  ) as Array<{ port?: unknown }> | undefined;
+  const watchedDefaultProfilePort = watchedProfiles?.[0]?.port;
+  const portSyncStateRef = useRef<DefaultSubscriptionPortSyncState | null>(null);
+
+  useEffect(() => {
+    const current = {
+      inboundPort: normalizeSubscriptionPort(watchedParentPort),
+      profilePort: normalizeSubscriptionPort(watchedDefaultProfilePort),
+    };
+    const plan = planDefaultSubscriptionPortSync(
+      portSyncStateRef.current,
+      current,
+    );
+
+    portSyncStateRef.current = plan.state;
+
+    if (
+      plan.setInboundPort !== undefined
+      && plan.setInboundPort !== current.inboundPort
+    ) {
+      form.setFieldValue('port', plan.setInboundPort);
+    }
+
+    if (
+      plan.setProfilePort !== undefined
+      && plan.setProfilePort !== current.profilePort
+    ) {
+      form.setFieldValue(
+        ['streamSettings', 'externalProxy', 0, 'port'],
+        plan.setProfilePort,
+      );
+    }
+  }, [
+    form,
+    watchedDefaultProfilePort,
+    watchedParentPort,
+  ]);
 
   const defaultAddress = typeof window !== 'undefined' ? window.location.hostname : '';
 

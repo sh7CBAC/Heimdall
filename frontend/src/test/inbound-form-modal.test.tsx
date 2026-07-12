@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { screen, act, render, cleanup } from '@testing-library/react';
 
-import InboundFormModal from '@/pages/inbounds/form/InboundFormModal';
+import InboundFormModal, { buildAddModeValues } from '@/pages/inbounds/form/InboundFormModal';
 import { DBInbound } from '@/models/dbinbound';
 import { ThemeProvider } from '@/hooks/useTheme';
 import {
@@ -66,6 +66,14 @@ function renderModal() {
 }
 
 describe('InboundFormModal', () => {
+  it('seeds the default subscription profile with the inbound port', () => {
+    const values = buildAddModeValues();
+    const profiles = values.streamSettings?.externalProxy;
+
+    expect(profiles).toHaveLength(1);
+    expect(profiles?.[0]?.port).toBe(values.port);
+  });
+
   it('renders add mode without crashing', () => {
     renderModal();
     expect(document.querySelector('.ant-modal')).toBeTruthy();
