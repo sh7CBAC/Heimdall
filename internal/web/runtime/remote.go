@@ -670,6 +670,11 @@ func (r *Remote) PushGlobalClientTraffics(ctx context.Context, masterGuid string
 func wireInbound(ib *model.Inbound, remoteNodeID int) url.Values {
 	v := url.Values{}
 	v.Set("total", strconv.FormatInt(ib.Total, 10))
+	usageMultiplier := ib.UsageMultiplier
+	if usageMultiplier <= 0 {
+		usageMultiplier = 1
+	}
+	v.Set("usageMultiplier", strconv.FormatFloat(usageMultiplier, 'f', -1, 64))
 	v.Set("remark", ib.Remark)
 	v.Set("subSortIndex", strconv.Itoa(ib.SubSortIndex))
 	v.Set("enable", strconv.FormatBool(ib.Enable))

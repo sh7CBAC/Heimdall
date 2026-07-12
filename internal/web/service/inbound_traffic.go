@@ -181,6 +181,11 @@ func (s *InboundService) addClientTraffic(tx *gorm.DB, traffics []*xray.ClientTr
 			t.Up, t.Down, now, ct.Email,
 		).Error; err != nil {
 			logger.Warning("AddClientTraffic update data ", err)
+			continue
+		}
+		if ledgerErr := addAdminUsedBytesByClientEmail(tx, ct.Email, t.Up+t.Down); ledgerErr != nil {
+			logger.Warning("AddClientTraffic update admin used_bytes ", ledgerErr)
+			return ledgerErr
 		}
 	}
 

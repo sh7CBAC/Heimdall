@@ -1664,11 +1664,7 @@ def main():
             args._interactive_back_to_source_panel = False
 
             selected_panel = migration_center_provider_menu()
-        if not selected_panel:
-            return
-
-            if selected_panel == "back":
-                pass
+            if not selected_panel:
                 return
 
             args.panel = selected_panel
@@ -1681,7 +1677,18 @@ def main():
         panel_label = panel_display_name(args.panel)
         panel_slug = args.panel
 
-        detected_url, detected_from = (args.db_url, "cli --db-url") if args.db_url else detect_source_db_url(args.panel)
+        try:
+            detected_url, detected_from = (args.db_url, "cli --db-url") if args.db_url else detect_source_db_url(args.panel)
+        except SystemExit:
+            if args.interactive:
+                print()
+                try:
+                    input("Press Enter to go back to Migration Center...")
+                except (EOFError, KeyboardInterrupt):
+                    pass
+                os.system("clear")
+                continue
+            raise
 
         if args.interactive:
             args = interactive_fill(args, detected_url, detected_from)

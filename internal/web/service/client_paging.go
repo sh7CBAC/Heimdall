@@ -170,8 +170,8 @@ func (s *ClientService) ListPaged(inboundSvc *InboundService, settingSvc *Settin
 	nowMs := time.Now().UnixMilli()
 	summaryBase := ownerSummaryBase(all, params.Owner, pageScope.AdminID)
 	summary := buildClientsSummary(summaryBase, onlineSet, nowMs, expireDiffMs, trafficDiffBytes)
-	if dataLimit, ok := s.summaryAdminDataLimit(pageScope, params.Owner); ok {
-		applyAdminTrafficQuota(&summary, dataLimit)
+	if dataLimit, usedBytes, ok := s.summaryAdminDataQuota(pageScope, params.Owner); ok {
+		applyAdminTrafficQuota(&summary, dataLimit, usedBytes)
 	}
 
 	needle := strings.ToLower(strings.TrimSpace(params.Search))
@@ -309,32 +309,43 @@ func summaryQuotaAdminID(scope ClientAccessScope, owner string) (int, bool) {
 	return id, true
 }
 
-func (s *ClientService) summaryAdminDataLimit(scope ClientAccessScope, owner string) (int64, bool) {
+func (s *ClientService) summaryAdminDataQuota(scope ClientAccessScope, owner string) (int64, int64, bool) {
 	adminID, ok := summaryQuotaAdminID(scope, owner)
 	if !ok {
-		return 0, false
+		return 0, 0, false
 	}
 
 	db := database.GetDB()
 	if db == nil {
-		return 0, false
+		return 0, 0, false
 	}
 
 	var user model.User
-	if err := db.Model(&model.User{}).Select("data_limit").Where("id = ?", adminID).First(&user).Error; err != nil {
-		return 0, false
+	if err := db.Model(&model.User{}).Select("data_limit", "used_bytes").Where("id = ?", adminID).First(&user).Error; err != nil {
+		return 0, 0, false
 	}
 	if user.DataLimit <= 0 {
-		return 0, false
+		return 0, 0, false
 	}
-	return user.DataLimit, true
+	usedBytes := user.UsedBytes
+	if usedBytes < 0 {
+		usedBytes = 0
+	}
+	return user.DataLimit, usedBytes, true
 }
 
-func applyAdminTrafficQuota(summary *ClientsSummary, dataLimit int64) {
+func applyAdminTrafficQuota(summary *ClientsSummary, dataLimit int64, usedBytesValues ...int64) {
 	if summary == nil || dataLimit <= 0 {
 		return
 	}
 
+	usedBytes := summary.TrafficUsed
+	if len(usedBytesValues) > 0 {
+		usedBytes = usedBytesValues[0]
+	}
+	if usedBytes > summary.TrafficUsed {
+		summary.TrafficUsed = usedBytes
+	}
 	summary.TrafficTotal = dataLimit
 	remaining := dataLimit - summary.TrafficUsed
 	if remaining < 0 {

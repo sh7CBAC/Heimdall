@@ -153,23 +153,16 @@ func (s *AdminService) adminUsageByUserID(tx *gorm.DB, adminIDs []int) (map[int]
 		return out, nil
 	}
 
-	type usageRow struct {
-		UserId    int   `gorm:"column:user_id"`
-		UsedBytes int64 `gorm:"column:used_bytes"`
-	}
-
-	var rows []usageRow
-	if err := tx.Table("clients AS c").
-		Select("c.owner_admin_id AS user_id, COALESCE(SUM(COALESCE(ct.up, 0) + COALESCE(ct.down, 0)), 0) AS used_bytes").
-		Joins("LEFT JOIN client_traffics AS ct ON ct.email = c.email").
-		Where("c.owner_admin_id IN ?", adminIDs).
-		Group("c.owner_admin_id").
-		Scan(&rows).Error; err != nil {
+	var users []model.User
+	if err := tx.Model(&model.User{}).
+		Select("id", "used_bytes").
+		Where("id IN ?", adminIDs).
+		Find(&users).Error; err != nil {
 		return nil, err
 	}
 
-	for _, row := range rows {
-		out[row.UserId] = row.UsedBytes
+	for _, user := range users {
+		out[user.Id] = user.UsedBytes
 	}
 	return out, nil
 }
@@ -258,17 +251,8 @@ func (s *AdminService) Stats() (*AdminStats, error) {
 	if err := db.Raw(`
 		SELECT COUNT(*)
 		FROM users AS u
-		LEFT JOIN (
-			SELECT
-				c.owner_admin_id AS user_id,
-				COALESCE(SUM(COALESCE(ct.up, 0) + COALESCE(ct.down, 0)), 0) AS used_bytes
-			FROM clients AS c
-			LEFT JOIN client_traffics AS ct ON ct.email = c.email
-			WHERE c.owner_admin_id > 0
-			GROUP BY c.owner_admin_id
-		) AS usage ON usage.user_id = u.id
 		WHERE u.data_limit > 0
-		  AND COALESCE(usage.used_bytes, 0) >= u.data_limit
+		  AND COALESCE(u.used_bytes, 0) >= u.data_limit
 	`).Scan(&stats.LimitedAdmins).Error; err != nil {
 		return nil, err
 	}

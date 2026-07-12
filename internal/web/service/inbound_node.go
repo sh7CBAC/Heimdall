@@ -463,6 +463,7 @@ func (s *InboundService) setRemoteTrafficLocked(nodeID int, snap *runtime.Traffi
 				Remark:               snapIb.Remark,
 				SubSortIndex:         normalizeSubSortIndex(snapIb.SubSortIndex),
 				Total:                snapIb.Total,
+				UsageMultiplier:      normalizeInboundUsageMultiplier(snapIb.UsageMultiplier),
 				ExpiryTime:           snapIb.ExpiryTime,
 				Up:                   snapIb.Up,
 				Down:                 snapIb.Down,
@@ -492,6 +493,7 @@ func (s *InboundService) setRemoteTrafficLocked(nodeID int, snap *runtime.Traffi
 			updates["port"] = snapIb.Port
 			updates["protocol"] = snapIb.Protocol
 			updates["total"] = snapIb.Total
+			updates["usage_multiplier"] = normalizeInboundUsageMultiplier(snapIb.UsageMultiplier)
 			updates["expiry_time"] = snapIb.ExpiryTime
 			updates["settings"] = snapIb.Settings
 			updates["stream_settings"] = snapIb.StreamSettings
@@ -654,6 +656,12 @@ func (s *InboundService) setRemoteTrafficLocked(nodeID int, snap *runtime.Traffi
 				centralCSByEmail[cs.Email] = row
 				existingEmails[cs.Email] = struct{}{}
 				structuralChange = true
+
+				if seedDelta := seedUp + seedDown; seedDelta > 0 {
+					if ledgerErr := addAdminUsedBytesByClientEmail(tx, cs.Email, seedDelta); ledgerErr != nil {
+						logger.Warning("setRemoteTraffic seed admin used_bytes ", ledgerErr)
+					}
+				}
 				if err := s.upsertNodeBaseline(tx, nodeID, cs.Email, canon.Up, canon.Down); err != nil {
 					return false, err
 				}
@@ -692,6 +700,12 @@ func (s *InboundService) setRemoteTrafficLocked(nodeID int, snap *runtime.Traffi
 				cs.LastOnline, cs.Email,
 			).Error; err != nil {
 				return false, err
+			}
+
+			if delta := deltaUp + deltaDown; delta > 0 {
+				if ledgerErr := addAdminUsedBytesByClientEmail(tx, cs.Email, delta); ledgerErr != nil {
+					logger.Warning("setRemoteTraffic update admin used_bytes ", ledgerErr)
+				}
 			}
 			if err := s.upsertNodeBaseline(tx, nodeID, cs.Email, canon.Up, canon.Down); err != nil {
 				return false, err

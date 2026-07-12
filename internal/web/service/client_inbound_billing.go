@@ -315,6 +315,9 @@ func (s *InboundService) addAccurateClientInboundTraffic(tx *gorm.DB, traffics [
 		if res.Error != nil {
 			return nil, res.Error
 		}
+		if err := addAdminUsedBytesByClientEmail(tx, mapping.Email, billableUp+billableDown); err != nil {
+			return nil, err
+		}
 		if res.RowsAffected == 0 {
 			row := xray.ClientTraffic{
 				InboundId:  mapping.InboundID,

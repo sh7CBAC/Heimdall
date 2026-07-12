@@ -42,6 +42,24 @@ func adminUsageByOwnerID(db *gorm.DB) (map[int]int64, error) {
 	return out, nil
 }
 
+func addAdminUsedBytesByClientEmail(tx *gorm.DB, email string, delta int64) error {
+	if tx == nil || delta <= 0 || strings.TrimSpace(email) == "" {
+		return nil
+	}
+
+	return tx.Exec(
+		`UPDATE users
+		 SET used_bytes = COALESCE(used_bytes, 0) + ?
+		 WHERE id = (
+			 SELECT owner_admin_id
+			 FROM clients
+			 WHERE email = ? AND owner_admin_id > 0
+			 LIMIT 1
+		 )`,
+		delta, strings.TrimSpace(email),
+	).Error
+}
+
 func (s *InboundService) SyncAdminUsedBytes() (map[int]int64, error) {
 	db := database.GetDB()
 	if db == nil {
@@ -59,7 +77,14 @@ func (s *InboundService) SyncAdminUsedBytes() (map[int]int64, error) {
 	}
 
 	for _, user := range users {
-		used := usageByAdmin[user.Id]
+		used := user.UsedBytes
+		if currentLiveUsed := usageByAdmin[user.Id]; currentLiveUsed > used {
+			used = currentLiveUsed
+		}
+		if used < 0 {
+			used = 0
+		}
+		usageByAdmin[user.Id] = used
 		if user.UsedBytes == used {
 			continue
 		}
