@@ -379,19 +379,21 @@ func (s *ClientService) addInboundClient(inboundSvc *InboundService, data *model
 		if err := s.SyncInbound(tx, oldInbound.Id, finalClients); err != nil {
 			return err
 		}
+		// The canonical link now exists, so refresh its runtime-stat mapping in
+		// this same transaction. Running this after commit caused one additional
+		// autocommit write for every target inbound.
+		if err := inboundSvc.syncClientInboundTrafficMappingsForInbound(
+			tx,
+			oldInbound.Id,
+		); err != nil {
+			return err
+		}
 		if oldInbound.NodeID != nil {
 			return (&NodeService{}).MarkNodeDirtyTx(tx, *oldInbound.NodeID)
 		}
 		return nil
 	}); txErr != nil {
 		return false, txErr
-	}
-
-	// SyncInbound above creates/updates the canonical clients/client_inbounds link.
-	// Refresh stat-email resolver rows before dynamic AddUser, otherwise Xray
-	// can emit hmstat_* traffic before accurate billing can resolve it.
-	if mapErr := inboundSvc.EnsureClientInboundTrafficMappingsForInbound(oldInbound.Id); mapErr != nil {
-		return false, mapErr
 	}
 
 	// Apply to the running runtime after commit — outside the serialized writer
@@ -700,19 +702,21 @@ func (s *ClientService) UpdateInboundClient(inboundSvc *InboundService, data *mo
 		if err := s.SyncInbound(tx, oldInbound.Id, finalClients); err != nil {
 			return err
 		}
+		// The canonical link now exists, so refresh its runtime-stat mapping in
+		// this same transaction. Running this after commit caused one additional
+		// autocommit write for every target inbound.
+		if err := inboundSvc.syncClientInboundTrafficMappingsForInbound(
+			tx,
+			oldInbound.Id,
+		); err != nil {
+			return err
+		}
 		if oldInbound.NodeID != nil {
 			return (&NodeService{}).MarkNodeDirtyTx(tx, *oldInbound.NodeID)
 		}
 		return nil
 	}); txErr != nil {
 		return false, txErr
-	}
-
-	// SyncInbound above creates/updates the canonical clients/client_inbounds link.
-	// Refresh stat-email resolver rows before dynamic AddUser, otherwise Xray
-	// can emit hmstat_* traffic before accurate billing can resolve it.
-	if mapErr := inboundSvc.EnsureClientInboundTrafficMappingsForInbound(oldInbound.Id); mapErr != nil {
-		return false, mapErr
 	}
 
 	// Apply to the running runtime after the DB is committed — outside the

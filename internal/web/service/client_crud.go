@@ -59,7 +59,18 @@ func (s *ClientService) Create(inboundSvc *InboundService, payload *ClientCreate
 	if err := validateClientSubID(client.SubID); err != nil {
 		return false, err
 	}
-	if len(payload.InboundIds) == 0 {
+	// Normalize the fan-out once. Repeated IDs must not append the same client
+	// more than once or repeat the full DB/runtime mutation cycle.
+	inboundIds := make([]int, 0, len(payload.InboundIds))
+	seenInboundIds := make(map[int]struct{}, len(payload.InboundIds))
+	for _, inboundId := range payload.InboundIds {
+		if _, duplicate := seenInboundIds[inboundId]; duplicate {
+			continue
+		}
+		seenInboundIds[inboundId] = struct{}{}
+		inboundIds = append(inboundIds, inboundId)
+	}
+	if len(inboundIds) == 0 {
 		return false, common.NewError("at least one inbound is required")
 	}
 
@@ -99,12 +110,27 @@ func (s *ClientService) Create(inboundSvc *InboundService, payload *ClientCreate
 		}
 	}
 
-	needRestart := false
-	for _, ibId := range payload.InboundIds {
-		inbound, getErr := inboundSvc.GetInbound(ibId)
+	// Resolve every target before the first write. A missing/invalid ID later in
+	// the request must not leave a client partially attached to earlier targets.
+	targetInbounds := make([]*model.Inbound, 0, len(inboundIds))
+	for _, inboundId := range inboundIds {
+		inbound, getErr := inboundSvc.GetInbound(inboundId)
 		if getErr != nil {
-			return needRestart, getErr
+			return false, getErr
 		}
+		targetInbounds = append(targetInbounds, inbound)
+	}
+
+	// The embedded email/subId scan is global work and must run once per create
+	// request, not once for every target inbound.
+	emailSubIDs, snapshotErr := inboundSvc.getAllEmailSubIDs()
+	if snapshotErr != nil {
+		return false, snapshotErr
+	}
+
+	needRestart := false
+	for _, inbound := range targetInbounds {
+		ibId := inbound.Id
 		if err := s.fillProtocolDefaults(&client, inbound); err != nil {
 			return needRestart, err
 		}
@@ -112,10 +138,10 @@ func (s *ClientService) Create(inboundSvc *InboundService, payload *ClientCreate
 		if mErr != nil {
 			return needRestart, mErr
 		}
-		nr, addErr := s.AddInboundClient(inboundSvc, &model.Inbound{
+		nr, addErr := s.addInboundClient(inboundSvc, &model.Inbound{
 			Id:       ibId,
 			Settings: string(settingsPayload),
-		})
+		}, emailSubIDs)
 		if addErr != nil {
 			return needRestart, addErr
 		}
