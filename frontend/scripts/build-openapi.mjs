@@ -172,9 +172,11 @@ function buildOperation(ep, tag, inheritedAuth) {
       successExample = { success: true, obj: ep.responseSchemaArray ? [obj] : obj };
     }
   }
-  responses['200'] = {
-    description: 'Successful response',
-    content: {
+  const successResponse = {
+    description: ep.successDescription || 'Successful response',
+  };
+  if (!ep.emptyResponse) {
+    successResponse.content = {
       'application/json': {
         schema: {
           type: 'object',
@@ -186,8 +188,9 @@ function buildOperation(ep, tag, inheritedAuth) {
         },
         ...(successExample !== undefined ? { example: successExample } : {}),
       },
-    },
-  };
+    };
+  }
+  responses[String(ep.successStatus || 200)] = successResponse;
 
   const errExample = tryParseJson(ep.errorResponse);
   if (errExample !== undefined || ep.errorStatus) {
@@ -210,14 +213,15 @@ function buildOperation(ep, tag, inheritedAuth) {
   }
 
   if (auth === 'cookie-only') {
-    responses['401'] ??= authErrorResponse(
-      'Browser login required',
-      'login required',
-    );
-    responses['403'] ??= authErrorResponse(
-      'Browser session or required administrator permission is missing',
-      'browser session required',
-    );
+    responses['401'] ??= ep.emptyAuthErrorResponse
+      ? { description: 'Browser login required' }
+      : authErrorResponse('Browser login required', 'login required');
+    responses['403'] ??= ep.emptyAuthErrorResponse
+      ? { description: 'Browser session or same-origin requirement is missing' }
+      : authErrorResponse(
+        'Browser session or required administrator permission is missing',
+        'browser session required',
+      );
   }
 
   op.responses = responses;
@@ -226,9 +230,23 @@ function buildOperation(ep, tag, inheritedAuth) {
 
 function buildSpec() {
   const paths = {};
+  const websocketEvents = [];
   for (const section of sections) {
     const tag = section.title;
+    const websocketChannel = section.endpoints.find((item) => item.method === 'GET')?.path;
     for (const ep of section.endpoints) {
+      if (ep.method === 'WS') {
+        const example = tryParseJson(ep.response);
+        websocketEvents.push({
+          channel: websocketChannel || '/ws',
+          type: ep.path,
+          summary: ep.summary || '',
+          ...(ep.description ? { description: ep.description } : {}),
+          ...(example !== undefined ? { example } : {}),
+        });
+        continue;
+      }
+
       const openApiPath = ginPathToOpenApi(ep.path);
       if (!paths[openApiPath]) paths[openApiPath] = {};
       paths[openApiPath][ep.method.toLowerCase()] = buildOperation(ep, tag, section.auth);
@@ -256,6 +274,7 @@ function buildSpec() {
       schemas: SCHEMAS,
     },
     security: [{ bearerAuth: [] }, { cookieAuth: [] }],
+    'x-websocket-events': websocketEvents,
     tags,
     paths,
   };

@@ -35,6 +35,10 @@ export interface Endpoint {
   summary: string;
   description?: string;
   deprecated?: boolean;
+  successStatus?: number;
+  successDescription?: string;
+  emptyResponse?: boolean;
+  emptyAuthErrorResponse?: boolean;
   params?: EndpointParam[];
   body?: string;
   response?: string;
@@ -1740,37 +1744,43 @@ export const sections: readonly Section[] = [
   {
     id: 'websocket',
     title: 'WebSocket',
+    auth: 'cookie-only',
     description:
-      'Real-time status updates via WebSocket. Connect once at <code>ws://<panel>/ws</code> to receive a stream of JSON messages without polling. Requires an authenticated session cookie (Bearer token auth is not supported). Each message has a <code>type</code> field that identifies the payload shape.',
+      'Real-time updates over a browser-session-authenticated WebSocket. Connect at <code>ws://&lt;panel&gt;/ws</code> or <code>wss://&lt;panel&gt;/ws</code>. Messages use the envelope <code>{ type, payload, time }</code>; documented events are also exposed through the <code>x-websocket-events</code> OpenAPI extension.',
     endpoints: [
       {
         method: 'GET',
         path: '/ws',
-        summary: 'Upgrade an HTTP connection to a WebSocket. Requires an authenticated session cookie (Bearer token auth is not supported here). Returns 101 Switching Protocols on success. The server then pushes JSON messages described below.',
+        successStatus: 101,
+        successDescription: 'Switching Protocols',
+        emptyResponse: true,
+        emptyAuthErrorResponse: true,
+        summary: 'Upgrade an authenticated browser-session HTTP connection to WebSocket.',
+        description: 'Bearer API tokens are rejected. Successful connections receive JSON messages with type, payload, and Unix-millisecond time fields. Documented event examples are available in x-websocket-events.',
       },
       {
         method: 'WS',
-        path: '→ type: status',
+        path: 'status',
         summary: 'Server health snapshot pushed every 2 seconds. Contains CPU, memory, swap, disk, network IO, load, and Xray state — same shape as <code>GET /panel/api/server/status</code>.',
-        response: '{\n  "type": "status",\n  "data": { "cpu": 12.5, "mem": { "current": 2147483648, "total": 8589934592 }, "xray": { "state": "running" } }\n}',
+        response: '{\n  "type": "status",\n  "payload": { "cpu": 12.5, "mem": { "current": 2147483648, "total": 8589934592 }, "xray": { "state": "running" } },\n  "time": 1710000000000\n}',
       },
       {
         method: 'WS',
-        path: '→ type: xrayState',
+        path: 'xray_state',
         summary: 'Xray process state change. Fired when Xray starts, stops, or encounters an error.',
-        response: '{\n  "type": "xrayState",\n  "data": "running"\n}',
+        response: '{\n  "type": "xray_state",\n  "payload": { "state": "running", "errorMsg": "" },\n  "time": 1710000000000\n}',
       },
       {
         method: 'WS',
-        path: '→ type: notification',
+        path: 'notification',
         summary: 'In-panel toast notification. Fired on Xray stop/restart, DB import, panel restart, etc.',
-        response: '{\n  "type": "notification",\n  "title": "Xray service restarted",\n  "body": "Xray has been restarted successfully",\n  "severity": "success"\n}',
+        response: '{\n  "type": "notification",\n  "payload": { "title": "Xray service restarted", "message": "Xray has been restarted successfully", "level": "success" },\n  "time": 1710000000000\n}',
       },
       {
         method: 'WS',
-        path: '→ type: invalidate',
+        path: 'invalidate',
         summary: 'Instructs the UI to re-fetch a resource. Fired when another admin session modifies data (e.g. toggling inbound enable).',
-        response: '{\n  "type": "invalidate",\n  "resource": "inbounds"\n}',
+        response: '{\n  "type": "invalidate",\n  "payload": { "type": "inbounds" },\n  "time": 1710000000000\n}',
       },
     ],
   },

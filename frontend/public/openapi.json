@@ -2460,6 +2460,66 @@
       "cookieAuth": []
     }
   ],
+  "x-websocket-events": [
+    {
+      "channel": "/ws",
+      "type": "status",
+      "summary": "Server health snapshot pushed every 2 seconds. Contains CPU, memory, swap, disk, network IO, load, and Xray state — same shape as <code>GET /panel/api/server/status</code>.",
+      "example": {
+        "type": "status",
+        "payload": {
+          "cpu": 12.5,
+          "mem": {
+            "current": 2147483648,
+            "total": 8589934592
+          },
+          "xray": {
+            "state": "running"
+          }
+        },
+        "time": 1710000000000
+      }
+    },
+    {
+      "channel": "/ws",
+      "type": "xray_state",
+      "summary": "Xray process state change. Fired when Xray starts, stops, or encounters an error.",
+      "example": {
+        "type": "xray_state",
+        "payload": {
+          "state": "running",
+          "errorMsg": ""
+        },
+        "time": 1710000000000
+      }
+    },
+    {
+      "channel": "/ws",
+      "type": "notification",
+      "summary": "In-panel toast notification. Fired on Xray stop/restart, DB import, panel restart, etc.",
+      "example": {
+        "type": "notification",
+        "payload": {
+          "title": "Xray service restarted",
+          "message": "Xray has been restarted successfully",
+          "level": "success"
+        },
+        "time": 1710000000000
+      }
+    },
+    {
+      "channel": "/ws",
+      "type": "invalidate",
+      "summary": "Instructs the UI to re-fetch a resource. Fired when another admin session modifies data (e.g. toggling inbound enable).",
+      "example": {
+        "type": "invalidate",
+        "payload": {
+          "type": "inbounds"
+        },
+        "time": 1710000000000
+      }
+    }
+  ],
   "tags": [
     {
       "name": "Authentication",
@@ -2515,7 +2575,7 @@
     },
     {
       "name": "WebSocket",
-      "description": "Real-time status updates via WebSocket. Connect once at <code>ws://<panel>/ws</code> to receive a stream of JSON messages without polling. Requires an authenticated session cookie (Bearer token auth is not supported). Each message has a <code>type</code> field that identifies the payload shape."
+      "description": "Real-time updates over a browser-session-authenticated WebSocket. Connect at <code>ws://&lt;panel&gt;/ws</code> or <code>wss://&lt;panel&gt;/ws</code>. Messages use the envelope <code>{ type, payload, time }</code>; documented events are also exposed through the <code>x-websocket-events</code> OpenAPI extension."
     }
   ],
   "paths": {
@@ -12517,174 +12577,23 @@
         "tags": [
           "WebSocket"
         ],
-        "summary": "Upgrade an HTTP connection to a WebSocket. Requires an authenticated session cookie (Bearer token auth is not supported here). Returns 101 Switching Protocols on success. The server then pushes JSON messages described below.",
+        "summary": "Upgrade an authenticated browser-session HTTP connection to WebSocket.",
         "operationId": "get_ws",
-        "responses": {
-          "200": {
-            "description": "Successful response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {
-                      "type": "boolean"
-                    },
-                    "msg": {
-                      "type": "string"
-                    },
-                    "obj": {}
-                  }
-                }
-              }
-            }
+        "security": [
+          {
+            "cookieAuth": []
           }
-        }
-      }
-    },
-    "→ type: status": {
-      "ws": {
-        "tags": [
-          "WebSocket"
         ],
-        "summary": "Server health snapshot pushed every 2 seconds. Contains CPU, memory, swap, disk, network IO, load, and Xray state — same shape as <code>GET /panel/api/server/status</code>.",
-        "operationId": "ws_type_status",
+        "description": "Bearer API tokens are rejected. Successful connections receive JSON messages with type, payload, and Unix-millisecond time fields. Documented event examples are available in x-websocket-events.",
         "responses": {
-          "200": {
-            "description": "Successful response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {
-                      "type": "boolean"
-                    },
-                    "msg": {
-                      "type": "string"
-                    },
-                    "obj": {}
-                  }
-                },
-                "example": {
-                  "type": "status",
-                  "data": {
-                    "cpu": 12.5,
-                    "mem": {
-                      "current": 2147483648,
-                      "total": 8589934592
-                    },
-                    "xray": {
-                      "state": "running"
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "→ type: xrayState": {
-      "ws": {
-        "tags": [
-          "WebSocket"
-        ],
-        "summary": "Xray process state change. Fired when Xray starts, stops, or encounters an error.",
-        "operationId": "ws_type_xrayState",
-        "responses": {
-          "200": {
-            "description": "Successful response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {
-                      "type": "boolean"
-                    },
-                    "msg": {
-                      "type": "string"
-                    },
-                    "obj": {}
-                  }
-                },
-                "example": {
-                  "type": "xrayState",
-                  "data": "running"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "→ type: notification": {
-      "ws": {
-        "tags": [
-          "WebSocket"
-        ],
-        "summary": "In-panel toast notification. Fired on Xray stop/restart, DB import, panel restart, etc.",
-        "operationId": "ws_type_notification",
-        "responses": {
-          "200": {
-            "description": "Successful response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {
-                      "type": "boolean"
-                    },
-                    "msg": {
-                      "type": "string"
-                    },
-                    "obj": {}
-                  }
-                },
-                "example": {
-                  "type": "notification",
-                  "title": "Xray service restarted",
-                  "body": "Xray has been restarted successfully",
-                  "severity": "success"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "→ type: invalidate": {
-      "ws": {
-        "tags": [
-          "WebSocket"
-        ],
-        "summary": "Instructs the UI to re-fetch a resource. Fired when another admin session modifies data (e.g. toggling inbound enable).",
-        "operationId": "ws_type_invalidate",
-        "responses": {
-          "200": {
-            "description": "Successful response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {
-                      "type": "boolean"
-                    },
-                    "msg": {
-                      "type": "string"
-                    },
-                    "obj": {}
-                  }
-                },
-                "example": {
-                  "type": "invalidate",
-                  "resource": "inbounds"
-                }
-              }
-            }
+          "101": {
+            "description": "Switching Protocols"
+          },
+          "401": {
+            "description": "Browser login required"
+          },
+          "403": {
+            "description": "Browser session or same-origin requirement is missing"
           }
         }
       }
