@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { Drawer, Layout, Menu } from 'antd';
 import type { MenuProps } from 'antd';
 import {
+  ApiOutlined,
   CloseOutlined,
   CloudServerOutlined,
   ClusterOutlined,
@@ -50,9 +51,10 @@ const LOGOUT_KEY = '__logout__';
 
 ensurePgAdminI18n();
 
-type IconName = 'dashboard' | 'inbound' | 'team' | 'groups' | 'admins' | 'roles' | 'setting' | 'tool' | 'cluster' | 'hosts' | 'logout' | 'outbound' | 'routing';
+type IconName = 'apidocs' | 'dashboard' | 'inbound' | 'team' | 'groups' | 'admins' | 'roles' | 'setting' | 'tool' | 'cluster' | 'hosts' | 'logout' | 'outbound' | 'routing';
 
 const iconByName: Record<IconName, ComponentType> = {
+  apidocs: ApiOutlined,
   dashboard: DashboardOutlined,
   inbound: ImportOutlined,
   team: TeamOutlined,
@@ -182,6 +184,7 @@ export default function AppSidebar() {
     { key: '/routing', icon: 'routing', title: t('menu.routing') },
     { key: '/settings', icon: 'setting', title: t('menu.settings') },
     { key: '/xray', icon: 'tool', title: t('menu.xray') },
+    { key: '/api-docs', icon: 'apidocs', title: t('menu.apiDocs') },
     { key: LOGOUT_KEY, icon: 'logout', title: t('logout') },
   ], [t]);
 
