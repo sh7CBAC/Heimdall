@@ -3,7 +3,7 @@
   "info": {
     "title": "HEIMDALL Panel API",
     "version": "3.x",
-    "description": "Programmatic interface to a HEIMDALL panel. Authenticate either by logging in (cookie) or with an API token from Settings → Security → API Token (Bearer). All endpoints under /panel/api/* honour both modes — an API token is a full-admin credential, so treat it like the panel password."
+    "description": "Programmatic interface to a HEIMDALL panel. Most protected APIs accept either a browser session cookie or an API token from Settings → Security → API Token. Operations marked browser-session-only reject Bearer tokens. Treat every API token like a panel password."
   },
   "servers": [
     {
@@ -16,7 +16,7 @@
       "bearerAuth": {
         "type": "http",
         "scheme": "bearer",
-        "description": "API token from Settings → Security → API Token. Send as `Authorization: Bearer <token>`."
+        "description": "API token from Settings → Security → API Token. Send as `Authorization: Bearer <token>`. Browser-session-only operations reject API tokens."
       },
       "cookieAuth": {
         "type": "apiKey",
@@ -2463,7 +2463,7 @@
   "tags": [
     {
       "name": "Authentication",
-      "description": "Two authentication modes are supported. UI sessions use a cookie set by the login endpoint. Programmatic clients (bots, scripts, remote panels) authenticate with a Bearer token taken from Settings → Security → API Token. Both work for every endpoint under /panel/api/*."
+      "description": "UI sessions use a cookie set by the login endpoint. Programmatic clients authenticate with a Bearer token from Settings → Security → API Token. Most protected panel APIs accept either mode; operations explicitly marked browser-session-only reject Bearer tokens."
     },
     {
       "name": "Inbounds",
@@ -2479,11 +2479,11 @@
     },
     {
       "name": "Admins",
-      "description": "Manage Heimdall panel administrator accounts. These endpoints are owner-only and never return password hashes. Admin accounts can be created, updated, enabled/disabled, deleted when safe, and have their admin-level usage reset."
+      "description": "Manage Heimdall panel administrator accounts from an active browser session. Bearer API tokens are rejected. Access follows administrator RBAC permissions, and password hashes are never returned."
     },
     {
       "name": "Admin Roles",
-      "description": "Manage Heimdall dashboard roles and RBAC presets. These endpoints are owner-only. Built-in roles are protected; the owner role is read-only and cannot be deleted."
+      "description": "Manage Heimdall dashboard roles and RBAC presets from an active browser session. Bearer API tokens are rejected. Access follows role-management RBAC permissions; built-in and owner roles retain their backend protections."
     },
     {
       "name": "Nodes",
@@ -2526,6 +2526,7 @@
         ],
         "summary": "Authenticate with username + password and receive a session cookie. Required before any cookie-based API call.",
         "operationId": "post_login",
+        "security": [],
         "requestBody": {
           "required": true,
           "content": {
@@ -2616,6 +2617,11 @@
         ],
         "summary": "Clear the session cookie. Requires the CSRF header for browser sessions.",
         "operationId": "post_logout",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful response",
@@ -2638,6 +2644,50 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Browser login required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "success": false,
+                  "msg": "login required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Browser session or required administrator permission is missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "success": false,
+                  "msg": "browser session required"
+                }
+              }
+            }
           }
         }
       }
@@ -2649,6 +2699,11 @@
         ],
         "summary": "Mint a CSRF token for the current session. The SPA replays it in the X-CSRF-Token header on unsafe requests. Bearer-token callers can skip this — the middleware short-circuits CSRF for authenticated API requests.",
         "operationId": "get_csrf_token",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful response",
@@ -2672,6 +2727,50 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Browser login required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "success": false,
+                  "msg": "login required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Browser session or required administrator permission is missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "success": false,
+                  "msg": "browser session required"
+                }
+              }
+            }
           }
         }
       }
@@ -2683,6 +2782,7 @@
         ],
         "summary": "Returns whether 2FA is enabled on the panel — used by the login page to decide whether to show the OTP field.",
         "operationId": "post_getTwoFactorEnable",
+        "security": [],
         "responses": {
           "200": {
             "description": "Successful response",
@@ -7623,6 +7723,11 @@
         ],
         "summary": "Return the currently logged-in panel administrator with role metadata and effective role permissions for frontend RBAC.",
         "operationId": "get_panel_api_admins_current",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful response",
@@ -7658,6 +7763,50 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Browser login required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "success": false,
+                  "msg": "login required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Browser session or required administrator permission is missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "success": false,
+                  "msg": "browser session required"
+                }
+              }
+            }
           }
         }
       }
@@ -7669,6 +7818,11 @@
         ],
         "summary": "List panel administrators with role metadata, status, data limit, used bytes, and owned-client count. Passwords are never returned.",
         "operationId": "get_panel_api_admins_list",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful response",
@@ -7704,6 +7858,50 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Browser login required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "success": false,
+                  "msg": "login required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Browser session or required administrator permission is missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "success": false,
+                  "msg": "browser session required"
+                }
+              }
+            }
           }
         }
       }
@@ -7715,6 +7913,11 @@
         ],
         "summary": "Return administrator counters used by the Admins page summary cards.",
         "operationId": "get_panel_api_admins_stats",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful response",
@@ -7743,6 +7946,50 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Browser login required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "success": false,
+                  "msg": "login required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Browser session or required administrator permission is missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "success": false,
+                  "msg": "browser session required"
+                }
+              }
+            }
           }
         }
       }
@@ -7754,6 +8001,11 @@
         ],
         "summary": "Fetch one administrator by numeric ID. Password hashes are never returned.",
         "operationId": "get_panel_api_admins_get_id",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
         "parameters": [
           {
             "name": "id",
@@ -7784,6 +8036,50 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Browser login required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "success": false,
+                  "msg": "login required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Browser session or required administrator permission is missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "success": false,
+                  "msg": "browser session required"
+                }
+              }
+            }
           }
         }
       }
@@ -7795,6 +8091,11 @@
         ],
         "summary": "Create a new administrator. The owner role cannot be assigned through this endpoint.",
         "operationId": "post_panel_api_admins_add",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -7840,6 +8141,50 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Browser login required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "success": false,
+                  "msg": "login required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Browser session or required administrator permission is missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "success": false,
+                  "msg": "browser session required"
+                }
+              }
+            }
           }
         }
       }
@@ -7851,6 +8196,11 @@
         ],
         "summary": "Update a non-owner administrator. Leave password empty to keep the existing password. Owner admins cannot be modified here.",
         "operationId": "post_panel_api_admins_update_id",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
         "parameters": [
           {
             "name": "id",
@@ -7878,6 +8228,50 @@
                     },
                     "obj": {}
                   }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Browser login required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "success": false,
+                  "msg": "login required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Browser session or required administrator permission is missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "success": false,
+                  "msg": "browser session required"
                 }
               }
             }
@@ -7892,6 +8286,11 @@
         ],
         "summary": "Delete a non-owner administrator. Deletion is blocked when the admin owns clients.",
         "operationId": "post_panel_api_admins_del_id",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
         "parameters": [
           {
             "name": "id",
@@ -7919,6 +8318,50 @@
                     },
                     "obj": {}
                   }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Browser login required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "success": false,
+                  "msg": "login required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Browser session or required administrator permission is missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "success": false,
+                  "msg": "browser session required"
                 }
               }
             }
@@ -7933,6 +8376,11 @@
         ],
         "summary": "Enable a non-owner administrator account.",
         "operationId": "post_panel_api_admins_enable_id",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
         "parameters": [
           {
             "name": "id",
@@ -7960,6 +8408,50 @@
                     },
                     "obj": {}
                   }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Browser login required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "success": false,
+                  "msg": "login required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Browser session or required administrator permission is missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "success": false,
+                  "msg": "browser session required"
                 }
               }
             }
@@ -7974,6 +8466,11 @@
         ],
         "summary": "Disable a non-owner administrator account and bump its login epoch so existing sessions are invalidated.",
         "operationId": "post_panel_api_admins_disable_id",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
         "parameters": [
           {
             "name": "id",
@@ -8001,6 +8498,50 @@
                     },
                     "obj": {}
                   }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Browser login required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "success": false,
+                  "msg": "login required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Browser session or required administrator permission is missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "success": false,
+                  "msg": "browser session required"
                 }
               }
             }
@@ -8015,6 +8556,11 @@
         ],
         "summary": "Reset admin-level used bytes to zero.",
         "operationId": "post_panel_api_admins_resetUsage_id",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
         "parameters": [
           {
             "name": "id",
@@ -8045,6 +8591,50 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Browser login required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "success": false,
+                  "msg": "login required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Browser session or required administrator permission is missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "success": false,
+                  "msg": "browser session required"
+                }
+              }
+            }
           }
         }
       }
@@ -8056,6 +8646,11 @@
         ],
         "summary": "Disable every currently-active client owned by the selected administrator. Updates runtime users, stored inbound settings, client records, traffic enable flags, and remote node state when applicable.",
         "operationId": "post_panel_api_admins_users_disableActive_id",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
         "parameters": [
           {
             "name": "id",
@@ -8089,6 +8684,50 @@
                   "obj": {
                     "count": 12
                   }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Browser login required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "success": false,
+                  "msg": "login required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Browser session or required administrator permission is missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "success": false,
+                  "msg": "browser session required"
                 }
               }
             }
@@ -8103,6 +8742,11 @@
         ],
         "summary": "Activate every currently-disabled client owned by the selected administrator. Returns the number of clients changed and requests an Xray restart when needed.",
         "operationId": "post_panel_api_admins_users_activateDisabled_id",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
         "parameters": [
           {
             "name": "id",
@@ -8139,6 +8783,50 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Browser login required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "success": false,
+                  "msg": "login required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Browser session or required administrator permission is missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "success": false,
+                  "msg": "browser session required"
+                }
+              }
+            }
           }
         }
       }
@@ -8150,6 +8838,11 @@
         ],
         "summary": "Remove every client owned by the selected administrator using the optimized bulk-delete pipeline. This is destructive and removes runtime users, inbound links, client records, traffic rows, IP rows, and activity rows.",
         "operationId": "post_panel_api_admins_users_removeAll_id",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
         "parameters": [
           {
             "name": "id",
@@ -8187,6 +8880,50 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Browser login required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "success": false,
+                  "msg": "login required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Browser session or required administrator permission is missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "success": false,
+                  "msg": "browser session required"
+                }
+              }
+            }
           }
         }
       }
@@ -8198,6 +8935,11 @@
         ],
         "summary": "List admin roles with decoded permissions, limits, feature flags, access settings, and assigned-admin count.",
         "operationId": "get_panel_api_admin_roles_list",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful response",
@@ -8217,6 +8959,50 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Browser login required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "success": false,
+                  "msg": "login required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Browser session or required administrator permission is missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "success": false,
+                  "msg": "browser session required"
+                }
+              }
+            }
           }
         }
       }
@@ -8228,6 +9014,11 @@
         ],
         "summary": "Fetch one admin role by numeric ID.",
         "operationId": "get_panel_api_admin_roles_get_id",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
         "parameters": [
           {
             "name": "id",
@@ -8258,6 +9049,50 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Browser login required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "success": false,
+                  "msg": "login required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Browser session or required administrator permission is missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "success": false,
+                  "msg": "browser session required"
+                }
+              }
+            }
           }
         }
       }
@@ -8269,6 +9104,11 @@
         ],
         "summary": "Create a custom admin role. The role slug is derived from the role name.",
         "operationId": "post_panel_api_admin_roles_add",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -8308,6 +9148,50 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Browser login required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "success": false,
+                  "msg": "login required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Browser session or required administrator permission is missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "success": false,
+                  "msg": "browser session required"
+                }
+              }
+            }
           }
         }
       }
@@ -8319,6 +9203,11 @@
         ],
         "summary": "Update a non-owner role. Built-in roles can keep their protected identity; owner role is read-only.",
         "operationId": "post_panel_api_admin_roles_update_id",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
         "parameters": [
           {
             "name": "id",
@@ -8349,6 +9238,50 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Browser login required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "success": false,
+                  "msg": "login required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Browser session or required administrator permission is missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "success": false,
+                  "msg": "browser session required"
+                }
+              }
+            }
           }
         }
       }
@@ -8360,6 +9293,11 @@
         ],
         "summary": "Duplicate an existing role into a new custom role copy.",
         "operationId": "post_panel_api_admin_roles_duplicate_id",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
         "parameters": [
           {
             "name": "id",
@@ -8390,6 +9328,50 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Browser login required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "success": false,
+                  "msg": "login required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Browser session or required administrator permission is missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "success": false,
+                  "msg": "browser session required"
+                }
+              }
+            }
           }
         }
       }
@@ -8401,6 +9383,11 @@
         ],
         "summary": "Delete a custom role. Owner and built-in roles cannot be deleted, and assigned roles are protected.",
         "operationId": "post_panel_api_admin_roles_del_id",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
         "parameters": [
           {
             "name": "id",
@@ -8428,6 +9415,50 @@
                     },
                     "obj": {}
                   }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Browser login required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "success": false,
+                  "msg": "login required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Browser session or required administrator permission is missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "success": false,
+                  "msg": "browser session required"
                 }
               }
             }

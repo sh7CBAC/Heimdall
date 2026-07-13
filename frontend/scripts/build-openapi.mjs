@@ -16,7 +16,7 @@ const SECURITY_SCHEMES = {
   bearerAuth: {
     type: 'http',
     scheme: 'bearer',
-    description: 'API token from Settings → Security → API Token. Send as `Authorization: Bearer <token>`.',
+    description: 'API token from Settings → Security → API Token. Send as `Authorization: Bearer <token>`. Browser-session-only operations reject API tokens.',
   },
   cookieAuth: {
     type: 'apiKey',
@@ -69,12 +69,38 @@ function paramToOpenApi(p) {
   return out;
 }
 
-function buildOperation(ep, tag) {
+function authErrorResponse(description, message) {
+  return {
+    description,
+    content: {
+      'application/json': {
+        schema: {
+          type: 'object',
+          properties: {
+            success: { type: 'boolean' },
+            msg: { type: 'string' },
+          },
+        },
+        example: { success: false, msg: message },
+      },
+    },
+  };
+}
+
+function buildOperation(ep, tag, inheritedAuth) {
+  const auth = ep.auth || inheritedAuth || 'bearer-or-cookie';
   const op = {
     tags: [tag],
     summary: ep.summary || '',
     operationId: `${ep.method.toLowerCase()}_${ep.path.replace(/[^A-Za-z0-9]+/g, '_').replace(/^_|_$/g, '')}`,
   };
+
+  if (auth === 'public') {
+    op.security = [];
+  } else if (auth === 'cookie-only') {
+    op.security = [{ cookieAuth: [] }];
+  }
+
   if (ep.description) op.description = ep.description;
   if (ep.deprecated) op.deprecated = true;
 
@@ -183,6 +209,17 @@ function buildOperation(ep, tag) {
     };
   }
 
+  if (auth === 'cookie-only') {
+    responses['401'] ??= authErrorResponse(
+      'Browser login required',
+      'login required',
+    );
+    responses['403'] ??= authErrorResponse(
+      'Browser session or required administrator permission is missing',
+      'browser session required',
+    );
+  }
+
   op.responses = responses;
   return op;
 }
@@ -194,7 +231,7 @@ function buildSpec() {
     for (const ep of section.endpoints) {
       const openApiPath = ginPathToOpenApi(ep.path);
       if (!paths[openApiPath]) paths[openApiPath] = {};
-      paths[openApiPath][ep.method.toLowerCase()] = buildOperation(ep, tag);
+      paths[openApiPath][ep.method.toLowerCase()] = buildOperation(ep, tag, section.auth);
     }
   }
 
@@ -209,7 +246,7 @@ function buildSpec() {
       title: 'HEIMDALL Panel API',
       version: PANEL_VERSION,
       description:
-        'Programmatic interface to a HEIMDALL panel. Authenticate either by logging in (cookie) or with an API token from Settings → Security → API Token (Bearer). All endpoints under /panel/api/* honour both modes — an API token is a full-admin credential, so treat it like the panel password.',
+        'Programmatic interface to a HEIMDALL panel. Most protected APIs accept either a browser session cookie or an API token from Settings → Security → API Token. Operations marked browser-session-only reject Bearer tokens. Treat every API token like a panel password.',
     },
     servers: [
       { url: '/', description: 'Current panel (basePath aware)' },

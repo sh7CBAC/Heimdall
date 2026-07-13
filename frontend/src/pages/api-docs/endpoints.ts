@@ -1,4 +1,5 @@
 export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'WS';
+export type ApiAuthMode = 'bearer-or-cookie' | 'cookie-only' | 'public';
 export type ParamLocation =
   | 'path'
   | 'query'
@@ -30,6 +31,7 @@ export interface EndpointParam {
 export interface Endpoint {
   method: HttpMethod;
   path: string;
+  auth?: ApiAuthMode;
   summary: string;
   description?: string;
   deprecated?: boolean;
@@ -50,6 +52,7 @@ export interface SubscriptionHeader {
 export interface Section {
   id: string;
   title: string;
+  auth?: ApiAuthMode;
   description?: string;
   subHeader?: SubscriptionHeader[];
   endpoints: Endpoint[];
@@ -60,11 +63,12 @@ export const sections: readonly Section[] = [
     id: 'authentication',
     title: 'Authentication',
     description:
-      'Two authentication modes are supported. UI sessions use a cookie set by the login endpoint. Programmatic clients (bots, scripts, remote panels) authenticate with a Bearer token taken from Settings → Security → API Token. Both work for every endpoint under /panel/api/*.',
+      'UI sessions use a cookie set by the login endpoint. Programmatic clients authenticate with a Bearer token from Settings → Security → API Token. Most protected panel APIs accept either mode; operations explicitly marked browser-session-only reject Bearer tokens.',
     endpoints: [
       {
         method: 'POST',
         path: '/login',
+        auth: 'public',
         summary: 'Authenticate with username + password and receive a session cookie. Required before any cookie-based API call.',
         params: [
           { name: 'username', in: 'body', type: 'string', desc: 'Panel admin username.' },
@@ -80,12 +84,14 @@ export const sections: readonly Section[] = [
       {
         method: 'POST',
         path: '/logout',
+        auth: 'cookie-only',
         summary: 'Clear the session cookie. Requires the CSRF header for browser sessions.',
         response: '{\n  "success": true\n}',
       },
       {
         method: 'GET',
         path: '/csrf-token',
+        auth: 'cookie-only',
         summary: 'Mint a CSRF token for the current session. The SPA replays it in the X-CSRF-Token header on unsafe requests. Bearer-token callers can skip this — the middleware short-circuits CSRF for authenticated API requests.',
         response:
           '{\n  "success": true,\n  "obj": "csrf-token-string"\n}',
@@ -93,6 +99,7 @@ export const sections: readonly Section[] = [
       {
         method: 'POST',
         path: '/getTwoFactorEnable',
+        auth: 'public',
         summary: 'Returns whether 2FA is enabled on the panel — used by the login page to decide whether to show the OTP field.',
         response: '{\n  "success": true,\n  "obj": false\n}',
       },
@@ -979,8 +986,9 @@ export const sections: readonly Section[] = [
   {
     id: 'admins',
     title: 'Admins',
+    auth: 'cookie-only',
     description:
-      'Manage Heimdall panel administrator accounts. These endpoints are owner-only and never return password hashes. Admin accounts can be created, updated, enabled/disabled, deleted when safe, and have their admin-level usage reset.',
+      'Manage Heimdall panel administrator accounts from an active browser session. Bearer API tokens are rejected. Access follows administrator RBAC permissions, and password hashes are never returned.',
     endpoints: [
       {
         method: 'GET',
@@ -1098,8 +1106,9 @@ export const sections: readonly Section[] = [
   {
     id: 'admin-roles',
     title: 'Admin Roles',
+    auth: 'cookie-only',
     description:
-      'Manage Heimdall dashboard roles and RBAC presets. These endpoints are owner-only. Built-in roles are protected; the owner role is read-only and cannot be deleted.',
+      'Manage Heimdall dashboard roles and RBAC presets from an active browser session. Bearer API tokens are rejected. Access follows role-management RBAC permissions; built-in and owner roles retain their backend protections.',
     endpoints: [
       {
         method: 'GET',
