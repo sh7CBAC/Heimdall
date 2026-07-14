@@ -635,6 +635,25 @@ func (s *InboundService) setRemoteTrafficLocked(nodeID int, snap *runtime.Traffi
 
 			if _, rowExists := existingEmails[cs.Email]; !rowExists {
 				if dirty {
+					// A dirty node must not create or resurrect the shared
+					// client_traffics row before its configuration is
+					// reconciled. Its cumulative counter is still valid,
+					// however, and must become this node's baseline. Without
+					// that baseline, the result depends on whether a clean
+					// node happens to create the shared row first.
+					if err := s.upsertNodeBaseline(
+						tx,
+						nodeID,
+						cs.Email,
+						canon.Up,
+						canon.Down,
+					); err != nil {
+						return false, err
+					}
+					nodeBaselines[cs.Email] = nodeTrafficCounter{
+						Up:   canon.Up,
+						Down: canon.Down,
+					}
 					continue
 				}
 				var seedUp, seedDown int64

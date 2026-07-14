@@ -29,6 +29,7 @@ type diagnosticNodeEndpoint struct {
 	tag          string
 	email        string
 	rejectUpdate bool
+	listDelay    time.Duration
 	counter      atomic.Int64
 	listCalls    atomic.Int64
 	updateCalls  atomic.Int64
@@ -46,6 +47,9 @@ func diagnosticEnvelope(w http.ResponseWriter, obj any) {
 func (e *diagnosticNodeEndpoint) serveHTTP(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case r.Method == http.MethodGet && r.URL.Path == "/panel/api/inbounds/list":
+		if e.listDelay > 0 {
+			time.Sleep(e.listDelay)
+		}
 		e.listCalls.Add(1)
 		up := e.counter.Load()
 		diagnosticEnvelope(w, []map[string]any{{
@@ -247,6 +251,12 @@ func TestDiagnosticOneCleanNineDirtyNodesStillSyncTraffic(t *testing.T) {
 	for ordinal := 1; ordinal <= 10; ordinal++ {
 		dirty := ordinal > 1
 		_, endpoint := addDiagnosticHTTPNode(t, db, ordinal, dirty, dirty)
+		if ordinal == 1 {
+			// Force the clean node to create the shared traffic row
+			// after all dirty nodes have reported. Every dirty node
+			// must already have established its own baseline.
+			endpoint.listDelay = 250 * time.Millisecond
+		}
 		endpoints = append(endpoints, endpoint)
 	}
 
