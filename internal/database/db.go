@@ -114,11 +114,30 @@ func initModels() error {
 	if err := normalizeInboundSubSortIndex(); err != nil {
 		return err
 	}
+	if err := migrateLegacySocksInboundsToMixed(); err != nil {
+		return err
+	}
 	if IsPostgres() {
 		if err := resyncPostgresSequences(db, models); err != nil {
 			log.Printf("Error resyncing postgres sequences: %v", err)
 			return err
 		}
+	}
+	return nil
+}
+
+// migrateLegacySocksInboundsToMixed renames legacy socks inbounds to mixed.
+// Both protocols use the same settings shape, but socks is no longer accepted
+// by current node request validation and can otherwise keep a node permanently
+// dirty while its reconcile retries.
+func migrateLegacySocksInboundsToMixed() error {
+	res := db.Exec("UPDATE inbounds SET protocol = 'mixed' WHERE protocol = 'socks'")
+	if res.Error != nil {
+		log.Printf("Error migrating legacy socks inbounds to mixed: %v", res.Error)
+		return res.Error
+	}
+	if res.RowsAffected > 0 {
+		log.Printf("Migrated %d legacy socks inbound(s) to mixed", res.RowsAffected)
 	}
 	return nil
 }
