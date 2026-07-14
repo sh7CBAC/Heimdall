@@ -330,13 +330,16 @@ func (j *NodeTrafficSyncJob) syncOne(mgr *runtime.Manager, n *model.Node, doIpSy
 		reconcileErr := j.inboundService.ReconcileNode(reconcileCtx, rt, n)
 		reconcileCancel()
 		if reconcileErr != nil {
-			logger.Warningf("node traffic sync: reconcile for %s failed: %v", n.Name, reconcileErr)
-			return
+			// Keep the dirty flag so reconcile retries next tick, but traffic
+			// accounting is independent and must continue even when one config
+			// payload is rejected by the node.
+			logger.Warningf("node traffic sync: reconcile for %s failed, continuing with traffic pull: %v", n.Name, reconcileErr)
+		} else {
+			if clearErr := j.nodeService.ClearNodeDirty(n.Id, n.ConfigDirtyAt); clearErr != nil {
+				logger.Warningf("node traffic sync: clear dirty for %s failed: %v", n.Name, clearErr)
+			}
+			j.structural.set()
 		}
-		if clearErr := j.nodeService.ClearNodeDirty(n.Id, n.ConfigDirtyAt); clearErr != nil {
-			logger.Warningf("node traffic sync: clear dirty for %s failed: %v", n.Name, clearErr)
-		}
-		j.structural.set()
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), nodeTrafficSyncRequestTimeout)
