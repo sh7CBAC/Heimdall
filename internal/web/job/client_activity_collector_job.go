@@ -36,7 +36,7 @@ const (
 	clientActivityRetention     = 7 * 24 * time.Hour
 	clientActivityMaintenance   = 10 * time.Minute
 
-	clientActivityRowsPerClient = 2000
+	clientActivityRowsPerClient = 100000
 	clientActivityMaxEmail      = 320
 	clientActivityMaxDest       = 253
 )
@@ -721,6 +721,18 @@ func capClientActivityRows(
 	tx *gorm.DB,
 	clientIDs []int,
 ) error {
+	return capClientActivityRowsToLimit(
+		tx,
+		clientIDs,
+		clientActivityRowsPerClient,
+	)
+}
+
+func capClientActivityRowsToLimit(
+	tx *gorm.DB,
+	clientIDs []int,
+	rowLimit int,
+) error {
 	if len(clientIDs) == 0 {
 		return nil
 	}
@@ -744,7 +756,7 @@ WHERE id IN (
 )
 `,
 		clientIDs,
-		clientActivityRowsPerClient,
+		rowLimit,
 	).Error
 }
 
