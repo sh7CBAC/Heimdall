@@ -1,4 +1,5 @@
 {
+  "get": "Obtener",
   "username": "Nombre de Usuario",
   "password": "Contraseña",
   "login": "Acceder",

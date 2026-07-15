@@ -1,4 +1,5 @@
 {
+  "get": "Get",
   "username": "Username",
   "password": "Password",
   "login": "Log In",
