@@ -607,6 +607,18 @@ export default function ClientsPage() {
     setInfoOpen(true);
   }
 
+  const onClientCreated = useCallback(async (email: string) => {
+    const full = await hydrate(email);
+    if (!full?.client) {
+      messageApi.warning(t('pages.clients.toasts.configLoadFailed', {
+        defaultValue: 'Client created, but its configuration could not be loaded automatically.',
+      }));
+      return;
+    }
+    setInfoClient({ ...full.client, inboundIds: full.inboundIds });
+    setInfoOpen(true);
+  }, [hydrate, messageApi, t]);
+
   async function onShowQr(row: ClientRecord) {
     const full = await hydrate(row.email);
     setQrClient(full ? { ...row, ...full.client, inboundIds: full.inboundIds } : row);
@@ -1816,6 +1828,7 @@ const getLimitMessage = (message: string) => {
             groups={allGroups}
             save={onSave}
             resetTraffic={canUseResetStrategy ? resetTraffic : undefined}
+            onCreated={onClientCreated}
             onOpenChange={setFormOpen}
           />
         </LazyMount>

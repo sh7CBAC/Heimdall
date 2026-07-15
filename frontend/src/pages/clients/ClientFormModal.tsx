@@ -29,6 +29,7 @@ import { DateTimePicker, SelectAllClearButtons } from '@/components/form';
 import { TLS_FLOW_CONTROL } from '@/schemas/primitives';
 import type { ClientRecord, InboundOption, ExternalLink, ExternalLinkInput } from '@/hooks/useClients';
 import { ClientFormSchema, ClientCreateFormSchema } from '@/schemas/client';
+import { finishClientSave } from './clientCreateFlow';
 
 const FLOW_OPTIONS = Object.values(TLS_FLOW_CONTROL);
 const VMESS_SECURITY_OPTIONS = [
@@ -99,6 +100,7 @@ interface ClientFormModalProps {
     meta: SaveMetaEdit | SaveMetaCreate,
   ) => Promise<ApiMsg | null>;
   resetTraffic?: (client: ClientRecord) => Promise<ApiMsg | null>;
+  onCreated?: (email: string) => Promise<void> | void;
   onOpenChange: (open: boolean) => void;
 }
 
@@ -192,6 +194,7 @@ export default function ClientFormModal({
   groups = [],
   save,
   resetTraffic,
+  onCreated,
   onOpenChange,
 }: ClientFormModalProps) {
   const { t } = useTranslation();
@@ -540,7 +543,13 @@ export default function ClientFormModal({
           { isEdit: false, email: clientPayload.email as string, externalLinks },
         );
       }
-      if (msg?.success) close();
+      await finishClientSave({
+        success: !!msg?.success,
+        isEdit,
+        email: clientPayload.email,
+        close,
+        onCreated,
+      });
     } finally {
       setSubmitting(false);
     }

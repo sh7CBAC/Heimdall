@@ -57,6 +57,13 @@
   opacity: 0.85;
 }
 
+.client-config-alert {
+  margin-bottom: 10px;
+}
+.client-config-alert:last-child {
+  margin-bottom: 0;
+}
+
 .link-panel {
   border: 1px solid var(--ant-color-border);
   border-radius: 8px;
