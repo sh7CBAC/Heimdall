@@ -74,12 +74,128 @@ func billableClientInboundBytes(raw int64, multiplier float64) int64 {
 	return int64(math.Round(float64(raw) * multiplier))
 }
 
+// upsertClientInboundTrafficMappingRow treats stat_email as the stable runtime
+// identity. A deleted and recreated logical client receives a new clients.id,
+// while its deterministic stat_email remains unchanged. Rebind the existing
+// detailed-accounting row to the current canonical pair and preserve usage.
+//
+// A partially repaired database can contain both:
+//  1. the old stat_email row, and
+//  2. a second row for the current client/inbound pair.
+//
+// Merge those rows transactionally before updating the survivor so neither
+// usage history nor last-online information is lost.
+func upsertClientInboundTrafficMappingRow(
+	tx *gorm.DB,
+	mapping *model.ClientInboundTraffic,
+) error {
+	if tx == nil ||
+		mapping == nil ||
+		mapping.ClientID <= 0 ||
+		mapping.InboundID <= 0 ||
+		strings.TrimSpace(mapping.Email) == "" ||
+		strings.TrimSpace(mapping.StatEmail) == "" {
+		return nil
+	}
+
+	var existing []model.ClientInboundTraffic
+	if err := tx.
+		Where(
+			"stat_email = ? OR (client_id = ? AND inbound_id = ?)",
+			mapping.StatEmail,
+			mapping.ClientID,
+			mapping.InboundID,
+		).
+		Order("id ASC").
+		Find(&existing).
+		Error; err != nil {
+		return err
+	}
+
+	if len(existing) == 0 {
+		return tx.Create(mapping).Error
+	}
+
+	// Prefer the row already carrying the deterministic runtime identity.
+	// It is the row Xray traffic was attributed to.
+	survivorIndex := 0
+	for index := range existing {
+		if existing[index].StatEmail == mapping.StatEmail {
+			survivorIndex = index
+			break
+		}
+	}
+
+	survivor := existing[survivorIndex]
+	duplicateIDs := make(
+		[]int,
+		0,
+		len(existing)-1,
+	)
+
+	for index := range existing {
+		if index == survivorIndex {
+			continue
+		}
+
+		duplicate := existing[index]
+
+		survivor.ActualUp += duplicate.ActualUp
+		survivor.ActualDown += duplicate.ActualDown
+		survivor.BillableUp += duplicate.BillableUp
+		survivor.BillableDown += duplicate.BillableDown
+
+		if duplicate.LastOnline > survivor.LastOnline {
+			survivor.LastOnline = duplicate.LastOnline
+		}
+
+		if survivor.CreatedAt <= 0 ||
+			(duplicate.CreatedAt > 0 && duplicate.CreatedAt < survivor.CreatedAt) {
+			survivor.CreatedAt = duplicate.CreatedAt
+		}
+
+		duplicateIDs = append(
+			duplicateIDs,
+			duplicate.Id,
+		)
+	}
+
+	// Remove conflicting pair rows before rebinding the survivor. All callers
+	// run this helper inside a transaction, so a later failure restores them.
+	if len(duplicateIDs) > 0 {
+		if err := tx.
+			Where("id IN ?", duplicateIDs).
+			Delete(&model.ClientInboundTraffic{}).
+			Error; err != nil {
+			return err
+		}
+	}
+
+	survivor.ClientID = mapping.ClientID
+	survivor.InboundID = mapping.InboundID
+	survivor.Email = mapping.Email
+	survivor.StatEmail = mapping.StatEmail
+
+	if survivor.CreatedAt <= 0 {
+		survivor.CreatedAt = mapping.CreatedAt
+	}
+
+	survivor.UpdatedAt = mapping.UpdatedAt
+
+	return tx.Save(&survivor).Error
+}
+
 // EnsureClientInboundTrafficMappingsForInbound refreshes runtime-stat mappings
 // for one inbound. It is intentionally scoped to a single inbound so config
 // generation and client writes do not scan the full client table on every
 // traffic poll.
 func (s *InboundService) EnsureClientInboundTrafficMappingsForInbound(inboundID int) error {
-	return s.syncClientInboundTrafficMappingsForInbound(database.GetDB(), inboundID)
+	return database.GetDB().Transaction(func(tx *gorm.DB) error {
+		return s.syncClientInboundTrafficMappingsForInbound(
+			tx,
+			inboundID,
+		)
+	})
 }
 
 func (s *InboundService) syncClientInboundTrafficMappingsForInbound(tx *gorm.DB, inboundID int) error {
@@ -130,14 +246,10 @@ func (s *InboundService) syncClientInboundTrafficMappingsForInbound(tx *gorm.DB,
 			UpdatedAt: now,
 		}
 
-		if err := tx.Clauses(clause.OnConflict{
-			Columns: []clause.Column{{Name: "client_id"}, {Name: "inbound_id"}},
-			DoUpdates: clause.Assignments(map[string]any{
-				"email":      r.Email,
-				"stat_email": statEmail,
-				"updated_at": now,
-			}),
-		}).Create(&row).Error; err != nil {
+		if err := upsertClientInboundTrafficMappingRow(
+			tx,
+			&row,
+		); err != nil {
 			return err
 		}
 	}
@@ -197,14 +309,10 @@ func (s *InboundService) upsertClientInboundTrafficMapping(tx *gorm.DB, inboundI
 		UpdatedAt: now,
 	}
 
-	return tx.Clauses(clause.OnConflict{
-		Columns: []clause.Column{{Name: "client_id"}, {Name: "inbound_id"}},
-		DoUpdates: clause.Assignments(map[string]any{
-			"email":      client.Email,
-			"stat_email": statEmail,
-			"updated_at": now,
-		}),
-	}).Create(&mapping).Error
+	return upsertClientInboundTrafficMappingRow(
+		tx,
+		&mapping,
+	)
 }
 
 type runtimeClientTrafficMapping struct {
