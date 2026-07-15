@@ -39,6 +39,18 @@ func (j *XrayTrafficJob) Run() {
 	needRestart0, clientsDisabled, err := j.inboundService.AddTraffic(traffics, clientTraffics)
 	if err != nil {
 		logger.Warning("add inbound traffic failed:", err)
+
+		if needRestart0 {
+			if repairErr := j.xrayService.RestartXray(true); repairErr != nil {
+				logger.Warning(
+					"repair xray after rolled-back disable transaction failed:",
+					repairErr,
+				)
+				j.xrayService.SetToNeedRestart()
+			} else {
+				needRestart0 = false
+			}
+		}
 	}
 	err, needRestart1 := j.outboundService.AddTraffic(traffics, clientTraffics)
 	if err != nil {
@@ -50,9 +62,15 @@ func (j *XrayTrafficJob) Run() {
 			logger.Warning("get RestartXrayOnClientDisable failed:", settingErr)
 		}
 		if restartOnDisable {
-			if err := j.xrayService.RestartXray(true); err != nil {
-				logger.Warning("restart xray after disabling clients failed:", err)
-				j.xrayService.SetToNeedRestart()
+			// RemoveUser has already updated the running HandlerService. Reconcile
+			// immediately so the Process config snapshot matches the real runtime;
+			// this normally hot-applies only the affected inbound and leaves the
+			// node-egress SOCKS listeners running.
+			if err := j.xrayService.ReconcileXray(); err != nil {
+				logger.Warning(
+					"reconcile xray after disabling clients failed:",
+					err,
+				)
 			}
 		}
 		websocket.BroadcastInvalidate(websocket.MessageTypeInbounds)

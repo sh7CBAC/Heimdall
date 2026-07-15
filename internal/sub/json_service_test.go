@@ -33,6 +33,64 @@ func outboundSettings(t *testing.T, raw []byte) map[string]any {
 	return settings
 }
 
+func TestSubJsonServiceBlankProfileInheritsNodeAddress(t *testing.T) {
+	nodeID := 7
+	subReq := &SubService{
+		address: "panel.example.com",
+		nodesByID: map[int]*model.Node{
+			7: {Id: 7, Address: "node7.example.com"},
+		},
+	}
+	inbound := &model.Inbound{
+		NodeID:            &nodeID,
+		Listen:            "0.0.0.0",
+		Port:              443,
+		Protocol:          model.VLESS,
+		Remark:            "json-inherit",
+		ShareAddrStrategy: "node",
+		Settings:          `{"encryption":"none"}`,
+		StreamSettings: `{
+			"network":"tcp",
+			"security":"none",
+			"tcpSettings":{"header":{"type":"none"}},
+			"externalProxy":[
+				{"enabled":true,"forceTls":"same","dest":"","port":0,"remark":"inherit"}
+			]
+		}`,
+	}
+	client := model.Client{
+		ID:    "11111111-2222-4333-8444-555555555555",
+		Email: "user",
+	}
+
+	configs := NewSubJsonService("", "", "", subReq).getConfig(
+		subReq,
+		inbound,
+		client,
+		"panel.example.com",
+	)
+	if len(configs) != 1 {
+		t.Fatalf("len(configs) = %d, want 1", len(configs))
+	}
+
+	var config map[string]any
+	if err := json.Unmarshal(configs[0], &config); err != nil {
+		t.Fatalf("unmarshal JSON subscription: %v", err)
+	}
+	outbounds, _ := config["outbounds"].([]any)
+	if len(outbounds) == 0 {
+		t.Fatalf("JSON subscription has no outbounds: %#v", config)
+	}
+	outbound, _ := outbounds[0].(map[string]any)
+	settings, _ := outbound["settings"].(map[string]any)
+	if settings["address"] != "node7.example.com" {
+		t.Fatalf("JSON address = %v, want node7.example.com", settings["address"])
+	}
+	if settings["port"] != float64(443) {
+		t.Fatalf("JSON port = %v, want 443", settings["port"])
+	}
+}
+
 func TestSubJsonServiceInjectsGlobalFinalMask(t *testing.T) {
 	finalMask := `{"tcp":[{"type":"fragment","settings":{"packets":"tlshello","length":"100-200","delay":"10-20"}}],"udp":[{"type":"noise","settings":{"noise":[{"type":"base64","packet":"SGVsbG8="}]}}],"quicParams":{"congestion":"bbr"}}`
 	svc := NewSubJsonService("", "", finalMask, nil)

@@ -164,6 +164,9 @@ func (s *SubJsonService) getConfig(subReq *SubService, inbound *model.Inbound, c
 
 	externalProxies, ok := stream["externalProxy"].([]any)
 	hasExternalProxy := ok && len(externalProxies) > 0
+	if hasExternalProxy {
+		externalProxies = resolveExternalProxyDefaults(externalProxies, defaultDest, inbound.Port)
+	}
 	if !hasExternalProxy {
 		externalProxies = []any{
 			map[string]any{

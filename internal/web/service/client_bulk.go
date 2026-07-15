@@ -739,8 +739,7 @@ type BulkDeleteReport struct {
 // read-modify-write per inbound. Per-row DB cleanups are also batched with
 // IN-clause queries at the end. Errors on a particular email are recorded
 // in the Skipped list and processing continues for the rest.
-func (s *ClientService) BulkDelete(inboundSvc *InboundService, emails []string, keepTraffic bool) (BulkDeleteResult, bool, error) {
-	result := BulkDeleteResult{}
+func (s *ClientService) BulkDelete(inboundSvc *InboundService, emails []string, keepTraffic bool) (result BulkDeleteResult, needRestart bool, err error) {
 	emails = FilterVisibleClientEmails(emails)
 
 	seen := map[string]struct{}{}
@@ -776,7 +775,6 @@ func (s *ClientService) BulkDelete(inboundSvc *InboundService, emails []string, 
 		recordsByEmail[records[i].Email] = &records[i]
 		tombstoneEmails = append(tombstoneEmails, records[i].Email)
 	}
-	tombstoneClientEmails(tombstoneEmails)
 
 	skippedReasons := map[string]string{}
 	for _, email := range cleanEmails {
@@ -811,7 +809,30 @@ func (s *ClientService) BulkDelete(inboundSvc *InboundService, emails []string, 
 		}
 	}
 
-	needRestart := false
+	inboundIDs := make([]int, 0, len(emailsByInbound))
+	for inboundID := range emailsByInbound {
+		inboundIDs = append(inboundIDs, inboundID)
+	}
+	nodeIDs, err := remoteDeleteNodeIDs(cleanEmails, inboundIDs)
+	if err != nil {
+		return result, false, err
+	}
+	remoteDeletedNodeIDs, err := deleteClientsFromRemoteNodes(
+		context.Background(),
+		nodeIDs,
+		cleanEmails,
+		keepTraffic,
+	)
+	if err != nil {
+		return result, false, err
+	}
+	defer func() {
+		if err != nil {
+			markNodesDirtyBestEffort(remoteDeletedNodeIDs)
+		}
+	}()
+	tombstoneClientEmails(tombstoneEmails)
+
 	for inboundId, ibEmails := range emailsByInbound {
 		ibResult := s.bulkDelInboundClients(inboundSvc, inboundId, ibEmails, recordsByEmail, false)
 		if ibResult.needRestart {
@@ -837,7 +858,7 @@ func (s *ClientService) BulkDelete(inboundSvc *InboundService, emails []string, 
 	if len(successIds) > 0 {
 		// Serialize row cleanup against the traffic poll and keep Heimdall
 		// activity cleanup semantics.
-		if err := runSerializedTx(func(tx *gorm.DB) error {
+		err = runSerializedTx(func(tx *gorm.DB) error {
 			// Activity is always deleted with the client, including when
 			// keepTraffic preserves ordinary traffic accounting rows.
 			if err := (&ClientActivityService{}).
@@ -862,20 +883,14 @@ func (s *ClientService) BulkDelete(inboundSvc *InboundService, emails []string, 
 			}
 
 			if !keepTraffic && len(successEmails) > 0 {
-				for _, batch := range chunkStrings(successEmails, sqlInChunk) {
-					if err := tx.
-						Where("email IN ?", batch).
-						Delete(&xray.ClientTraffic{}).
-						Error; err != nil {
-						return err
-					}
-
-					if err := tx.
-						Where("client_email IN ?", batch).
-						Delete(&model.InboundClientIps{}).
-						Error; err != nil {
-						return err
-					}
+				// Some records may already be detached from every inbound. The
+				// per-inbound phase cannot purge their detailed accounting rows, so
+				// perform the complete idempotent purge again at final record cleanup.
+				if err := inboundSvc.delClientStatsByEmails(tx, successEmails); err != nil {
+					return err
+				}
+				if err := inboundSvc.delClientIPsByEmails(tx, successEmails); err != nil {
+					return err
 				}
 			}
 
@@ -888,7 +903,8 @@ func (s *ClientService) BulkDelete(inboundSvc *InboundService, emails []string, 
 				}
 			}
 			return nil
-		}); err != nil {
+		})
+		if err != nil {
 			return result, needRestart, err
 		}
 	}

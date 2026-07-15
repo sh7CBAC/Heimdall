@@ -25,6 +25,28 @@ func (s *InboundService) AddTraffic(inboundTraffics []*xray.Traffic, clientTraff
 		needRestart, clientsDisabled, disabledNodeIDs, inner = s.addTrafficLocked(inboundTraffics, clientTraffics)
 		return inner
 	})
+	if err != nil && len(disabledNodeIDs) > 0 {
+		// A remote update can succeed immediately before the database commit
+		// fails. The transaction then rolls back its dirty flag, so restore a
+		// durable reconcile request outside the failed transaction.
+		seen := make(map[int]struct{}, len(disabledNodeIDs))
+		nodeSvc := NodeService{}
+		for _, nodeID := range disabledNodeIDs {
+			if nodeID <= 0 {
+				continue
+			}
+			if _, duplicate := seen[nodeID]; duplicate {
+				continue
+			}
+			seen[nodeID] = struct{}{}
+			if dirtyErr := nodeSvc.MarkNodeDirty(nodeID); dirtyErr != nil {
+				err = errors.Join(
+					err,
+					fmt.Errorf("restore dirty state for node %d: %w", nodeID, dirtyErr),
+				)
+			}
+		}
+	}
 	if err == nil {
 		adminNeedRestart, adminClientsDisabled, adminErr := s.SyncAndEnforceAdminUsageLimits()
 		if adminErr != nil {
@@ -44,50 +66,66 @@ func (s *InboundService) AddTraffic(inboundTraffics []*xray.Traffic, clientTraff
 	return
 }
 
-func (s *InboundService) addTrafficLocked(inboundTraffics []*xray.Traffic, clientTraffics []*xray.ClientTraffic) (bool, bool, []int, error) {
-	var err error
-	db := database.GetDB()
-	tx := db.Begin()
+func (s *InboundService) addTrafficLocked(
+	inboundTraffics []*xray.Traffic,
+	clientTraffics []*xray.ClientTraffic,
+) (
+	needRestart bool,
+	clientsDisabled bool,
+	disabledNodeIDs []int,
+	err error,
+) {
+	runtimeMayNeedRepair := false
 
-	defer func() {
-		if err != nil {
-			tx.Rollback()
-		} else {
-			tx.Commit()
+	err = database.GetDB().Transaction(func(tx *gorm.DB) error {
+		if txErr := s.addInboundTraffic(tx, inboundTraffics); txErr != nil {
+			return txErr
 		}
-	}()
-	err = s.addInboundTraffic(tx, inboundTraffics)
-	if err != nil {
-		return false, false, nil, err
-	}
-	err = s.addClientTraffic(tx, clientTraffics)
-	if err != nil {
-		return false, false, nil, err
-	}
+		if txErr := s.addClientTraffic(tx, clientTraffics); txErr != nil {
+			return txErr
+		}
 
-	needRestart0, count, err := s.autoRenewClients(tx)
-	if err != nil {
-		logger.Warning("Error in renew clients:", err)
-	} else if count > 0 {
-		logger.Debugf("%v clients renewed", count)
-	}
+		needRestart0, count, renewErr := s.autoRenewClients(tx)
+		if renewErr != nil {
+			logger.Warning("Error in renew clients:", renewErr)
+		} else if count > 0 {
+			logger.Debugf("%v clients renewed", count)
+			runtimeMayNeedRepair = true
+		}
 
-	disabledClientsCount := int64(0)
-	needRestart1, count, disabledNodeIDs, err := s.disableInvalidClients(tx)
-	if err != nil {
-		logger.Warning("Error in disabling invalid clients:", err)
-	} else if count > 0 {
-		logger.Debugf("%v clients disabled", count)
-		disabledClientsCount = count
-	}
+		disabledClientsCount := int64(0)
+		needRestart1, count, nodeIDs, disableErr := s.disableInvalidClients(tx)
+		disabledNodeIDs = nodeIDs
+		if disableErr != nil {
+			logger.Warning("Error in disabling invalid clients:", disableErr)
+			runtimeMayNeedRepair = true
+			return fmt.Errorf(
+				"disable invalid clients transaction: %w",
+				disableErr,
+			)
+		}
+		if count > 0 {
+			logger.Debugf("%v clients disabled", count)
+			disabledClientsCount = count
+			runtimeMayNeedRepair = true
+		}
 
-	needRestart2, count, err := s.disableInvalidInbounds(tx)
+		needRestart2, count, inboundErr := s.disableInvalidInbounds(tx)
+		if inboundErr != nil {
+			logger.Warning("Error in disabling invalid inbounds:", inboundErr)
+		} else if count > 0 {
+			logger.Debugf("%v inbounds disabled", count)
+			runtimeMayNeedRepair = true
+		}
+
+		needRestart = needRestart0 || needRestart1 || needRestart2
+		clientsDisabled = disabledClientsCount > 0
+		return nil
+	})
 	if err != nil {
-		logger.Warning("Error in disabling invalid inbounds:", err)
-	} else if count > 0 {
-		logger.Debugf("%v inbounds disabled", count)
+		return runtimeMayNeedRepair, false, disabledNodeIDs, err
 	}
-	return needRestart0 || needRestart1 || needRestart2, disabledClientsCount > 0, disabledNodeIDs, nil
+	return needRestart, clientsDisabled, disabledNodeIDs, nil
 }
 
 func (s *InboundService) addInboundTraffic(tx *gorm.DB, traffics []*xray.Traffic) error {

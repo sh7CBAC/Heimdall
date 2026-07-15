@@ -156,6 +156,9 @@ func (s *SubClashService) getProxies(subReq *SubService, inbound *model.Inbound,
 	}
 	externalProxies, ok := stream["externalProxy"].([]any)
 	hasExternalProxy := ok && len(externalProxies) > 0
+	if hasExternalProxy {
+		externalProxies = resolveExternalProxyDefaults(externalProxies, defaultDest, inbound.Port)
+	}
 	if !hasExternalProxy {
 		externalProxies = []any{map[string]any{
 			"forceTls": "same",

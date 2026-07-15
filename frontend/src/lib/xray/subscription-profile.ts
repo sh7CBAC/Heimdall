@@ -3,7 +3,6 @@ import type { ExternalProxyEntry } from '@/schemas/protocols/stream/external-pro
 
 
 export function createSubscriptionProfileDraft(
-  defaultAddress = '',
   defaultPort = 443,
 ): ExternalProxyEntry {
   const safePort = Number.isInteger(defaultPort) && defaultPort > 0 && defaultPort <= 65535
@@ -13,7 +12,9 @@ export function createSubscriptionProfileDraft(
   return {
     enabled: true,
     remark: '',
-    dest: defaultAddress,
+    // Blank intentionally inherits the address resolved from the inbound's
+    // share-address strategy. A user-entered value remains an explicit override.
+    dest: '',
     port: safePort,
     network: 'same',
     security: 'same',

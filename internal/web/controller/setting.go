@@ -2,9 +2,12 @@ package controller
 
 import (
 	"errors"
+	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
+	"github.com/mhsanaei/3x-ui/v3/internal/database/model"
 	"github.com/mhsanaei/3x-ui/v3/internal/logger"
 	"github.com/mhsanaei/3x-ui/v3/internal/util/crypto"
 	"github.com/mhsanaei/3x-ui/v3/internal/web/entity"
@@ -69,10 +72,14 @@ func (a *SettingController) initRouter(g *gin.RouterGroup) {
 	g.POST("/updateUser", a.updateUser)
 	g.POST("/restartPanel", requirePanelPermission("settings", "update"), a.restartPanel)
 	g.GET("/getDefaultJsonConfig", requirePanelPermission("settings", "viewGeneral"), a.getDefaultXrayConfig)
-	g.GET("/apiTokens", requirePanelPermission("settings", "view"), a.listApiTokens)
-	g.POST("/apiTokens/create", requirePanelPermission("settings", "update"), a.createApiToken)
-	g.POST("/apiTokens/delete/:id", requirePanelPermission("settings", "update"), a.deleteApiToken)
-	g.POST("/apiTokens/setEnabled/:id", requirePanelPermission("settings", "update"), a.setApiTokenEnabled)
+	// API token lifecycle is an owner-only browser operation. Bearer and mTLS
+	// callers are rejected by requireOwnerAdminMiddleware even when they are
+	// trusted service principals.
+	g.GET("/apiTokens", requireOwnerAdminMiddleware(), a.listApiTokens)
+	g.GET("/apiTokens/subjects", requireOwnerAdminMiddleware(), a.listApiTokenSubjects)
+	g.POST("/apiTokens/create", requireOwnerAdminMiddleware(), a.createApiToken)
+	g.POST("/apiTokens/delete/:id", requireOwnerAdminMiddleware(), a.deleteApiToken)
+	g.POST("/apiTokens/setEnabled/:id", requireOwnerAdminMiddleware(), a.setApiTokenEnabled)
 	g.POST("/testSmtp", requirePanelPermission("settings", "update"), a.testSmtp)
 	g.POST("/testTgBot", requirePanelPermission("settings", "update"), a.testTgBot)
 }
@@ -193,7 +200,11 @@ func (a *SettingController) getDefaultXrayConfig(c *gin.Context) {
 }
 
 type apiTokenCreateForm struct {
-	Name string `json:"name" form:"name"`
+	Name           string   `json:"name" form:"name"`
+	Kind           string   `json:"kind" form:"kind"`
+	SubjectAdminId int      `json:"subjectAdminId" form:"subjectAdminId"`
+	Scopes         []string `json:"scopes" form:"scopes"`
+	ExpiresAt      int64    `json:"expiresAt" form:"expiresAt"`
 }
 
 type apiTokenEnabledForm struct {
@@ -209,13 +220,41 @@ func (a *SettingController) listApiTokens(c *gin.Context) {
 	jsonObj(c, rows, nil)
 }
 
+func (a *SettingController) listApiTokenSubjects(c *gin.Context) {
+	rows, err := a.apiTokenService.ListDelegatedSubjects()
+	if err != nil {
+		jsonMsg(c, I18nWeb(c, "pages.settings.toasts.getSettings"), err)
+		return
+	}
+	jsonObj(c, rows, nil)
+}
+
 func (a *SettingController) createApiToken(c *gin.Context) {
 	form := &apiTokenCreateForm{}
 	if err := c.ShouldBind(form); err != nil {
 		jsonMsg(c, I18nWeb(c, "pages.settings.toasts.modifySettings"), err)
 		return
 	}
-	row, err := a.apiTokenService.Create(form.Name)
+	owner := session.GetLoginUser(c)
+	if owner == nil {
+		pureJsonMsg(c, http.StatusUnauthorized, false, "login required")
+		return
+	}
+	// An omitted kind preserves the historical owner-created service-token
+	// request shape ({"name":"..."}) used for remote-panel integrations.
+	// The delegated-token UI always sends kind=delegated explicitly.
+	kind := strings.ToLower(strings.TrimSpace(form.Kind))
+	if kind == "" {
+		kind = model.ApiTokenKindService
+	}
+	row, err := a.apiTokenService.CreateWithOptions(panel.ApiTokenCreateOptions{
+		Name:             form.Name,
+		Kind:             kind,
+		SubjectAdminId:   form.SubjectAdminId,
+		CreatedByAdminId: owner.Id,
+		Scopes:           form.Scopes,
+		ExpiresAt:        form.ExpiresAt,
+	})
 	if err != nil {
 		jsonMsg(c, I18nWeb(c, "pages.settings.toasts.modifySettings"), err)
 		return

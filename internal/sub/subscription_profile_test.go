@@ -23,6 +23,94 @@ func TestExpandSubscriptionEndpoints_DefaultWhenProfilesAbsent(t *testing.T) {
 	}
 }
 
+func TestExpandSubscriptionEndpoints_BlankAddressInheritsResolvedDefault(t *testing.T) {
+	base := map[string]any{
+		"network":  "tcp",
+		"security": "none",
+		"tcpSettings": map[string]any{
+			"header": map[string]any{"type": "none"},
+		},
+		"externalProxy": []any{
+			map[string]any{
+				"enabled": true,
+				"remark":  "empty",
+				"dest":    "",
+				"port":    float64(443),
+			},
+			map[string]any{
+				"enabled": true,
+				"remark":  "whitespace",
+				"dest":    "   ",
+				"port":    float64(8443),
+			},
+			map[string]any{
+				"enabled": true,
+				"remark":  "override",
+				"dest":    "cdn.example.com",
+				"port":    float64(9443),
+			},
+		},
+	}
+
+	endpoints := expandSubscriptionEndpoints(base, "resolved-node.example.com", 27543)
+	if len(endpoints) != 3 {
+		t.Fatalf("len(endpoints) = %d, want 3", len(endpoints))
+	}
+
+	wantAddresses := []string{
+		"resolved-node.example.com",
+		"resolved-node.example.com",
+		"cdn.example.com",
+	}
+	for i, want := range wantAddresses {
+		if endpoints[i].Address != want {
+			t.Errorf("endpoints[%d].Address = %q, want %q", i, endpoints[i].Address, want)
+		}
+	}
+}
+
+func TestResolveExternalProxyDefaults_InheritsWithoutMutatingSource(t *testing.T) {
+	original := map[string]any{
+		"dest":     "   ",
+		"port":     float64(0),
+		"remark":   "inherit",
+		"forceTls": "same",
+	}
+	override := map[string]any{
+		"dest":     "  cdn.example.com  ",
+		"port":     float64(8443),
+		"remark":   "override",
+		"forceTls": "same",
+	}
+
+	resolved := resolveExternalProxyDefaults(
+		[]any{original, override},
+		"node7.example.com",
+		443,
+	)
+	if len(resolved) != 2 {
+		t.Fatalf("len(resolved) = %d, want 2", len(resolved))
+	}
+
+	inherited := resolved[0].(map[string]any)
+	explicit := resolved[1].(map[string]any)
+
+	if inherited["dest"] != "node7.example.com" || inherited["port"] != float64(443) {
+		t.Fatalf("inherited endpoint = %#v", inherited)
+	}
+	if explicit["dest"] != "cdn.example.com" || explicit["port"] != float64(8443) {
+		t.Fatalf("explicit endpoint = %#v", explicit)
+	}
+
+	if original["dest"] != "   " || original["port"] != float64(0) {
+		t.Fatalf("source profile was mutated: %#v", original)
+	}
+	inherited["remark"] = "changed"
+	if original["remark"] != "inherit" {
+		t.Fatalf("resolved profile aliases source map: %#v", original)
+	}
+}
+
 func TestExpandSubscriptionEndpoints_FiltersDisabledAndOverridesStream(t *testing.T) {
 	base := map[string]any{
 		"network":  "tcp",

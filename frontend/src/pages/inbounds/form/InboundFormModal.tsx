@@ -146,7 +146,6 @@ interface InboundFormModalProps {
 export function buildAddModeValues(): InboundFormValues {
   const settings = createDefaultInboundSettings('vless') ?? undefined;
   const port = RandomUtil.randomInteger(10000, 60000);
-  const defaultAddress = typeof window !== 'undefined' ? window.location.hostname : '';
   return rawInboundToFormValues({
     protocol: 'vless',
     settings,
@@ -154,7 +153,7 @@ export function buildAddModeValues(): InboundFormValues {
       network: 'tcp',
       security: 'none',
       tcpSettings: TcpStreamSettingsSchema.parse({ header: { type: 'none' } }),
-      externalProxy: [createSubscriptionProfileDraft(defaultAddress, port)],
+      externalProxy: [createSubscriptionProfileDraft(port)],
     },
     sniffing: SniffingSchema.parse({}),
     port,

@@ -1,6 +1,8 @@
 #!/usr/bin/env node
+import { log } from 'node:console';
 import { writeFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
+import process from 'node:process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { sections } from '../src/pages/api-docs/endpoints.ts';
@@ -38,14 +40,17 @@ function extractPathParams(openApiPath) {
   return params;
 }
 
-function mapType(t) {
+function schemaForType(t) {
   const v = String(t || '').toLowerCase();
-  if (v === 'number' || v === 'integer' || v === 'int') return 'integer';
-  if (v === 'float' || v === 'double') return 'number';
-  if (v === 'boolean' || v === 'bool') return 'boolean';
-  if (v === 'array') return 'array';
-  if (v === 'object') return 'object';
-  return 'string';
+  if (v === 'string[]') return { type: 'array', items: { type: 'string' } };
+  if (v === 'integer[]' || v === 'int[]') return { type: 'array', items: { type: 'integer' } };
+  if (v === 'object[]') return { type: 'array', items: { type: 'object' } };
+  if (v === 'array') return { type: 'array', items: {} };
+  if (v === 'number' || v === 'integer' || v === 'int') return { type: 'integer' };
+  if (v === 'float' || v === 'double') return { type: 'number' };
+  if (v === 'boolean' || v === 'bool') return { type: 'boolean' };
+  if (v === 'object') return { type: 'object' };
+  return { type: 'string' };
 }
 
 function tryParseJson(raw) {
@@ -63,7 +68,7 @@ function paramToOpenApi(p) {
     in: p.in,
     required: p.in === 'path' ? true : !p.optional,
     description: p.desc || '',
-    schema: { type: mapType(p.type) },
+    schema: schemaForType(p.type),
   };
   if (p.defaultValue !== undefined) out.schema.default = p.defaultValue;
   return out;
@@ -135,7 +140,7 @@ function buildOperation(ep, tag, inheritedAuth) {
     const required = [];
     for (const bp of bodyParams) {
       properties[bp.name] = {
-        type: mapType(bp.type),
+        ...schemaForType(bp.type),
         description: bp.desc || '',
       };
       if (!bp.optional) required.push(bp.name);
@@ -286,7 +291,7 @@ writeFileSync(outPath, JSON.stringify(spec, null, 2) + '\n');
 const pathCount = Object.keys(spec.paths).length;
 let opCount = 0;
 for (const ops of Object.values(spec.paths)) opCount += Object.keys(ops).length;
-console.log(`[openapi] wrote ${outPath}`);
-console.log(`[openapi] paths: ${pathCount}, operations: ${opCount}, tags: ${spec.tags.length}`);
+log(`[openapi] wrote ${outPath}`);
+log(`[openapi] paths: ${pathCount}, operations: ${opCount}, tags: ${spec.tags.length}`);
 
 void pathToFileURL;

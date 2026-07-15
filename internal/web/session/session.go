@@ -3,6 +3,7 @@ package session
 import (
 	"encoding/gob"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/mhsanaei/3x-ui/v3/internal/database"
@@ -14,11 +15,23 @@ import (
 )
 
 const (
-	loginUserKey      = "LOGIN_USER"
-	loginEpochKey     = "LOGIN_EPOCH"
-	apiAuthUserKey    = "api_auth_user"
-	sessionCookieName = "3x-ui"
+	loginUserKey        = "LOGIN_USER"
+	loginEpochKey       = "LOGIN_EPOCH"
+	apiAuthUserKey      = "api_auth_user"
+	apiAuthPrincipalKey = "api_auth_principal"
+	sessionCookieName   = "3x-ui"
 )
+
+const APIAuthPrincipalKindMTLS = "mtls"
+
+// APIAuthPrincipal describes how an API request was authenticated. It is held
+// only in the Gin request context and never written to a browser session.
+type APIAuthPrincipal struct {
+	TokenId   int
+	TokenName string
+	Kind      string
+	Scopes    []string
+}
 
 func init() {
 	gob.Register(model.User{})
@@ -34,11 +47,72 @@ func SetLoginUser(c *gin.Context, user *model.User) error {
 	return s.Save()
 }
 
-func SetAPIAuthUser(c *gin.Context, user *model.User) {
-	if user == nil {
+func SetAPIAuthPrincipal(c *gin.Context, user *model.User, principal *APIAuthPrincipal) {
+	if user == nil || principal == nil {
 		return
 	}
 	c.Set(apiAuthUserKey, user)
+	copyPrincipal := *principal
+	copyPrincipal.Scopes = append([]string(nil), principal.Scopes...)
+	c.Set(apiAuthPrincipalKey, &copyPrincipal)
+}
+
+// SetAPIAuthUser preserves the original helper for older tests and trusted
+// internal callers. Such callers retain the legacy service-token semantics.
+func SetAPIAuthUser(c *gin.Context, user *model.User) {
+	SetAPIAuthPrincipal(c, user, &APIAuthPrincipal{
+		Kind:   model.ApiTokenKindService,
+		Scopes: []string{"*"},
+	})
+}
+
+func GetAPIAuthPrincipal(c *gin.Context) *APIAuthPrincipal {
+	if c == nil {
+		return nil
+	}
+	value, ok := c.Get(apiAuthPrincipalKey)
+	if !ok {
+		return nil
+	}
+	principal, _ := value.(*APIAuthPrincipal)
+	return principal
+}
+
+func IsDelegatedAPIAuth(c *gin.Context) bool {
+	principal := GetAPIAuthPrincipal(c)
+	return principal != nil && principal.Kind == model.ApiTokenKindDelegated
+}
+
+func IsServiceAPIAuth(c *gin.Context) bool {
+	principal := GetAPIAuthPrincipal(c)
+	if principal == nil {
+		return false
+	}
+	return principal.Kind == model.ApiTokenKindService || principal.Kind == APIAuthPrincipalKindMTLS
+}
+
+// APIAuthScopeAllowed supports exact scopes plus resource wildcards for future
+// service integrations. Delegated-token creation currently accepts exact scopes
+// only; service and mTLS principals use the global wildcard.
+func APIAuthScopeAllowed(c *gin.Context, required string) bool {
+	principal := GetAPIAuthPrincipal(c)
+	if principal == nil {
+		return false
+	}
+	required = strings.ToLower(strings.TrimSpace(required))
+	if required == "" {
+		return false
+	}
+	for _, raw := range principal.Scopes {
+		scope := strings.ToLower(strings.TrimSpace(raw))
+		if scope == "*" || scope == required {
+			return true
+		}
+		if strings.HasSuffix(scope, ":*") && strings.HasPrefix(required, strings.TrimSuffix(scope, "*")) {
+			return true
+		}
+	}
+	return false
 }
 
 func GetLoginUser(c *gin.Context) *model.User {

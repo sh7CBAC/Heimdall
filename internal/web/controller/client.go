@@ -2,6 +2,7 @@ package controller
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -12,6 +13,7 @@ import (
 	"github.com/mhsanaei/3x-ui/v3/internal/web/websocket"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 func notifyClientsChanged() {
@@ -255,10 +257,28 @@ func (a *ClientController) update(c *gin.Context) {
 	notifyClientsChanged()
 }
 
+func clientDeleteScopeAllowsOrphanCleanup(scope service.ClientAccessScope) bool {
+	return scope.Mode == service.ClientAccessAll &&
+		(!scope.RestrictGroups || scope.AllowAllGroups) &&
+		(!scope.RestrictInbounds || scope.AllowAllInbounds)
+}
+
 func (a *ClientController) delete(c *gin.Context) {
 	email := c.Param("email")
-	if _, ok := a.requireClientPermission(c, email, "delete"); !ok {
-		return
+	scope := a.clientScope(c, "delete")
+	if _, err := a.clientService.RequireClientForScopeByEmail(scope, email); err != nil {
+		// A previous buggy delete may have already removed the central ClientRecord
+		// while leaving the canonical record on one or more nodes. In that state
+		// normal record-based RBAC cannot resolve an owner. Permit the idempotent
+		// cleanup path only to an unrestricted all-client administrator; delegated
+		// or inbound/group-restricted roles must not be able to target arbitrary
+		// historical emails. DeleteByEmail performs the node-history lookup and
+		// still fails closed if no orphan evidence exists.
+		if !errors.Is(err, gorm.ErrRecordNotFound) ||
+			!clientDeleteScopeAllowsOrphanCleanup(scope) {
+			jsonMsg(c, I18nWeb(c, "get"), err)
+			return
+		}
 	}
 	keepTraffic := c.Query("keepTraffic") == "1"
 	needRestart, err := a.clientService.DeleteByEmail(&a.inboundService, email, keepTraffic)

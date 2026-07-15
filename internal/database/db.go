@@ -87,6 +87,17 @@ func initModels() error {
 		&model.OutboundSubscription{},
 	}
 	for _, mdl := range models {
+		// SQLite's generic AutoMigrate may rebuild an existing api_tokens table
+		// when adding the delegated-token fields. That rebuild is both unnecessary
+		// and unsafe for legacy rows, so this model has an additive migration that
+		// never copies or recreates an existing table.
+		if _, isAPIToken := mdl.(*model.ApiToken); isAPIToken {
+			if err := migrateApiTokenDelegationSchema(); err != nil {
+				log.Printf("Error migrating API token schema: %v", err)
+				return err
+			}
+			continue
+		}
 		if err := db.AutoMigrate(mdl); err != nil {
 			if isIgnorableDuplicateColumnErr(err, mdl) {
 				log.Printf("Ignoring duplicate column during auto migration for %T: %v", mdl, err)
@@ -138,6 +149,58 @@ func migrateLegacySocksInboundsToMixed() error {
 	}
 	if res.RowsAffected > 0 {
 		log.Printf("Migrated %d legacy socks inbound(s) to mixed", res.RowsAffected)
+	}
+	return nil
+}
+
+// migrateApiTokenDelegationSchema adds delegated-token metadata without asking
+// SQLite to rebuild the existing api_tokens table. Existing rows remain service
+// tokens, preserving remote-node and central-panel authentication. PostgreSQL
+// also uses this additive path so both supported backends share one contract.
+func migrateApiTokenDelegationSchema() error {
+	if !db.Migrator().HasTable(&model.ApiToken{}) {
+		return db.AutoMigrate(&model.ApiToken{})
+	}
+
+	columns := []string{
+		"Kind",
+		"SubjectAdminId",
+		"CreatedByAdminId",
+		"ScopesJSON",
+		"ExpiresAt",
+	}
+	for _, field := range columns {
+		if db.Migrator().HasColumn(&model.ApiToken{}, field) {
+			continue
+		}
+		if err := db.Migrator().AddColumn(&model.ApiToken{}, field); err != nil {
+			return fmt.Errorf("add api_tokens.%s: %w", field, err)
+		}
+	}
+
+	// A blank kind can only come from a manually altered or partially migrated
+	// database. Normalize it before authentication so all pre-existing rows have
+	// explicit service semantics.
+	if err := db.Model(&model.ApiToken{}).
+		Where("kind IS NULL OR TRIM(kind) = ''").
+		UpdateColumn("kind", model.ApiTokenKindService).Error; err != nil {
+		return fmt.Errorf("normalize legacy API token kinds: %w", err)
+	}
+
+	indexes := []string{
+		"idx_api_tokens_token_hash",
+		"idx_api_tokens_kind",
+		"idx_api_tokens_subject_admin_id",
+		"idx_api_tokens_created_by_admin_id",
+		"idx_api_tokens_expires_at",
+	}
+	for _, index := range indexes {
+		if db.Migrator().HasIndex(&model.ApiToken{}, index) {
+			continue
+		}
+		if err := db.Migrator().CreateIndex(&model.ApiToken{}, index); err != nil {
+			return fmt.Errorf("create %s: %w", index, err)
+		}
 	}
 	return nil
 }

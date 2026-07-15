@@ -66,12 +66,13 @@ function renderModal() {
 }
 
 describe('InboundFormModal', () => {
-  it('seeds the default subscription profile with the inbound port', () => {
+  it('seeds a profile that inherits the share address and follows the inbound port', () => {
     const values = buildAddModeValues();
     const profiles = values.streamSettings?.externalProxy;
 
     expect(profiles).toHaveLength(1);
     expect(profiles?.[0]?.port).toBe(values.port);
+    expect(profiles?.[0]?.dest).toBe('');
   });
 
   it('renders add mode without crashing', () => {

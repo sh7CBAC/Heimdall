@@ -7,6 +7,49 @@ import (
 	"github.com/mhsanaei/3x-ui/v3/internal/database/model"
 )
 
+func TestGetProxiesBlankProfileInheritsNodeAddress(t *testing.T) {
+	nodeID := 7
+	subReq := &SubService{
+		address: "panel.example.com",
+		nodesByID: map[int]*model.Node{
+			7: {Id: 7, Address: "node7.example.com"},
+		},
+	}
+	inbound := &model.Inbound{
+		NodeID:            &nodeID,
+		Listen:            "0.0.0.0",
+		Port:              443,
+		Protocol:          model.VLESS,
+		Remark:            "clash-inherit",
+		ShareAddrStrategy: "node",
+		Settings:          `{"encryption":"none"}`,
+		StreamSettings: `{
+			"network":"tcp",
+			"security":"none",
+			"tcpSettings":{"header":{"type":"none"}},
+			"externalProxy":[
+				{"enabled":true,"forceTls":"same","dest":"   ","port":0,"remark":"inherit"}
+			]
+		}`,
+	}
+	client := model.Client{
+		ID:    "11111111-2222-4333-8444-555555555555",
+		Email: "user",
+	}
+
+	service := &SubClashService{SubService: subReq}
+	proxies := service.getProxies(subReq, inbound, client, "panel.example.com")
+	if len(proxies) != 1 {
+		t.Fatalf("len(proxies) = %d, want 1", len(proxies))
+	}
+	if proxies[0]["server"] != "node7.example.com" {
+		t.Fatalf("Clash server = %v, want node7.example.com", proxies[0]["server"])
+	}
+	if proxies[0]["port"] != 443 {
+		t.Fatalf("Clash port = %v, want 443", proxies[0]["port"])
+	}
+}
+
 func TestEnsureUniqueProxyNames(t *testing.T) {
 	proxies := []map[string]any{
 		{"name": "", "type": "vless", "server": "a.com", "port": 443},

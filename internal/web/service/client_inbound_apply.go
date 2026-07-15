@@ -436,16 +436,39 @@ func (s *ClientService) addInboundClient(inboundSvc *InboundService, data *model
 			}
 		}
 	} else {
-		// Large batches would be M sequential per-client RPCs; the inbound's saved
-		// settings already hold the final set, so mark dirty and let one reconcile
-		// push converge the node instead.
+		// A disabled client must never be sent to a node through the incremental
+		// AddClient endpoint. Older 1.4.0 nodes may interpret a missing/default
+		// enable value as true and resurrect the client. The transaction above
+		// already saved the desired settings and marked the node dirty, so one
+		// full reconcile is the safe compatibility path.
+		if push {
+			for _, client := range clients {
+				if !client.Enable {
+					push = false
+					break
+				}
+			}
+		}
+
+		// Large batches collapse into one full reconcile instead of M sequential
+		// client RPCs.
 		if push && len(clients) > nodeBulkPushThreshold {
 			push = false
 		}
-		for _, client := range clients {
-			if push {
-				if err1 := rt.AddClient(context.Background(), oldInbound, client); err1 != nil {
-					logger.Warning("Error in adding client on", rt.Name(), ":", err1)
+
+		if push {
+			for _, client := range clients {
+				if err1 := rt.AddClient(
+					context.Background(),
+					oldInbound,
+					client,
+				); err1 != nil {
+					logger.Warning(
+						"Error in adding client on",
+						rt.Name(),
+						":",
+						err1,
+					)
 					push = false
 				}
 			}

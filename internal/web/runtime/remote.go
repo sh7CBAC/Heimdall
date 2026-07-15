@@ -515,6 +515,66 @@ func (r *Remote) DeleteUser(ctx context.Context, ib *model.Inbound, email string
 	return err
 }
 
+// DeleteClient removes the canonical client record from a node. This is not
+// the same as DeleteUser, which only detaches the client from one inbound and
+// deliberately keeps an orphan ClientRecord for later reattachment.
+func (r *Remote) DeleteClient(ctx context.Context, email string, keepTraffic bool) error {
+	if email == "" {
+		return nil
+	}
+	path := "panel/api/clients/del/" + url.PathEscape(email)
+	if keepTraffic {
+		path += "?keepTraffic=1"
+	}
+	_, err := r.do(ctx, http.MethodPost, path, nil)
+	if err == nil {
+		return nil
+	}
+	if strings.Contains(strings.ToLower(err.Error()), "not found") {
+		return nil
+	}
+	return err
+}
+
+// DeleteClients is the bulk form of DeleteClient. A node may legitimately
+// report an already-missing email as skipped; all other per-email failures are
+// surfaced so the central delete remains fail-closed.
+func (r *Remote) DeleteClients(ctx context.Context, emails []string, keepTraffic bool) error {
+	if len(emails) == 0 {
+		return nil
+	}
+	if len(emails) == 1 {
+		return r.DeleteClient(ctx, emails[0], keepTraffic)
+	}
+	body := map[string]any{
+		"emails":      emails,
+		"keepTraffic": keepTraffic,
+	}
+	env, err := r.do(ctx, http.MethodPost, "panel/api/clients/bulkDel", body)
+	if err != nil {
+		return err
+	}
+	if env == nil || len(env.Obj) == 0 || string(env.Obj) == "null" {
+		return nil
+	}
+	var result struct {
+		Skipped []struct {
+			Email  string `json:"email"`
+			Reason string `json:"reason"`
+		} `json:"skipped"`
+	}
+	if err := json.Unmarshal(env.Obj, &result); err != nil {
+		return fmt.Errorf("decode remote bulk client delete: %w", err)
+	}
+	for _, skipped := range result.Skipped {
+		if strings.Contains(strings.ToLower(skipped.Reason), "not found") {
+			continue
+		}
+		return fmt.Errorf("remote client %q was not deleted: %s", skipped.Email, skipped.Reason)
+	}
+	return nil
+}
+
 func (r *Remote) UpdateUser(ctx context.Context, ib *model.Inbound, oldEmail string, payload model.Client) error {
 	if oldEmail == "" {
 		oldEmail = payload.Email

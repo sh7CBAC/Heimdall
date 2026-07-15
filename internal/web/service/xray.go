@@ -20,12 +20,36 @@ import (
 )
 
 var (
-	p                 *xray.Process
-	lock              sync.Mutex
-	isNeedXrayRestart atomic.Bool // Indicates that restart was requested for Xray
-	isManuallyStopped atomic.Bool // Indicates that Xray was stopped manually from the panel
-	result            string
+	p                     *xray.Process
+	lock                  sync.Mutex
+	isNeedXrayRestart     atomic.Bool   // Indicates that restart was requested for Xray
+	xrayRestartGeneration atomic.Uint64 // Monotonic generation of restart/reconcile requests
+	isManuallyStopped     atomic.Bool   // Indicates that Xray was stopped manually from the panel
+	result                string
 )
+
+// markXrayRestartNeeded records a new restart/reconcile request. The generation
+// lets an in-flight restart distinguish an older request it has covered from a
+// newer request that arrived while it was building or applying its config.
+func markXrayRestartNeeded() {
+	xrayRestartGeneration.Inc()
+	isNeedXrayRestart.Store(true)
+}
+
+// finishXrayRestart preserves newer requests that arrived during the operation.
+// A failed operation always schedules another attempt with a new generation.
+func finishXrayRestart(startGeneration uint64, clearPending bool, err error) error {
+	if err != nil {
+		markXrayRestartNeeded()
+		return err
+	}
+
+	if clearPending && xrayRestartGeneration.Load() == startGeneration {
+		isNeedXrayRestart.Store(false)
+	}
+
+	return nil
+}
 
 // XrayService provides business logic for Xray process management.
 // It handles starting, stopping, restarting Xray, and managing its configuration.
@@ -952,38 +976,97 @@ func (s *XrayService) TestRoute(req xray.RouteTestRequest) (*xray.RouteTestResul
 // routing rules/balancers are hot-reloadable); only changes the core cannot
 // take at runtime — or a force request — stop and restart the process.
 func (s *XrayService) RestartXray(isForce bool) error {
+	return s.restartXray(isForce, true, true)
+}
+
+// ReconcileXray immediately reconciles the generated configuration with the
+// running core without treating an unrelated pending flag as a reason for a
+// forced process restart. It is used after successful runtime API mutations,
+// where keeping the Process config snapshot aligned is required.
+func (s *XrayService) ReconcileXray() error {
+	return s.restartXray(false, false, false)
+}
+
+func (s *XrayService) restartXray(isForce, honorPending, clearPending bool) error {
 	lock.Lock()
 	defer lock.Unlock()
-	logger.Debug("restart Xray, force:", isForce)
+
+	startGeneration := xrayRestartGeneration.Load()
+
+	logger.Debug(
+		"restart Xray, force:", isForce,
+		"honor pending:", honorPending,
+	)
 	isManuallyStopped.Store(false)
 
 	xrayConfig, err := s.GetXrayConfig()
 	if err != nil {
-		return err
+		return finishXrayRestart(
+			startGeneration,
+			clearPending,
+			err,
+		)
 	}
 
 	if s.IsXrayRunning() {
 		configUnchanged := p.GetConfig().Equals(xrayConfig)
-		if !isForce && configUnchanged && !isNeedXrayRestart.Load() {
+		pending := isNeedXrayRestart.Load()
+
+		if !isForce &&
+			configUnchanged &&
+			(!honorPending || !pending) {
 			logger.Debug("It does not need to restart Xray")
-			return nil
+			return finishXrayRestart(
+				startGeneration,
+				clearPending,
+				nil,
+			)
 		}
-		if !isForce && !configUnchanged && s.tryHotApply(xrayConfig) {
-			logger.Info("Xray config changes applied through the core API, no restart needed")
-			return nil
+
+		if !isForce &&
+			!configUnchanged &&
+			s.tryHotApply(xrayConfig) {
+			logger.Info(
+				"Xray config changes applied through the core API, no restart needed",
+			)
+			return finishXrayRestart(
+				startGeneration,
+				clearPending,
+				nil,
+			)
 		}
-		_ = p.Stop()
+
+		// Process.Stop waits for exit and escalates to SIGKILL when required.
+		// Do not launch a replacement if the old process could still own ports.
+		if stopErr := p.Stop(); stopErr != nil {
+			return finishXrayRestart(
+				startGeneration,
+				clearPending,
+				fmt.Errorf(
+					"stop xray before restart: %w",
+					stopErr,
+				),
+			)
+		}
 	}
 
 	p = xray.NewProcess(xrayConfig)
 	result = ""
 	s.xrayAPI.StatsLastValues = nil
-	err = p.Start()
-	if err != nil {
-		return err
+
+	if err = p.Start(); err != nil {
+		return finishXrayRestart(
+			startGeneration,
+			clearPending,
+			err,
+		)
 	}
 
-	return nil
+	return finishXrayRestart(
+		startGeneration,
+		clearPending,
+		nil,
+	)
 }
 
 // tryHotApply attempts to reconcile the running Xray instance with newCfg
@@ -1106,7 +1189,7 @@ func (s *XrayService) StopXray() error {
 
 // SetToNeedRestart marks that Xray needs to be restarted.
 func (s *XrayService) SetToNeedRestart() {
-	isNeedXrayRestart.Store(true)
+	markXrayRestartNeeded()
 }
 
 // GetXrayAPIPort returns the port the local xray process is listening on

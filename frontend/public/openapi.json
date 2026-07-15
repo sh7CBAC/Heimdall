@@ -2527,7 +2527,7 @@
     },
     {
       "name": "Inbounds",
-      "description": "Manage inbound configurations and their clients. All endpoints live under /panel/api/inbounds and require a logged-in session or Bearer token. Link-generating endpoints honour forwarded headers only when the request comes from a configured trusted proxy."
+      "description": "Manage inbound configurations and their clients. All endpoints live under /panel/api/inbounds and require a logged-in session or a trusted service credential. Delegated user tokens are denied on this group until a dedicated inbound scope is introduced. Link-generating endpoints honour forwarded headers only when the request comes from a configured trusted proxy."
     },
     {
       "name": "Server",
@@ -2535,7 +2535,7 @@
     },
     {
       "name": "Clients",
-      "description": "Manage clients as first-class entities that can be attached to one or more inbounds. A single client row drives the settings.clients entry in every inbound it belongs to. Endpoints live under /panel/api/clients."
+      "description": "Manage clients as first-class entities that can be attached to one or more inbounds. A single client row drives the settings.clients entry in every inbound it belongs to. Delegated tokens may use the standard list/get/traffic/link/activity reads with clients:read and add/bulkCreate with clients:create; every other route remains denied to delegated tokens. The selected administrator’s live RBAC scope is always applied in addition to the token scope."
     },
     {
       "name": "Admins",
@@ -2563,7 +2563,7 @@
     },
     {
       "name": "API Tokens",
-      "description": "Manage Bearer tokens used for programmatic auth (bots, central panels acting on this node, CI). Each token has a unique name and an enabled flag — disable to revoke without deleting, delete to revoke permanently. Tokens are stored as SHA-256 hashes and the plaintext is returned only once, in the create response — it cannot be retrieved afterwards, so copy it then. Send one as <code>Authorization: Bearer &lt;token&gt;</code> on any /panel/api/* request — the token is a full-admin credential."
+      "description": "Owner-only browser interface for API credentials. For delegated tokens, the owner selects an active non-owner administrator, explicit scopes, and an optional expiry. Every request is evaluated as that administrator using their current role, ownership, groups, limits, and feature flags, then intersected with the token scopes. Disabling the administrator, changing their role, expiring/disabling the token, or deleting it takes effect on the next request. Token values are stored only as SHA-256 hashes and plaintext is returned once at creation. Service tokens used by trusted remote panels retain their full integration contract and should be created only for machine-to-machine panel infrastructure."
     },
     {
       "name": "Xray Settings",
@@ -11418,8 +11418,13 @@
         "tags": [
           "API Tokens"
         ],
-        "summary": "List every API token, enabled or not. The token value is never returned — only metadata.",
+        "summary": "Owner-only list of all delegated and legacy service tokens. Plaintext values and stored hashes are never returned.",
         "operationId": "get_panel_api_setting_apiTokens",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful response",
@@ -11441,12 +11446,156 @@
                   "success": true,
                   "obj": [
                     {
-                      "id": 1,
-                      "name": "default",
+                      "id": 2,
+                      "name": "telegram-operator-a",
+                      "kind": "delegated",
+                      "subjectAdminId": 3,
+                      "subjectUsername": "operator-a",
+                      "subjectRoleName": "Operator",
+                      "scopes": [
+                        "clients:create",
+                        "clients:read"
+                      ],
+                      "expiresAt": 1767536000,
+                      "expired": false,
                       "enabled": true,
                       "createdAt": 1736000000
                     }
                   ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Browser login required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "success": false,
+                  "msg": "login required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Browser session or required administrator permission is missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "success": false,
+                  "msg": "browser session required"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/panel/api/setting/apiTokens/subjects": {
+      "get": {
+        "tags": [
+          "API Tokens"
+        ],
+        "summary": "List active non-owner administrators eligible to receive a delegated token. Returns only ID, username, and role metadata.",
+        "operationId": "get_panel_api_setting_apiTokens_subjects",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    },
+                    "obj": {}
+                  }
+                },
+                "example": {
+                  "success": true,
+                  "obj": [
+                    {
+                      "id": 3,
+                      "username": "operator-a",
+                      "roleId": 2,
+                      "roleName": "Operator"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Browser login required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "success": false,
+                  "msg": "login required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Browser session or required administrator permission is missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "success": false,
+                  "msg": "browser session required"
                 }
               }
             }
@@ -11459,8 +11608,13 @@
         "tags": [
           "API Tokens"
         ],
-        "summary": "Mint a new API token. Name must be unique and 1-64 characters; the token string is server-generated and returned only in this response — it is stored hashed and cannot be retrieved later.",
+        "summary": "Mint an owner-created delegated or service token and return plaintext exactly once. The backend always records the logged-in owner as creator. For backward compatibility, omitting kind creates a service token; new user automation should explicitly send kind=delegated.",
         "operationId": "post_panel_api_setting_apiTokens_create",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -11470,7 +11624,26 @@
                 "properties": {
                   "name": {
                     "type": "string",
-                    "description": "Human-readable label, e.g. \"central-panel-a\"."
+                    "description": "Unique human-readable label (1-64 characters)."
+                  },
+                  "kind": {
+                    "type": "string",
+                    "description": "delegated for user automation or service for trusted panel infrastructure. Omitted means service for legacy callers."
+                  },
+                  "subjectAdminId": {
+                    "type": "integer",
+                    "description": "Required for delegated tokens: active non-owner panel administrator ID."
+                  },
+                  "scopes": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "description": "Required for delegated tokens: one or both of clients:read and clients:create."
+                  },
+                  "expiresAt": {
+                    "type": "integer",
+                    "description": "Optional Unix-seconds expiry. 0 means no expiry."
                   }
                 },
                 "required": [
@@ -11478,7 +11651,14 @@
                 ]
               },
               "example": {
-                "name": "central-panel-a"
+                "name": "telegram-operator-a",
+                "kind": "delegated",
+                "subjectAdminId": 3,
+                "scopes": [
+                  "clients:read",
+                  "clients:create"
+                ],
+                "expiresAt": 1767536000
               }
             }
           }
@@ -11536,6 +11716,50 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Browser login required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "success": false,
+                  "msg": "login required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Browser session or required administrator permission is missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "success": false,
+                  "msg": "browser session required"
+                }
+              }
+            }
           }
         }
       }
@@ -11545,8 +11769,13 @@
         "tags": [
           "API Tokens"
         ],
-        "summary": "Permanently delete a token. Any caller using it stops authenticating immediately.",
+        "summary": "Owner-only permanent token revocation. Any caller using it stops authenticating immediately.",
         "operationId": "post_panel_api_setting_apiTokens_delete_id",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
         "parameters": [
           {
             "name": "id",
@@ -11580,6 +11809,50 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Browser login required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "success": false,
+                  "msg": "login required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Browser session or required administrator permission is missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "success": false,
+                  "msg": "browser session required"
+                }
+              }
+            }
           }
         }
       }
@@ -11589,8 +11862,13 @@
         "tags": [
           "API Tokens"
         ],
-        "summary": "Toggle a token enabled/disabled without deleting it. Disabled tokens are rejected by checkAPIAuth on the next request.",
+        "summary": "Owner-only enable/disable toggle. Disabled tokens are rejected by checkAPIAuth on the next request.",
         "operationId": "post_panel_api_setting_apiTokens_setEnabled_id",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
         "parameters": [
           {
             "name": "id",
@@ -11643,6 +11921,50 @@
                 },
                 "example": {
                   "success": true
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Browser login required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "success": false,
+                  "msg": "login required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Browser session or required administrator permission is missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "success": false,
+                  "msg": "browser session required"
                 }
               }
             }

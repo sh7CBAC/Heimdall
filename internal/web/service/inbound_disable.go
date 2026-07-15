@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -445,8 +446,19 @@ func (s *InboundService) disableInvalidClients(tx *gorm.DB) (bool, int64, []int,
 	}
 
 	for inboundID, emails := range localByInbound {
-		if _, _, mErr := s.markClientsDisabledInSettings(tx, inboundID, emails); mErr != nil {
-			logger.Warning("disableInvalidClients: settings.JSON sync failed for inbound", inboundID, ":", mErr)
+		if _, _, mErr := s.markClientsDisabledInSettings(
+			tx,
+			inboundID,
+			emails,
+		); mErr != nil {
+			// The inbound JSON, ClientRecord and ClientTraffic represent one
+			// logical state. Returning the error makes addTrafficLocked roll the
+			// transaction back instead of committing a partially-disabled client.
+			return needRestart, 0, nil, fmt.Errorf(
+				"disableInvalidClients: settings JSON sync failed for inbound %d: %w",
+				inboundID,
+				mErr,
+			)
 		}
 	}
 
@@ -463,18 +475,73 @@ func (s *InboundService) disableInvalidClients(tx *gorm.DB) (bool, int64, []int,
 		if err := tx.Model(&model.ClientRecord{}).
 			Where("email IN ?", depletedEmails).
 			Updates(map[string]any{"enable": false, "updated_at": now}).Error; err != nil {
-			logger.Warning("disableInvalidClients update clients.enable:", err)
+			return true, 0, nil, fmt.Errorf(
+				"disableInvalidClients: update clients.enable: %w",
+				err,
+			)
 		}
 	}
 
 	disabledNodeIDs := make(map[int]struct{})
+	committedRemoteNodeIDs := func() []int {
+		nodeIDs := make([]int, 0, len(disabledNodeIDs))
+		for nodeID := range disabledNodeIDs {
+			nodeIDs = append(nodeIDs, nodeID)
+		}
+		return nodeIDs
+	}
 	for inboundID, group := range remoteByInbound {
 		emails := make(map[string]struct{}, len(group))
 		for _, t := range group {
 			emails[t.Email] = struct{}{}
 		}
-		if pushErr := s.disableRemoteClients(tx, inboundID, emails); pushErr != nil {
-			logger.Warning("disableInvalidClients: push to remote failed for inbound", inboundID, ":", pushErr)
+		if pushErr := s.disableRemoteClients(
+			tx,
+			inboundID,
+			emails,
+		); pushErr != nil {
+			var settingsFailure *remoteDisableSettingsError
+			if errors.As(pushErr, &settingsFailure) {
+				return true, 0, committedRemoteNodeIDs(), fmt.Errorf(
+					"disableInvalidClients: remote settings JSON sync failed for inbound %d: %w",
+					inboundID,
+					pushErr,
+				)
+			}
+
+			logger.Warning(
+				"disableInvalidClients: push to remote failed for inbound",
+				inboundID,
+				":",
+				pushErr,
+			)
+
+			// The desired settings were already written inside this transaction.
+			// Keep them and record a durable retry instead of relying on the
+			// failed one-shot RPC. This is especially important while nodes still
+			// run 1.4.0 and may reject or mishandle newer incremental mutations.
+			seenNodes := make(map[int]struct{})
+			for _, t := range group {
+				if t.NodeID == nil {
+					continue
+				}
+				if _, seen := seenNodes[*t.NodeID]; seen {
+					continue
+				}
+				seenNodes[*t.NodeID] = struct{}{}
+
+				if dirtyErr := (&NodeService{}).MarkNodeDirtyTx(
+					tx,
+					*t.NodeID,
+				); dirtyErr != nil {
+					return needRestart, 0, committedRemoteNodeIDs(), fmt.Errorf(
+						"disableInvalidClients: mark node %d dirty after remote push failure: %w",
+						*t.NodeID,
+						dirtyErr,
+					)
+				}
+			}
+
 			needRestart = true
 		} else {
 			for _, t := range group {
@@ -485,12 +552,7 @@ func (s *InboundService) disableInvalidClients(tx *gorm.DB) (bool, int64, []int,
 		}
 	}
 
-	nodeIDs := make([]int, 0, len(disabledNodeIDs))
-	for nodeID := range disabledNodeIDs {
-		nodeIDs = append(nodeIDs, nodeID)
-	}
-
-	return needRestart, count, nodeIDs, nil
+	return needRestart, count, committedRemoteNodeIDs(), nil
 }
 
 // markClientsDisabledInSettings flips client.enable=false in the inbound's
@@ -543,10 +605,22 @@ func (s *InboundService) markClientsDisabledInSettings(tx *gorm.DB, inboundID in
 	return &snapshot, &ib, nil
 }
 
+type remoteDisableSettingsError struct {
+	err error
+}
+
+func (e *remoteDisableSettingsError) Error() string {
+	return e.err.Error()
+}
+
+func (e *remoteDisableSettingsError) Unwrap() error {
+	return e.err
+}
+
 func (s *InboundService) disableRemoteClients(tx *gorm.DB, inboundID int, emails map[string]struct{}) error {
 	oldSnapshot, ib, err := s.markClientsDisabledInSettings(tx, inboundID, emails)
 	if err != nil {
-		return err
+		return &remoteDisableSettingsError{err: err}
 	}
 
 	rt, err := s.runtimeFor(ib)

@@ -125,15 +125,31 @@ func (j *NodeTrafficSyncJob) Run() {
 	}
 	wg.Wait()
 
-	_, clientsDisabled, err := j.inboundService.AddTraffic(nil, nil)
+	repairNeeded, clientsDisabled, err := j.inboundService.AddTraffic(nil, nil)
 	if err != nil {
 		logger.Warning("node traffic sync: depletion check failed:", err)
+
+		if repairNeeded {
+			if repairErr := j.xrayService.RestartXray(true); repairErr != nil {
+				logger.Warning(
+					"node traffic sync: repair xray after rolled-back disable transaction failed:",
+					repairErr,
+				)
+				j.xrayService.SetToNeedRestart()
+			}
+		}
 	}
 	if clientsDisabled {
 		if restartOnDisable, settingErr := j.settingService.GetRestartXrayOnClientDisable(); settingErr == nil && restartOnDisable {
-			if err := j.xrayService.RestartXray(true); err != nil {
-				logger.Warning("node traffic sync: restart xray after disabling clients failed:", err)
-				j.xrayService.SetToNeedRestart()
+			// A remote-only depletion is a cheap no-op for the local core. If the
+			// same client also belongs to a local inbound, this immediately aligns
+			// the stored Process snapshot through hot apply. Concurrent calls are
+			// serialized by XrayService.
+			if err := j.xrayService.ReconcileXray(); err != nil {
+				logger.Warning(
+					"node traffic sync: reconcile xray after disabling clients failed:",
+					err,
+				)
 			}
 		} else if settingErr != nil {
 			logger.Warning("node traffic sync: get RestartXrayOnClientDisable failed:", settingErr)

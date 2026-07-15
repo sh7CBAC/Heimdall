@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -14,7 +15,6 @@ import (
 	"github.com/mhsanaei/3x-ui/v3/internal/database/model"
 	"github.com/mhsanaei/3x-ui/v3/internal/util/common"
 	"github.com/mhsanaei/3x-ui/v3/internal/util/random"
-	"github.com/mhsanaei/3x-ui/v3/internal/xray"
 
 	"gorm.io/gorm"
 )
@@ -467,7 +467,7 @@ func (s *ClientService) Update(inboundSvc *InboundService, id int, updated model
 	return needRestart, nil
 }
 
-func (s *ClientService) Delete(inboundSvc *InboundService, id int, keepTraffic bool) (bool, error) {
+func (s *ClientService) Delete(inboundSvc *InboundService, id int, keepTraffic bool) (needRestart bool, err error) {
 	existing, err := s.GetByID(id)
 	if err != nil {
 		return false, err
@@ -475,14 +475,35 @@ func (s *ClientService) Delete(inboundSvc *InboundService, id int, keepTraffic b
 	if IsHiddenClientEmail(existing.Email) {
 		return false, gorm.ErrRecordNotFound
 	}
-	tombstoneClientEmail(existing.Email)
 
 	inboundIds, err := s.GetInboundIdsForRecord(id)
 	if err != nil {
 		return false, err
 	}
 
-	needRestart := false
+	nodeIDs, err := remoteDeleteNodeIDs([]string{existing.Email}, inboundIds)
+	if err != nil {
+		return false, err
+	}
+	remoteDeletedNodeIDs, err := deleteClientsFromRemoteNodes(
+		context.Background(),
+		nodeIDs,
+		[]string{existing.Email},
+		keepTraffic,
+	)
+	if err != nil {
+		return false, err
+	}
+	// If any later central mutation fails, the node-side delete must not become
+	// authoritative. A dirty reconcile restores the still-present central state.
+	defer func() {
+		if err != nil {
+			markNodesDirtyBestEffort(remoteDeletedNodeIDs)
+		}
+	}()
+
+	tombstoneClientEmail(existing.Email)
+
 	for _, ibId := range inboundIds {
 		if _, getErr := inboundSvc.GetInbound(ibId); getErr != nil {
 			if errors.Is(getErr, gorm.ErrRecordNotFound) {
@@ -513,7 +534,7 @@ func (s *ClientService) Delete(inboundSvc *InboundService, id int, keepTraffic b
 	}
 
 	db := database.GetDB()
-	if err := db.Transaction(func(tx *gorm.DB) error {
+	if err = db.Transaction(func(tx *gorm.DB) error {
 		// Activity belongs to the client identity and is always removed,
 		// independently from the keepTraffic option.
 		if err := (&ClientActivityService{}).
@@ -536,21 +557,15 @@ func (s *ClientService) Delete(inboundSvc *InboundService, id int, keepTraffic b
 		}
 
 		if !keepTraffic && existing.Email != "" {
-			if err := tx.
-				Where("email = ?", existing.Email).
-				Delete(&xray.ClientTraffic{}).
-				Error; err != nil {
+			// A client can still have accounting rows after it has already been
+			// detached from every inbound. Use the shared purge helper here instead
+			// of deleting only the compatibility/global rows, otherwise
+			// client_inbound_traffics (and node baselines) survive as ghosts.
+			if err := inboundSvc.DelClientStat(tx, existing.Email); err != nil {
 				return err
 			}
 
-			if err := clearGlobalTraffic(tx, existing.Email); err != nil {
-				return err
-			}
-
-			if err := tx.
-				Where("client_email = ?", existing.Email).
-				Delete(&model.InboundClientIps{}).
-				Error; err != nil {
+			if err := inboundSvc.DelClientIPs(tx, existing.Email); err != nil {
 				return err
 			}
 		}
@@ -659,7 +674,7 @@ func (s *ClientService) DetachByEmailMany(inboundSvc *InboundService, email stri
 	return s.Detach(inboundSvc, rec.Id, inboundIds)
 }
 
-func (s *ClientService) DeleteByEmail(inboundSvc *InboundService, email string, keepTraffic bool) (bool, error) {
+func (s *ClientService) DeleteByEmail(inboundSvc *InboundService, email string, keepTraffic bool) (needRestart bool, err error) {
 	if email == "" {
 		return false, common.NewError("client email is required")
 	}
@@ -673,14 +688,38 @@ func (s *ClientService) DeleteByEmail(inboundSvc *InboundService, email string, 
 	if !errors.Is(err, gorm.ErrRecordNotFound) {
 		return false, err
 	}
-	inboundIds, idsErr := s.findInboundIdsByClientEmail(email)
-	if idsErr != nil {
-		return false, idsErr
+
+	// Retry path for a central record that is already gone but still exists on a
+	// node. node_client_traffics records the owning node long enough to make this
+	// cleanup idempotent instead of returning an unrecoverable "not found".
+	inboundIds, err := s.findInboundIdsByClientEmail(email)
+	if err != nil {
+		return false, err
 	}
-	if len(inboundIds) == 0 {
-		return false, common.NewError(fmt.Sprintf("client %q not found in any inbound or client record", email))
+	nodeIDs, err := remoteDeleteNodeIDs([]string{email}, inboundIds)
+	if err != nil {
+		return false, err
 	}
-	needRestart := false
+	if len(inboundIds) == 0 && len(nodeIDs) == 0 {
+		return false, common.NewError(fmt.Sprintf("client %q not found in any inbound, client record, or node history", email))
+	}
+
+	remoteDeletedNodeIDs, err := deleteClientsFromRemoteNodes(
+		context.Background(),
+		nodeIDs,
+		[]string{email},
+		keepTraffic,
+	)
+	if err != nil {
+		return false, err
+	}
+	defer func() {
+		if err != nil {
+			markNodesDirtyBestEffort(remoteDeletedNodeIDs)
+		}
+	}()
+
+	tombstoneClientEmail(email)
 	for _, ibId := range inboundIds {
 		nr, delErr := s.DelInboundClientByEmail(inboundSvc, ibId, email, false)
 		if delErr != nil {
@@ -694,14 +733,13 @@ func (s *ClientService) DeleteByEmail(inboundSvc *InboundService, email string, 
 		}
 	}
 	if !keepTraffic {
-		db := database.GetDB()
-		if err := db.Where("email = ?", email).Delete(&xray.ClientTraffic{}).Error; err != nil {
-			return needRestart, err
-		}
-		if err := clearGlobalTraffic(db, email); err != nil {
-			return needRestart, err
-		}
-		if err := db.Where("client_email = ?", email).Delete(&model.InboundClientIps{}).Error; err != nil {
+		err = runSerializedTx(func(tx *gorm.DB) error {
+			if err := inboundSvc.DelClientIPs(tx, email); err != nil {
+				return err
+			}
+			return inboundSvc.DelClientStat(tx, email)
+		})
+		if err != nil {
 			return needRestart, err
 		}
 	}

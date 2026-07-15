@@ -16,9 +16,12 @@ import (
 // fakeNodeRuntime is a runtime.Runtime stub that counts the per-client dispatch
 // calls so a test can assert a bulk op does NOT stream one RPC per client.
 type fakeNodeRuntime struct {
-	addClient  atomic.Int32
-	deleteUser atomic.Int32
-	updateUser atomic.Int32
+	addClient         atomic.Int32
+	deleteUser        atomic.Int32
+	deleteClient      atomic.Int32
+	deleteClientBatch atomic.Int32
+	updateUser        atomic.Int32
+	deleteClientErr   error
 }
 
 func (f *fakeNodeRuntime) Name() string { return "fake-node" }
@@ -38,6 +41,17 @@ func (f *fakeNodeRuntime) UpdateUser(context.Context, *model.Inbound, string, mo
 func (f *fakeNodeRuntime) DeleteUser(context.Context, *model.Inbound, string) error {
 	f.deleteUser.Add(1)
 	return nil
+}
+
+func (f *fakeNodeRuntime) DeleteClient(context.Context, string, bool) error {
+	f.deleteClient.Add(1)
+	return f.deleteClientErr
+}
+
+func (f *fakeNodeRuntime) DeleteClients(_ context.Context, emails []string, _ bool) error {
+	f.deleteClientBatch.Add(1)
+	f.deleteClient.Add(int32(len(emails)))
+	return f.deleteClientErr
 }
 
 func (f *fakeNodeRuntime) AddClient(context.Context, *model.Inbound, model.Client) error {
@@ -167,5 +181,88 @@ func TestNodeBulk_LargeDeleteFoldsToDirty(t *testing.T) {
 		t.Fatalf("NodeSyncState: %v", err)
 	} else if !dirty {
 		t.Fatal("large delete must mark the node dirty")
+	}
+}
+
+func TestAttachDisabledClientPreservesStateAndSkipsIncrementalNodePush(t *testing.T) {
+	setupBulkDB(t)
+	nodeID, fake := setupNodeRuntime(t)
+	target := nodeInbound(t, nodeID, 30004, nil)
+
+	clientSvc := &ClientService{}
+	inboundSvc := &InboundService{}
+	email := "disabled-attach@x"
+	client := model.Client{
+		ID:     uuid.NewString(),
+		Email:  email,
+		SubID:  "disabled-attach",
+		Enable: false,
+	}
+	source := mkInbound(t, 30005, model.VLESS, clientsSettings(t, []model.Client{client}))
+	if err := clientSvc.SyncInbound(nil, source.Id, []model.Client{client}); err != nil {
+		t.Fatalf("seed source SyncInbound: %v", err)
+	}
+	forceRecordDisabled(t, clientSvc, email)
+	mkTraffic(t, source.Id, email, 0, 0, 0, 0, false)
+
+	record, err := clientSvc.GetRecordByEmail(nil, email)
+	if err != nil {
+		t.Fatalf("GetRecordByEmail: %v", err)
+	}
+	if _, err := clientSvc.Attach(inboundSvc, record.Id, []int{target.Id}); err != nil {
+		t.Fatalf("Attach: %v", err)
+	}
+
+	if got := fake.addClient.Load(); got != 0 {
+		t.Fatalf("disabled attach sent %d incremental AddClient RPCs, want 0", got)
+	}
+	if got := jsonClientEnable(t, inboundSvc, target.Id, email); got {
+		t.Fatal("disabled canonical state was resurrected in target inbound JSON")
+	}
+	if _, _, dirty, _, err := (&NodeService{}).NodeSyncState(nodeID); err != nil {
+		t.Fatalf("NodeSyncState: %v", err)
+	} else if !dirty {
+		t.Fatal("disabled attach must leave a durable full-reconcile request")
+	}
+}
+
+func TestBulkAttachDisabledClientPreservesStateAndSkipsIncrementalNodePush(t *testing.T) {
+	setupBulkDB(t)
+	nodeID, fake := setupNodeRuntime(t)
+	target := nodeInbound(t, nodeID, 30006, nil)
+
+	clientSvc := &ClientService{}
+	inboundSvc := &InboundService{}
+	email := "disabled-bulk-attach@x"
+	client := model.Client{
+		ID:     uuid.NewString(),
+		Email:  email,
+		SubID:  "disabled-bulk-attach",
+		Enable: false,
+	}
+	source := mkInbound(t, 30007, model.VLESS, clientsSettings(t, []model.Client{client}))
+	if err := clientSvc.SyncInbound(nil, source.Id, []model.Client{client}); err != nil {
+		t.Fatalf("seed source SyncInbound: %v", err)
+	}
+	forceRecordDisabled(t, clientSvc, email)
+	mkTraffic(t, source.Id, email, 0, 0, 0, 0, false)
+
+	result, _, err := clientSvc.BulkAttach(inboundSvc, []string{email}, []int{target.Id})
+	if err != nil {
+		t.Fatalf("BulkAttach: %v", err)
+	}
+	if len(result.Errors) != 0 {
+		t.Fatalf("BulkAttach errors: %v", result.Errors)
+	}
+	if got := fake.addClient.Load(); got != 0 {
+		t.Fatalf("disabled bulk attach sent %d incremental AddClient RPCs, want 0", got)
+	}
+	if got := jsonClientEnable(t, inboundSvc, target.Id, email); got {
+		t.Fatal("disabled canonical state was resurrected by BulkAttach")
+	}
+	if _, _, dirty, _, err := (&NodeService{}).NodeSyncState(nodeID); err != nil {
+		t.Fatalf("NodeSyncState: %v", err)
+	} else if !dirty {
+		t.Fatal("disabled BulkAttach must leave a durable full-reconcile request")
 	}
 }

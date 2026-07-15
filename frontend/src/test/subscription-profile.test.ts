@@ -20,10 +20,10 @@ function baseStream(): StreamSettings {
 
 describe('subscription profile expansion', () => {
   it('creates a safe editable profile draft', () => {
-    expect(createSubscriptionProfileDraft('edge.example.com', 8443)).toEqual({
+    expect(createSubscriptionProfileDraft(8443)).toEqual({
       enabled: true,
       remark: '',
-      dest: 'edge.example.com',
+      dest: '',
       port: 8443,
       network: 'same',
       security: 'same',
@@ -32,7 +32,7 @@ describe('subscription profile expansion', () => {
       mihomoX25519: false,
       shuffleHost: false,
     });
-    expect(createSubscriptionProfileDraft('', 0).port).toBe(443);
+    expect(createSubscriptionProfileDraft(0).port).toBe(443);
   });
 
   it('keeps the legacy single default configuration when profiles are absent', () => {
@@ -46,6 +46,53 @@ describe('subscription profile expansion', () => {
       profile: null,
     });
     expect(endpoints[0].streamSettings.externalProxy).toBeUndefined();
+  });
+
+  it('inherits the resolved share address when a profile destination is blank', () => {
+    const stream: StreamSettings = {
+      ...baseStream(),
+      externalProxy: [
+        {
+          enabled: true,
+          remark: 'empty',
+          dest: '',
+          port: 443,
+          network: 'same',
+          security: 'same',
+          forceTls: 'same',
+        },
+        {
+          enabled: true,
+          remark: 'whitespace',
+          dest: '   ',
+          port: 8443,
+          network: 'same',
+          security: 'same',
+          forceTls: 'same',
+        },
+        {
+          enabled: true,
+          remark: 'override',
+          dest: 'cdn.example.com',
+          port: 9443,
+          network: 'same',
+          security: 'same',
+          forceTls: 'same',
+        },
+      ],
+    };
+
+    const endpoints = expandSubscriptionProfileEndpoints(
+      stream,
+      'resolved-node.example.com',
+      27543,
+    );
+
+    expect(endpoints.map((endpoint) => endpoint.address)).toEqual([
+      'resolved-node.example.com',
+      'resolved-node.example.com',
+      'cdn.example.com',
+    ]);
   });
 
   it('filters disabled profiles and applies independent WS/TLS settings', () => {

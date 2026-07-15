@@ -173,12 +173,27 @@ type HistoryOfSeeders struct {
 // from the seconds-based API token timestamp contract.
 const ApiTokenUnixMillisecondsThreshold int64 = 100_000_000_000
 
+const (
+	// ApiTokenKindService preserves the existing full-panel token contract used
+	// by remote Heimdall nodes and other trusted service-to-service callers.
+	ApiTokenKindService = "service"
+	// ApiTokenKindDelegated authenticates as the active non-owner admin selected
+	// when the token is created. Its effective access is further constrained by
+	// the token scopes stored on the row.
+	ApiTokenKindDelegated = "delegated"
+)
+
 type ApiToken struct {
-	Id        int    `json:"id" gorm:"primaryKey;autoIncrement"`
-	Name      string `json:"name" gorm:"uniqueIndex;not null"`
-	Token     string `json:"token" gorm:"not null"` // SHA-256 hash; the plaintext is shown only once at creation
-	Enabled   bool   `json:"enabled" gorm:"default:true"`
-	CreatedAt int64  `json:"createdAt" gorm:"autoCreateTime"`
+	Id               int    `json:"id" gorm:"primaryKey;autoIncrement"`
+	Name             string `json:"name" gorm:"uniqueIndex;not null"`
+	Token            string `json:"-" gorm:"not null;index:idx_api_tokens_token_hash"` // SHA-256 hash; plaintext is shown only once
+	Kind             string `json:"kind" gorm:"not null;default:service;index"`
+	SubjectAdminId   *int   `json:"subjectAdminId,omitempty" gorm:"column:subject_admin_id;index"`
+	CreatedByAdminId *int   `json:"createdByAdminId,omitempty" gorm:"column:created_by_admin_id;index"`
+	ScopesJSON       string `json:"-" gorm:"column:scopes;type:text"`
+	ExpiresAt        int64  `json:"expiresAt" gorm:"column:expires_at;default:0;index"`
+	Enabled          bool   `json:"enabled" gorm:"default:true"`
+	CreatedAt        int64  `json:"createdAt" gorm:"autoCreateTime"`
 }
 
 // MarshalJSON emits settings, streamSettings, and sniffing as nested JSON

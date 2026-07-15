@@ -10,6 +10,7 @@ export type ParamLocation =
   | 'body (multipart)';
 export type ParamType =
   | 'string'
+  | 'string[]'
   | 'integer'
   | 'integer[]'
   | 'number'
@@ -114,7 +115,7 @@ export const sections: readonly Section[] = [
     id: 'inbounds',
     title: 'Inbounds',
     description:
-      'Manage inbound configurations and their clients. All endpoints live under /panel/api/inbounds and require a logged-in session or Bearer token. Link-generating endpoints honour forwarded headers only when the request comes from a configured trusted proxy.',
+      'Manage inbound configurations and their clients. All endpoints live under /panel/api/inbounds and require a logged-in session or a trusted service credential. Delegated user tokens are denied on this group until a dedicated inbound scope is introduced. Link-generating endpoints honour forwarded headers only when the request comes from a configured trusted proxy.',
     endpoints: [
       {
         method: 'GET',
@@ -543,7 +544,7 @@ export const sections: readonly Section[] = [
     id: 'clients',
     title: 'Clients',
     description:
-      'Manage clients as first-class entities that can be attached to one or more inbounds. A single client row drives the settings.clients entry in every inbound it belongs to. Endpoints live under /panel/api/clients.',
+      'Manage clients as first-class entities that can be attached to one or more inbounds. A single client row drives the settings.clients entry in every inbound it belongs to. Delegated tokens may use the standard list/get/traffic/link/activity reads with clients:read and add/bulkCreate with clients:create; every other route remains denied to delegated tokens. The selected administrator’s live RBAC scope is always applied in addition to the token scope.',
     endpoints: [
       {
         method: 'GET',
@@ -1461,30 +1462,41 @@ export const sections: readonly Section[] = [
   {
     id: 'api-tokens',
     title: 'API Tokens',
+    auth: 'cookie-only',
     description:
-      'Manage Bearer tokens used for programmatic auth (bots, central panels acting on this node, CI). Each token has a unique name and an enabled flag — disable to revoke without deleting, delete to revoke permanently. Tokens are stored as SHA-256 hashes and the plaintext is returned only once, in the create response — it cannot be retrieved afterwards, so copy it then. Send one as <code>Authorization: Bearer &lt;token&gt;</code> on any /panel/api/* request — the token is a full-admin credential.',
+      'Owner-only browser interface for API credentials. For delegated tokens, the owner selects an active non-owner administrator, explicit scopes, and an optional expiry. Every request is evaluated as that administrator using their current role, ownership, groups, limits, and feature flags, then intersected with the token scopes. Disabling the administrator, changing their role, expiring/disabling the token, or deleting it takes effect on the next request. Token values are stored only as SHA-256 hashes and plaintext is returned once at creation. Service tokens used by trusted remote panels retain their full integration contract and should be created only for machine-to-machine panel infrastructure.',
     endpoints: [
       {
         method: 'GET',
         path: '/panel/api/setting/apiTokens',
-        summary: 'List every API token, enabled or not. The token value is never returned — only metadata.',
-        response: '{\n  "success": true,\n  "obj": [\n    {\n      "id": 1,\n      "name": "default",\n      "enabled": true,\n      "createdAt": 1736000000\n    }\n  ]\n}',
+        summary: 'Owner-only list of all delegated and legacy service tokens. Plaintext values and stored hashes are never returned.',
+        response: '{\n  "success": true,\n  "obj": [\n    {\n      "id": 2,\n      "name": "telegram-operator-a",\n      "kind": "delegated",\n      "subjectAdminId": 3,\n      "subjectUsername": "operator-a",\n      "subjectRoleName": "Operator",\n      "scopes": ["clients:create", "clients:read"],\n      "expiresAt": 1767536000,\n      "expired": false,\n      "enabled": true,\n      "createdAt": 1736000000\n    }\n  ]\n}',
+      },
+      {
+        method: 'GET',
+        path: '/panel/api/setting/apiTokens/subjects',
+        summary: 'List active non-owner administrators eligible to receive a delegated token. Returns only ID, username, and role metadata.',
+        response: '{\n  "success": true,\n  "obj": [\n    {\n      "id": 3,\n      "username": "operator-a",\n      "roleId": 2,\n      "roleName": "Operator"\n    }\n  ]\n}',
       },
       {
         method: 'POST',
         path: '/panel/api/setting/apiTokens/create',
-        summary: 'Mint a new API token. Name must be unique and 1-64 characters; the token string is server-generated and returned only in this response — it is stored hashed and cannot be retrieved later.',
+        summary: 'Mint an owner-created delegated or service token and return plaintext exactly once. The backend always records the logged-in owner as creator. For backward compatibility, omitting kind creates a service token; new user automation should explicitly send kind=delegated.',
         params: [
-          { name: 'name', in: 'body', type: 'string', desc: 'Human-readable label, e.g. "central-panel-a".' },
+          { name: 'name', in: 'body', type: 'string', desc: 'Unique human-readable label (1-64 characters).' },
+          { name: 'kind', in: 'body', type: 'string', desc: 'delegated for user automation or service for trusted panel infrastructure. Omitted means service for legacy callers.', optional: true },
+          { name: 'subjectAdminId', in: 'body', type: 'integer', desc: 'Required for delegated tokens: active non-owner panel administrator ID.', optional: true },
+          { name: 'scopes', in: 'body', type: 'string[]', desc: 'Required for delegated tokens: one or both of clients:read and clients:create.', optional: true },
+          { name: 'expiresAt', in: 'body', type: 'integer', desc: 'Optional Unix-seconds expiry. 0 means no expiry.', optional: true },
         ],
-        body: '{\n  "name": "central-panel-a"\n}',
+        body: '{\n  "name": "telegram-operator-a",\n  "kind": "delegated",\n  "subjectAdminId": 3,\n  "scopes": ["clients:read", "clients:create"],\n  "expiresAt": 1767536000\n}',
         responseSchema: 'ApiTokenView',
         errorResponse: '{\n  "success": false,\n  "msg": "a token with that name already exists"\n}',
       },
       {
         method: 'POST',
         path: '/panel/api/setting/apiTokens/delete/:id',
-        summary: 'Permanently delete a token. Any caller using it stops authenticating immediately.',
+        summary: 'Owner-only permanent token revocation. Any caller using it stops authenticating immediately.',
         params: [
           { name: 'id', in: 'path', type: 'number', desc: 'Token row ID.' },
         ],
@@ -1493,7 +1505,7 @@ export const sections: readonly Section[] = [
       {
         method: 'POST',
         path: '/panel/api/setting/apiTokens/setEnabled/:id',
-        summary: 'Toggle a token enabled/disabled without deleting it. Disabled tokens are rejected by checkAPIAuth on the next request.',
+        summary: 'Owner-only enable/disable toggle. Disabled tokens are rejected by checkAPIAuth on the next request.',
         params: [
           { name: 'id', in: 'path', type: 'number', desc: 'Token row ID.' },
           { name: 'enabled', in: 'body', type: 'boolean', desc: 'New enabled state.' },

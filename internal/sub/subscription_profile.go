@@ -78,6 +78,45 @@ func expandSubscriptionEndpoints(baseStream map[string]any, defaultAddress strin
 	return out
 }
 
+// resolveExternalProxyDefaults returns shallow copies of subscription profiles
+// with their dial endpoint resolved. A blank destination inherits the address
+// selected by ShareAddrStrategy; an explicit destination remains an override.
+// The source maps are never mutated because JSON/Clash remark rendering may
+// modify top-level profile fields later in the request.
+func resolveExternalProxyDefaults(profiles []any, defaultAddress string, defaultPort int) []any {
+	resolved := make([]any, 0, len(profiles))
+	defaultAddress = strings.TrimSpace(defaultAddress)
+
+	for _, rawProfile := range profiles {
+		profile, ok := rawProfile.(map[string]any)
+		if !ok || profile == nil {
+			resolved = append(resolved, rawProfile)
+			continue
+		}
+
+		cloned := make(map[string]any, len(profile))
+		for key, value := range profile {
+			cloned[key] = value
+		}
+
+		address := strings.TrimSpace(stringValue(profile["dest"]))
+		if address == "" {
+			address = defaultAddress
+		}
+
+		port := intValue(profile["port"])
+		if port < 1 || port > 65535 {
+			port = defaultPort
+		}
+
+		cloned["dest"] = address
+		cloned["port"] = float64(port)
+		resolved = append(resolved, cloned)
+	}
+
+	return resolved
+}
+
 func effectiveSubscriptionProfileStream(baseStream, profile map[string]any) map[string]any {
 	stream := cloneJSONMapWithoutExternalProxy(baseStream)
 

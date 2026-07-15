@@ -63,12 +63,10 @@ export default function ExternalProxyForm() {
     watchedParentPort,
   ]);
 
-  const defaultAddress = typeof window !== 'undefined' ? window.location.hostname : '';
-
   const toggleProfiles = (on: boolean) => {
     form.setFieldValue(
       ['streamSettings', 'externalProxy'],
-      on ? [createSubscriptionProfileDraft(defaultAddress, parentPort)] : [],
+      on ? [createSubscriptionProfileDraft(parentPort)] : [],
     );
   };
 
@@ -128,7 +126,7 @@ export default function ExternalProxyForm() {
                         block
                         type="dashed"
                         icon={<PlusOutlined />}
-                        onClick={() => add(createSubscriptionProfileDraft(defaultAddress, parentPort))}
+                        onClick={() => add(createSubscriptionProfileDraft(parentPort))}
                       >
                         {t('pages.inbounds.form.addSubscriptionProfile')}
                       </Button>

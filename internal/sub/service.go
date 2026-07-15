@@ -618,6 +618,7 @@ func (s *SubService) genVmessLink(inbound *model.Inbound, email string) string {
 	obj["scy"] = clients[clientIndex].Security
 
 	externalProxies, _ := stream["externalProxy"].([]any)
+	externalProxies = resolveExternalProxyDefaults(externalProxies, address, inbound.Port)
 
 	if len(externalProxies) > 0 {
 		return s.buildVmessExternalProxyLinks(externalProxies, obj, inbound, email, network)
@@ -698,6 +699,7 @@ func (s *SubService) genVlessLink(inbound *model.Inbound, email string) string {
 	}
 
 	externalProxies, _ := stream["externalProxy"].([]any)
+	externalProxies = resolveExternalProxyDefaults(externalProxies, address, inbound.Port)
 
 	if len(externalProxies) > 0 {
 		return s.buildExternalProxyURLLinks(
@@ -749,6 +751,7 @@ func (s *SubService) genTrojanLink(inbound *model.Inbound, email string) string 
 	}
 
 	externalProxies, _ := stream["externalProxy"].([]any)
+	externalProxies = resolveExternalProxyDefaults(externalProxies, address, inbound.Port)
 
 	if len(externalProxies) > 0 {
 		return s.buildExternalProxyURLLinks(
@@ -841,6 +844,7 @@ func (s *SubService) genShadowsocksLink(inbound *model.Inbound, email string) st
 	}
 
 	externalProxies, _ := stream["externalProxy"].([]any)
+	externalProxies = resolveExternalProxyDefaults(externalProxies, address, inbound.Port)
 
 	if len(externalProxies) > 0 {
 		proxyParams := cloneStringMap(params)
@@ -949,6 +953,11 @@ func (s *SubService) genHysteriaLink(inbound *model.Inbound, email string) strin
 	// endpoint (e.g. a CDN hostname + port that forwards to the node).
 	// Matches the behaviour of genVlessLink / genTrojanLink / ….
 	externalProxies, _ := stream["externalProxy"].([]any)
+	externalProxies = resolveExternalProxyDefaults(
+		externalProxies,
+		s.resolveInboundAddress(inbound),
+		inbound.Port,
+	)
 	if len(externalProxies) > 0 {
 		links := make([]string, 0, len(externalProxies))
 		for _, externalProxy := range externalProxies {
