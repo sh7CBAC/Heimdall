@@ -5411,6 +5411,95 @@
         }
       }
     },
+    "/panel/api/clients/activity/node-sync": {
+      "post": {
+        "tags": [
+          "Clients"
+        ],
+        "summary": "Internal parent-to-child Activity synchronization endpoint. Applies authoritative monitoring states by canonical client email, then returns idempotent absolute Activity snapshots for this panel and any descendants already merged into it. Used by the node traffic-sync job.",
+        "operationId": "post_panel_api_clients_activity_node_sync",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              },
+              "example": {
+                "states": [
+                  {
+                    "email": "alice@example.com",
+                    "enabled": true,
+                    "generation": 3,
+                    "dataEpoch": 2
+                  }
+                ],
+                "cursors": {
+                  "local": {
+                    "updatedAt": 0,
+                    "id": 0
+                  },
+                  "remote": {
+                    "updatedAt": 0,
+                    "id": 0
+                  }
+                },
+                "limit": 500
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    },
+                    "obj": {}
+                  }
+                },
+                "example": {
+                  "success": true,
+                  "obj": {
+                    "items": [
+                      {
+                        "originGuid": "node-guid",
+                        "email": "alice@example.com",
+                        "dataEpoch": 2,
+                        "sourceIp": "203.0.113.10",
+                        "destination": "example.com",
+                        "uploadBytes": 1024,
+                        "downloadBytes": 4096,
+                        "lastSeen": 1700000000000
+                      }
+                    ],
+                    "cursors": {
+                      "local": {
+                        "updatedAt": 1700000000000,
+                        "id": 10
+                      },
+                      "remote": {
+                        "updatedAt": 1700000000000,
+                        "id": 20
+                      }
+                    },
+                    "hasMore": false
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/panel/api/clients/{email}/activity/start": {
       "post": {
         "tags": [
