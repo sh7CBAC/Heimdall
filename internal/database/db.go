@@ -75,6 +75,7 @@ func initModels() error {
 		&model.ClientRecord{},
 		&model.ClientActivitySetting{},
 		&model.ClientActivityDestination{},
+		&model.ClientActivityRemoteDestination{},
 		&model.ClientInbound{},
 		&model.ClientInboundTraffic{},
 		&model.ClientExternalLink{},

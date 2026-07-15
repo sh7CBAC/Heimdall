@@ -104,6 +104,7 @@ func (a *ClientController) initRouter(g *gin.RouterGroup) {
 	g.GET("/traffic/:email", a.getTrafficByEmail)
 	g.GET("/subLinks/:subId", a.getSubLinks)
 	g.GET("/links/:email", a.getClientLinks)
+	g.POST("/activity/node-sync", a.syncNodeActivity)
 	g.GET("/:email/activity", a.getActivity)
 	g.GET("/:email/activity/status", a.getActivityStatus)
 
@@ -853,6 +854,30 @@ func (a *ClientController) bulkResetTraffic(c *gin.Context) {
 	jsonObj(c, gin.H{"affected": affected}, nil)
 	a.xrayService.SetToNeedRestart()
 	notifyClientsChanged()
+}
+
+// syncNodeActivity is the parent-to-child Activity replication endpoint. It
+// applies canonical monitoring state locally and returns an incremental,
+// absolute snapshot containing this panel and any descendants already merged
+// into it. Repeated requests are idempotent.
+func (a *ClientController) syncNodeActivity(c *gin.Context) {
+	var req model.ClientActivitySyncRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		jsonObj(c, nil, err)
+		return
+	}
+
+	panelGUID, err := a.settingService.GetPanelGuid()
+	if err != nil {
+		jsonObj(c, nil, err)
+		return
+	}
+
+	response, err := a.activityService.ApplyNodeSyncAndExport(
+		panelGUID,
+		&req,
+	)
+	jsonObj(c, response, err)
 }
 
 // getActivityStatus returns the current opt-in monitoring state for one visible

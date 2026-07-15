@@ -256,6 +256,7 @@ func TestClientActivityRoutesRegistered(t *testing.T) {
 
 	expected := map[string]string{
 		"GET /clients/:email/activity/status": "",
+		"POST /clients/activity/node-sync":    "",
 		"POST /clients/:email/activity/start": "",
 		"POST /clients/:email/activity/stop":  "",
 		"POST /clients/:email/activity/reset": "",

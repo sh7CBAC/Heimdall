@@ -596,6 +596,37 @@ export const sections: readonly Section[] = [
       },
       {
         method: 'POST',
+        path: '/panel/api/clients/activity/node-sync',
+        summary:
+          'Internal parent-to-child Activity synchronization endpoint. Applies authoritative monitoring states by canonical client email, then returns idempotent absolute Activity snapshots for this panel and any descendants already merged into it. Used by the node traffic-sync job.',
+        params: [
+          {
+            name: 'states',
+            in: 'body (json)',
+            type: 'object[]',
+            desc: 'Authoritative client Activity states containing email, enabled, generation, and dataEpoch.',
+          },
+          {
+            name: 'cursors',
+            in: 'body (json)',
+            type: 'object',
+            desc: 'Incremental local and remote cursors from the previous successful synchronization.',
+          },
+          {
+            name: 'limit',
+            in: 'body (json)',
+            type: 'integer',
+            desc: 'Maximum number of Activity snapshot rows returned in this page.',
+            optional: true,
+          },
+        ],
+        body:
+          '{\n  "states": [\n    {\n      "email": "alice@example.com",\n      "enabled": true,\n      "generation": 3,\n      "dataEpoch": 2\n    }\n  ],\n  "cursors": {\n    "local": { "updatedAt": 0, "id": 0 },\n    "remote": { "updatedAt": 0, "id": 0 }\n  },\n  "limit": 500\n}',
+        response:
+          '{\n  "success": true,\n  "obj": {\n    "items": [\n      {\n        "originGuid": "node-guid",\n        "email": "alice@example.com",\n        "dataEpoch": 2,\n        "sourceIp": "203.0.113.10",\n        "destination": "example.com",\n        "uploadBytes": 1024,\n        "downloadBytes": 4096,\n        "lastSeen": 1700000000000\n      }\n    ],\n    "cursors": {\n      "local": { "updatedAt": 1700000000000, "id": 10 },\n      "remote": { "updatedAt": 1700000000000, "id": 20 }\n    },\n    "hasMore": false\n  }\n}',
+      },
+      {
+        method: 'POST',
         path: '/panel/api/clients/:email/activity/start',
         summary:
           'Enable destination Activity monitoring for one client. The monitored-client allowlist is updated without restarting Xray. Repeated Start requests are idempotent.',

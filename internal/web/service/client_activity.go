@@ -249,6 +249,13 @@ func (s *ClientActivityService) ResetByClientID(
 			return err
 		}
 
+		if err := tx.
+			Where("client_id = ?", clientID).
+			Delete(&model.ClientActivityRemoteDestination{}).
+			Error; err != nil {
+			return err
+		}
+
 		var row model.ClientActivitySetting
 		if err := tx.
 			Where("client_id = ?", clientID).
@@ -339,6 +346,13 @@ func (s *ClientActivityService) DeleteForClientIDs(
 			if err := db.
 				Where("client_id IN ?", batch).
 				Delete(&model.ClientActivityDestination{}).
+				Error; err != nil {
+				return err
+			}
+
+			if err := db.
+				Where("client_id IN ?", batch).
+				Delete(&model.ClientActivityRemoteDestination{}).
 				Error; err != nil {
 				return err
 			}

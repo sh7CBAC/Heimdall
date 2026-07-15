@@ -48,6 +48,11 @@ type NodeTrafficSyncJob struct {
 	// noGuidIpEndpoint tracks nodes (by id) whose client-IP attribution endpoint
 	// returned 404, so an old-build node is noted once instead of every cycle.
 	noGuidIpEndpoint sync.Map
+	// Activity state/cursors are per direct node. Cursors advance only after
+	// idempotent rows have been committed locally.
+	activitySyncMu         sync.Mutex
+	activityCursors        map[int]model.ClientActivitySyncCursors
+	noActivitySyncEndpoint sync.Map
 	// prevInboundTotals holds the previous poll's cumulative up/down (and the time
 	// the counter last changed) per node inbound tag, so the next poll can derive
 	// a per-inbound speed delta — node inbounds have no local Xray poll. Touched
@@ -75,7 +80,9 @@ func (a *atomicBool) takeAndReset() bool {
 }
 
 func NewNodeTrafficSyncJob() *NodeTrafficSyncJob {
-	return &NodeTrafficSyncJob{}
+	return &NodeTrafficSyncJob{
+		activityCursors: make(map[int]model.ClientActivitySyncCursors),
+	}
 }
 
 func (j *NodeTrafficSyncJob) Run() {
@@ -357,6 +364,11 @@ func (j *NodeTrafficSyncJob) syncOne(mgr *runtime.Manager, n *model.Node, doIpSy
 			j.structural.set()
 		}
 	}
+
+	// Activity replication is independent from ordinary traffic accounting.
+	// A missing endpoint means the node is an older build; traffic sync still
+	// continues and the state is retried after that node is upgraded.
+	j.syncClientActivity(n, rt)
 
 	ctx, cancel := context.WithTimeout(context.Background(), nodeTrafficSyncRequestTimeout)
 	defer cancel()

@@ -97,33 +97,54 @@ func (s *ClientActivityService) ListByClientID(
 	response.Generation = setting.Generation
 	response.DataEpoch = setting.DataEpoch
 
-	query := db.
-		Model(&model.ClientActivityDestination{}).
-		Where(
-			"client_id = ? AND data_epoch = ?",
-			clientID,
-			setting.DataEpoch,
-		)
+	baseSQL := `
+		FROM (
+			SELECT destination, source_ip, upload_bytes, download_bytes, last_seen
+			FROM client_activity_destinations
+			WHERE client_id = ? AND data_epoch = ?
+			UNION ALL
+			SELECT destination, source_ip, upload_bytes, download_bytes, last_seen
+			FROM client_activity_remote_destinations
+			WHERE client_id = ? AND data_epoch = ?
+		) AS activity_rows
+	`
 
-	if err := query.Count(&response.Total).Error; err != nil {
+	countSQL := `SELECT COUNT(*) FROM (` +
+		`SELECT destination, source_ip ` + baseSQL +
+		` GROUP BY destination, source_ip) AS grouped_activity`
+
+	if err := db.Raw(
+		countSQL,
+		clientID,
+		setting.DataEpoch,
+		clientID,
+		setting.DataEpoch,
+	).Scan(&response.Total).Error; err != nil {
 		return nil, err
 	}
 
 	offset := (page - 1) * pageSize
+	listSQL := `
+		SELECT
+			destination,
+			source_ip,
+			SUM(upload_bytes) AS upload_bytes,
+			SUM(download_bytes) AS download_bytes
+	` + baseSQL + `
+		GROUP BY destination, source_ip
+		ORDER BY MAX(last_seen) DESC, destination ASC, source_ip ASC
+		LIMIT ? OFFSET ?
+	`
 
-	if err := query.
-		Select(
-			"destination",
-			"source_ip",
-			"upload_bytes",
-			"download_bytes",
-		).
-		Order("last_seen DESC").
-		Order("id DESC").
-		Limit(pageSize).
-		Offset(offset).
-		Scan(&response.Items).
-		Error; err != nil {
+	if err := db.Raw(
+		listSQL,
+		clientID,
+		setting.DataEpoch,
+		clientID,
+		setting.DataEpoch,
+		pageSize,
+		offset,
+	).Scan(&response.Items).Error; err != nil {
 		return nil, err
 	}
 
