@@ -2794,7 +2794,7 @@ show_menu() {
 │  ${green}12.${plain} Start                                    │
 │  ${green}13.${plain} Stop                                     │
 │  ${green}14.${plain} Restart                                  │
-|  ${green}15.${plain} Restart Xray                             │
+│  ${green}15.${plain} Restart Xray                             │
 │  ${green}16.${plain} Check Status                             │
 │  ${green}17.${plain} Logs Management                          │
 │────────────────────────────────────────────────│
