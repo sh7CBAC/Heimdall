@@ -38,7 +38,6 @@ Construido como un fork mejorado del proyecto X-UI original, 3X-UI añade un sop
 - **API RESTful** con documentación Swagger dentro del panel.
 - **Almacenamiento flexible** — SQLite (predeterminado) o PostgreSQL.
 - **13 idiomas de interfaz** con temas oscuro y claro.
-- **Integración con Fail2ban** para aplicar límites de IP por cliente.
 
 ## Capturas de pantalla
 
@@ -137,7 +136,6 @@ El comando predeterminado `docker compose up -d` sigue usando SQLite. Para ejecu
 docker compose --profile postgres up -d
 ```
 
-La imagen incluye Fail2ban (habilitado de forma predeterminada) para aplicar **límites de IP** por cliente. Fail2ban banea a los infractores con `iptables`, lo que requiere la capacidad `NET_ADMIN`. `docker-compose.yml` ya la concede mediante `cap_add`; si en su lugar inicias el contenedor con `docker run`, añade tú mismo las capacidades, de lo contrario los baneos se registran pero nunca se aplican:
 
 ```bash
 docker run -d --cap-add=NET_ADMIN --cap-add=NET_RAW ... ghcr.io/mhsanaei/3x-ui
@@ -153,7 +151,6 @@ docker run -d --cap-add=NET_ADMIN --cap-add=NET_RAW ... ghcr.io/mhsanaei/3x-ui
 | `XUI_DB_MAX_OPEN_CONNS` | Máximo de conexiones abiertas (pool de PostgreSQL) | — |
 | `XUI_DB_MAX_IDLE_CONNS` | Máximo de conexiones inactivas (pool de PostgreSQL) | — |
 | `XUI_INIT_WEB_BASE_PATH` | La ruta URI inicial para el panel web | `/` |
-| `XUI_ENABLE_FAIL2BAN` | Habilitar la aplicación de límites de IP basada en Fail2ban | `true` |
 | `XUI_LOG_LEVEL` | Nivel de registro (`debug`, `info`, `warning`, `error`) | `info` |
 | `XUI_DEBUG` | Habilitar el modo de depuración | `false` |
 | `XUI_TUNNEL_HEALTH_MONITOR` | Habilitar el monitor de salud del túnel (sondea una URL y reinicia xray tras fallos repetidos; un reinicio desconecta a todos los clientes) | `false` |

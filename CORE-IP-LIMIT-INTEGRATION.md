@@ -14,7 +14,7 @@ first-IP-wins enforcement inside the dispatcher.
 - `limitIp = 0`: unlimited.
 - `limitIp = N`: the first N distinct active source IPs are accepted.
 - Further source IPs are rejected before outbound dispatch.
-- No access-log parsing or Fail2ban jail is required.
+- No access-log parsing or external firewall jail is required.
 - A slot is released after all dispatch contexts for the IP close and the
   configured inactivity delay elapses.
 
@@ -60,6 +60,4 @@ go build -trimpath -o x-ui-panel ./main.go
 
 ## Legacy IP-limit components
 
-`CheckClientIpJob` and its Fail2ban support remain in the source tree for
-backward compatibility, but they are no longer scheduled by `web/web.go`.
-The old IP-log UI remains hidden while Access Log is disabled.
+`CheckClientIpJob` remains only for compatibility and online-client observation. IP-limit enforcement is performed exclusively by the pinned Heimdall custom core.

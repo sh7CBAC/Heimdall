@@ -362,7 +362,7 @@ func (s *Server) startTask(restartXray bool) {
 	// Outbound subscription auto-refresh (respects per-sub updateInterval)
 	_, _ = s.cron.AddJob(cadenceOutboundSub, job.NewOutboundSubscriptionJob())
 
-	// Daily log cleanup is safe; the legacy access-log/Fail2ban limit path stays disabled.
+	// Daily log cleanup is safe; the legacy access-log/legacy firewall limit path stays disabled.
 	_, _ = s.cron.AddJob("@daily", job.NewClearLogsJob())
 	_, _ = s.cron.AddJob("@hourly", job.NewWarpIpJob())
 

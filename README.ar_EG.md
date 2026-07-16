@@ -38,7 +38,6 @@
 - **واجهة RESTful API** مع توثيق Swagger داخل اللوحة.
 - **تخزين مرن** — SQLite (افتراضي) أو PostgreSQL.
 - **13 لغة لواجهة المستخدم** مع سمات داكنة وفاتحة.
-- **تكامل مع Fail2ban** لفرض حدود IP لكل عميل.
 
 ## لقطات الشاشة
 
@@ -137,7 +136,6 @@ systemctl restart x-ui
 docker compose --profile postgres up -d
 ```
 
-تتضمن الصورة Fail2ban (مُفعَّل افتراضيًا) لفرض **حدود IP** لكل عميل. يحظر Fail2ban المخالفين باستخدام `iptables`، الذي يتطلب صلاحية `NET_ADMIN`. يمنح `docker-compose.yml` هذه الصلاحية مسبقًا عبر `cap_add`؛ إذا شغّلت الحاوية باستخدام `docker run` بدلاً من ذلك، فأضِف الصلاحيات بنفسك، وإلا فسيتم تسجيل عمليات الحظر دون تطبيقها أبدًا:
 
 ```bash
 docker run -d --cap-add=NET_ADMIN --cap-add=NET_RAW ... ghcr.io/mhsanaei/3x-ui
@@ -153,7 +151,6 @@ docker run -d --cap-add=NET_ADMIN --cap-add=NET_RAW ... ghcr.io/mhsanaei/3x-ui
 | `XUI_DB_MAX_OPEN_CONNS` | الحد الأقصى للاتصالات المفتوحة (تجمّع PostgreSQL) | — |
 | `XUI_DB_MAX_IDLE_CONNS` | الحد الأقصى للاتصالات الخاملة (تجمّع PostgreSQL) | — |
 | `XUI_INIT_WEB_BASE_PATH` | مسار URI الأولي للوحة الويب | `/` |
-| `XUI_ENABLE_FAIL2BAN` | تفعيل فرض حدود IP المعتمد على Fail2ban | `true` |
 | `XUI_LOG_LEVEL` | مستوى السجل (`debug`، `info`، `warning`، `error`) | `info` |
 | `XUI_DEBUG` | تفعيل وضع التصحيح | `false` |
 | `XUI_TUNNEL_HEALTH_MONITOR` | تفعيل مراقب صحة النفق (يفحص عنوان URL ويعيد تشغيل xray بعد فشل متكرر؛ إعادة التشغيل تقطع جميع العملاء) | `false` |

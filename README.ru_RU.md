@@ -38,7 +38,6 @@
 - **RESTful API** с документацией Swagger внутри панели.
 - **Гибкое хранилище** — SQLite (по умолчанию) или PostgreSQL.
 - **13 языков интерфейса** с тёмной и светлой темами.
-- **Интеграция с Fail2ban** для применения лимитов IP по каждому клиенту.
 
 ## Скриншоты
 
@@ -137,7 +136,6 @@ systemctl restart x-ui
 docker compose --profile postgres up -d
 ```
 
-Образ включает Fail2ban (включён по умолчанию) для применения **лимитов IP** по каждому клиенту. Fail2ban блокирует нарушителей с помощью `iptables`, что требует возможности `NET_ADMIN`. `docker-compose.yml` уже предоставляет её через `cap_add`; если вы вместо этого запускаете контейнер через `docker run`, добавьте возможности самостоятельно, иначе блокировки будут регистрироваться, но никогда не применяться:
 
 ```bash
 docker run -d --cap-add=NET_ADMIN --cap-add=NET_RAW ... ghcr.io/mhsanaei/3x-ui
@@ -153,7 +151,6 @@ docker run -d --cap-add=NET_ADMIN --cap-add=NET_RAW ... ghcr.io/mhsanaei/3x-ui
 | `XUI_DB_MAX_OPEN_CONNS` | Максимум открытых соединений (пул PostgreSQL) | — |
 | `XUI_DB_MAX_IDLE_CONNS` | Максимум простаивающих соединений (пул PostgreSQL) | — |
 | `XUI_INIT_WEB_BASE_PATH` | Начальный URI-путь для веб-панели | `/` |
-| `XUI_ENABLE_FAIL2BAN` | Включить применение лимитов IP на основе Fail2ban | `true` |
 | `XUI_LOG_LEVEL` | Уровень логирования (`debug`, `info`, `warning`, `error`) | `info` |
 | `XUI_DEBUG` | Включить режим отладки | `false` |
 | `XUI_TUNNEL_HEALTH_MONITOR` | Включить монитор состояния туннеля (опрашивает URL и перезапускает xray после многократных сбоев; перезапуск отключает всех клиентов) | `false` |

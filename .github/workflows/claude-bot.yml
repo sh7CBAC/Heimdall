@@ -94,7 +94,7 @@ jobs:
                                        email/ (SMTP notifications), outbound/,
                                        panel/, integration/
               - internal/web/job/      cron jobs (traffic accounting, IP-limit /
-                                       fail2ban, node heartbeat + traffic sync,
+                                       custom-core limiter, node heartbeat + traffic sync,
                                        LDAP sync, MTProto, stats notify, ...)
               - internal/web/middleware/   Gin middleware (auth, redirect,
                                        domain checks)
@@ -132,13 +132,13 @@ jobs:
               XUI_DB_TYPE (sqlite|postgres, default sqlite), XUI_DB_DSN,
               XUI_DB_FOLDER (default /etc/x-ui), XUI_DB_MAX_OPEN_CONNS,
               XUI_DB_MAX_IDLE_CONNS, XUI_INIT_WEB_BASE_PATH (default /),
-              XUI_ENABLE_FAIL2BAN (default true), XUI_LOG_LEVEL (default info),
+              XUI_LOG_LEVEL (default info),
               XUI_LOG_FOLDER, XUI_BIN_FOLDER, XUI_SKIP_HSTS, XUI_DEBUG.
             - SQLite -> PostgreSQL: `x-ui migrate-db --dsn "postgres://..."`, then
               set XUI_DB_TYPE/XUI_DB_DSN in /etc/default/x-ui and
               `systemctl restart x-ui`. The source SQLite file is left in place.
             - Docker image: ghcr.io/mhsanaei/3x-ui. PostgreSQL profile:
-              `docker compose --profile postgres up -d`. Fail2ban IP-limit
+              `docker compose --profile postgres up -d`. custom-core limiter IP-limit
               enforcement needs NET_ADMIN + NET_RAW (compose grants them via
               cap_add; a bare `docker run` must add
               `--cap-add=NET_ADMIN --cap-add=NET_RAW`).
@@ -326,7 +326,7 @@ jobs:
                                        at /panel/api/openapi.json
               - internal/web/service/  business logic; subpackages tgbot/,
                                        email/, outbound/, panel/, integration/
-              - internal/web/job/      cron jobs (traffic, fail2ban, node
+              - internal/web/job/      cron jobs (traffic, custom-core limiter, node
                                        heartbeat/sync, LDAP, MTProto)
               - internal/web/middleware/, entity/, global/, session/ (CSRF),
                 network/, runtime/, websocket/
@@ -512,7 +512,7 @@ jobs:
             - internal/mtproto/ runs MTProto (Telegram) proxy inbounds via the bundled mtg binary.
             - internal/web/controller/ has panel and REST API handlers with the OpenAPI spec served at /panel/api/openapi.json.
             - internal/web/service/ has business logic (InboundService, SettingService, XrayService, node sync) with subpackages tgbot (Telegram bot), email (SMTP notifications), outbound, panel, integration.
-            - internal/web/job/ has cron jobs (traffic accounting, fail2ban IP limit, node heartbeat and traffic sync, LDAP sync, MTProto).
+            - internal/web/job/ has cron jobs (traffic accounting, custom-core limiter IP limit, node heartbeat and traffic sync, LDAP sync, MTProto).
             - internal/web/locale/ plus internal/web/translation/ provide the 13 embedded UI languages.
             - internal/web/entity/, global/, session/ (CSRF), middleware/, network/, runtime/, websocket/ support the Gin server.
             - internal/sub/ is the subscription server.
@@ -522,7 +522,7 @@ jobs:
             - tools/openapigen generates the OpenAPI spec and frontend API types.
             - docs/ holds extra documentation.
 
-            Stack and runtime facts: Backend is Go (module github.com/mhsanaei/3x-ui/v3) with Gin and GORM; storage is SQLite by default at /etc/x-ui/x-ui.db or PostgreSQL via XUI_DB_TYPE and XUI_DB_DSN; further env vars include XUI_DB_FOLDER, XUI_DB_MAX_OPEN_CONNS, XUI_DB_MAX_IDLE_CONNS, XUI_INIT_WEB_BASE_PATH, XUI_ENABLE_FAIL2BAN; the installer writes env to /etc/default/x-ui; SQLite to PostgreSQL migration is x-ui migrate-db --dsn followed by a service restart; install uses install.sh and the x-ui menu, generating random initial credentials; Docker image is ghcr.io/mhsanaei/3x-ui and Fail2ban IP-limit enforcement needs NET_ADMIN and NET_RAW; Windows is a supported platform. Do not hardcode a version: for version or is-this-fixed questions, check the latest release and recent commits or closed PRs with gh.
+            Stack and runtime facts: Backend is Go (module github.com/mhsanaei/3x-ui/v3) with Gin and GORM; storage is SQLite by default at /etc/x-ui/x-ui.db or PostgreSQL via XUI_DB_TYPE and XUI_DB_DSN; further env vars include XUI_DB_FOLDER, XUI_DB_MAX_OPEN_CONNS, XUI_DB_MAX_IDLE_CONNS, XUI_INIT_WEB_BASE_PATH, the installer writes env to /etc/default/x-ui; SQLite to PostgreSQL migration is x-ui migrate-db --dsn followed by a service restart; install uses install.sh and the x-ui menu, generating random initial credentials; Docker image is ghcr.io/mhsanaei/3x-ui and custom-core limiter IP-limit enforcement needs NET_ADMIN and NET_RAW; Windows is a supported platform. Do not hardcode a version: for version or is-this-fixed questions, check the latest release and recent commits or closed PRs with gh.
 
             Style: professional, courteous, and matter-of-fact; no emoji, no exclamation marks, no filler; lead with the answer in the first sentence; use fenced code blocks for commands and backtick formatting for paths and setting names; distinguish what you confirmed in the source (name the file) from what you infer; never promise fixes, timelines, or releases. Ground every claim in the code or the README and wiki; do not invent features, paths, flags, or commands, and do not stop at the first plausible match. Token cost is not a concern, so investigate as deeply as the question needs.
 

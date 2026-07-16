@@ -34,7 +34,7 @@ Read those before large changes. This file is the short, must-follow version.
   - `controller/` — panel + REST API handlers; OpenAPI at /panel/api/openapi.json.
   - `service/` — business logic (InboundService, SettingService, XrayService,
     node sync); subpackages tgbot/, email/, outbound/, panel/, integration/.
-  - `job/` — cron jobs (traffic, fail2ban IP-limit, node heartbeat/sync, LDAP).
+  - `job/` — cron jobs (traffic, custom-core IP/speed-limit sync, node heartbeat/sync, LDAP).
   - `middleware/`, `entity/`, `global/`, `session/` (CSRF), `network/`,
     `runtime/` (master/sub-node over mTLS), `websocket/`.
   - `locale/` + `translation/` — i18n, 13 embedded locale JSON files.
