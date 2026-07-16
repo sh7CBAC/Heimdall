@@ -50,6 +50,18 @@ is_domain() {
     [[ "$1" =~ ^([A-Za-z0-9](-*[A-Za-z0-9])*\.)+(xn--[a-z0-9]{2,}|[A-Za-z]{2,})$ ]] && return 0 || return 1
 }
 
+# acme.sh's standalone server binds IPv4 by default; --listen-v6 makes it
+# v6-only, which breaks HTTP-01 validation when the domain's A record points
+# at this host's IPv4 (#4994). Only force IPv6 when the host has no global
+# IPv4 address at all.
+acme_listen_flag() {
+    if ip -4 addr show scope global 2> /dev/null | grep -q "inet "; then
+        echo ""
+    else
+        echo "--listen-v6"
+    fi
+}
+
 # check root
 [[ $EUID -ne 0 ]] && LOGE "ERROR: You must be root to run this script! \n" && exit 1
 
@@ -143,6 +155,24 @@ update() {
     fi
 }
 
+update_dev() {
+    confirm "This will update Heimdall to the latest DEV commit (the rolling 'dev-latest' build, not a stable release). Your data is preserved. Continue?" "y"
+    if [[ $? != 0 ]]; then
+        LOGE "Cancelled"
+        if [[ $# == 0 ]]; then
+            before_show_menu
+        fi
+        return 0
+    fi
+    # XUI_UPDATE_TAG tells update.sh to install the dev-latest pre-release
+    # instead of the latest stable tag.
+    XUI_UPDATE_TAG="dev-latest" bash <(curl -Ls https://raw.githubusercontent.com/sh7CBAC/Heimdall/main/update.sh)
+    if [[ $? == 0 ]]; then
+        LOGI "Dev update is complete, Panel has automatically restarted "
+        before_show_menu
+    fi
+}
+
 update_menu() {
     echo -e "${yellow}Updating Menu${plain}"
     confirm "This function will update the menu to the latest changes." "y"
@@ -154,18 +184,9 @@ update_menu() {
         return 0
     fi
 
-    if ! curl -fLRo /usr/bin/x-ui https://raw.githubusercontent.com/sh7CBAC/Heimdall/main/x-ui.sh; then
-        echo -e "${red}Failed to download x-ui.sh.${plain}"
-        return 1
-    fi
-
-    if ! curl -fLRo /usr/bin/y-ui https://raw.githubusercontent.com/sh7CBAC/Heimdall/main/y-ui.sh; then
-        echo -e "${yellow}Warning: failed to download y-ui.sh. Hidden Infrastructure CLI was not updated.${plain}"
-    fi
-
+    curl -fLRo /usr/bin/x-ui https://raw.githubusercontent.com/sh7CBAC/Heimdall/main/x-ui.sh
     chmod +x ${xui_folder}/x-ui.sh
     chmod +x /usr/bin/x-ui
-    [ ! -f /usr/bin/y-ui ] || chmod +x /usr/bin/y-ui
 
     if [[ $? == 0 ]]; then
         echo -e "${green}Update successful. The panel has automatically restarted.${plain}"
@@ -226,12 +247,20 @@ uninstall() {
         systemctl reset-failed
     fi
 
+    local panel_used_postgres="false"
+    local db_env_file
+    db_env_file="$(xui_env_file_path)"
+    if [[ -r "$db_env_file" ]] && grep -q '^XUI_DB_TYPE=postgres' "$db_env_file"; then
+        panel_used_postgres="true"
+    fi
+
     rm /etc/x-ui/ -rf
     rm ${xui_folder}/ -rf
-    rm -f "$(xui_env_file_path)"
+    rm -f "$db_env_file"
 
-    # Heimdall y-ui cleanup
-    rm -f /usr/bin/y-ui /usr/local/bin/y-ui 2>/dev/null || true
+    if [[ "$panel_used_postgres" == "true" ]] && postgresql_installed; then
+        purge_postgresql
+    fi
 
     echo ""
     echo -e "Uninstalled Successfully.\n"
@@ -367,11 +396,25 @@ check_config() {
 
     if [[ -n "$existing_cert" ]]; then
         local domain=$(basename "$(dirname "$existing_cert")")
+        # The cert folder name is only the certificate's first domain. A
+        # multidomain (SAN) certificate may be served under any name it covers,
+        # so read the real names from the certificate itself (#5070).
+        local cert_sans=""
+        if [[ -f "$existing_cert" ]] && command -v openssl > /dev/null 2>&1; then
+            cert_sans=$(openssl x509 -in "$existing_cert" -noout -ext subjectAltName 2> /dev/null \
+                | grep -Eo 'DNS:[^,[:space:]]+' | cut -d: -f2)
+            if [[ -n "$cert_sans" ]] && ! echo "$cert_sans" | grep -qx "$domain"; then
+                domain=$(echo "$cert_sans" | head -n1)
+            fi
+        fi
 
         if [[ "$domain" =~ ^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$ ]]; then
             echo -e "${green}Access URL: https://${domain}:${existing_port}${existing_webBasePath}${plain}"
         else
             echo -e "${green}Access URL: https://${server_ip}:${existing_port}${existing_webBasePath}${plain}"
+        fi
+        if [[ -n "$cert_sans" && $(echo "$cert_sans" | wc -l) -gt 1 ]]; then
+            echo -e "${yellow}The certificate also covers:${plain} $(echo "$cert_sans" | grep -vx "$domain" | tr '\n' ' ')"
         fi
     else
         echo -e "${red}⚠ WARNING: No SSL certificate configured!${plain}"
@@ -694,10 +737,12 @@ disable_bbr() {
 
     if [ -f "/etc/sysctl.d/99-bbr-x-ui.conf" ]; then
         old_settings=$(head -1 /etc/sysctl.d/99-bbr-x-ui.conf | tr -d '#')
+        # sysctl -w already restores the live values, so no `sysctl --system`
+        # afterwards — it would re-apply every sysctl file on the host and
+        # surface unrelated errors from the distro's own defaults (see issue #5160)
         sysctl -w net.core.default_qdisc="${old_settings%:*}"
         sysctl -w net.ipv4.tcp_congestion_control="${old_settings#*:}"
         rm /etc/sysctl.d/99-bbr-x-ui.conf
-        sysctl --system
     else
         # Replace BBR with CUBIC configurations
         if [ -f "/etc/sysctl.conf" ]; then
@@ -732,7 +777,10 @@ enable_bbr() {
             sed -i 's/^net.core.default_qdisc/# &/' /etc/sysctl.conf
             sed -i 's/^net.ipv4.tcp_congestion_control/# &/' /etc/sysctl.conf
         fi
-        sysctl --system
+        # Apply only our config file; `sysctl --system` would re-apply every
+        # sysctl file on the host and surface unrelated errors from the distro's
+        # own defaults (see issue #5160)
+        sysctl -p /etc/sysctl.d/99-bbr-x-ui.conf
     else
         sed -i '/net.core.default_qdisc/d' /etc/sysctl.conf
         sed -i '/net.ipv4.tcp_congestion_control/d' /etc/sysctl.conf
@@ -751,17 +799,7 @@ enable_bbr() {
 
 update_shell() {
     curl -fLRo /usr/bin/x-ui -z /usr/bin/x-ui https://raw.githubusercontent.com/sh7CBAC/Heimdall/main/x-ui.sh
-    xui_update_status=$?
-
-    if [[ $xui_update_status == 0 ]]; then
-        if curl -fLRo /usr/bin/y-ui -z /usr/bin/y-ui https://raw.githubusercontent.com/sh7CBAC/Heimdall/main/y-ui.sh; then
-            chmod +x /usr/bin/y-ui
-        else
-            echo -e "${yellow}Warning: failed to update y-ui.sh. Hidden Infrastructure CLI was not updated.${plain}"
-        fi
-    fi
-
-    if [[ $xui_update_status != 0 ]]; then
+    if [[ $? != 0 ]]; then
         echo ""
         LOGE "Failed to download script, Please check whether the machine can connect Github"
         before_show_menu
@@ -939,7 +977,6 @@ show_mtproto_status() {
             echo -e "mtproto inbound ${id} (${bind}): ${red}Not Running${plain}"
         fi
     done
-    echo -e "  ${yellow}mtg logs:${plain} journalctl -u x-ui --no-pager -n 200 | grep -i mtproto"
 }
 
 firewall_menu() {
@@ -1134,9 +1171,11 @@ delete_ports() {
 }
 
 update_all_geofiles() {
-    update_geofiles "main"
-    update_geofiles "IR"
-    update_geofiles "RU"
+    local failed=0
+    update_geofiles "main" || failed=1
+    update_geofiles "IR" || failed=1
+    update_geofiles "RU" || failed=1
+    return $failed
 }
 
 update_geofiles() {
@@ -1154,12 +1193,39 @@ update_geofiles() {
             dat_source="runetfreedom/russia-v2ray-rules-dat"
             ;;
     esac
+    local failed=0 http_code
     for dat in "${dat_files[@]}"; do
         # Remove suffix for remote filename (e.g., geoip_IR -> geoip)
         remote_file="${dat%%_*}"
-        curl -fLRo ${xui_folder}/bin/${dat}.dat -z ${xui_folder}/bin/${dat}.dat \
-            https://github.com/${dat_source}/releases/latest/download/${remote_file}.dat
+        # -z skips the download (server answers 304) when the local copy is already current
+        http_code=$(curl -sSfLRo ${xui_folder}/bin/${dat}.dat -z ${xui_folder}/bin/${dat}.dat -w '%{http_code}' \
+            https://github.com/${dat_source}/releases/latest/download/${remote_file}.dat)
+        if [[ $? -ne 0 ]]; then
+            echo -e "${red}${dat}.dat: download failed${plain}"
+            failed=1
+        elif [[ "$http_code" == "304" ]]; then
+            echo -e "${dat}.dat: already up to date"
+        else
+            echo -e "${green}${dat}.dat: updated${plain}"
+            geo_updated=1
+        fi
     done
+    return $failed
+}
+
+run_geo_update() {
+    local name="$1"
+    shift
+    geo_updated=0
+    "$@"
+    if [[ $? -ne 0 ]]; then
+        echo -e "${red}Some ${name} could not be updated. Check the errors above.${plain}"
+    elif [[ $geo_updated -eq 1 ]]; then
+        echo -e "${green}${name} have been updated successfully!${plain}"
+        restart
+    else
+        echo -e "${green}${name} are already up to date, restart is not needed.${plain}"
+    fi
 }
 
 update_geo() {
@@ -1175,24 +1241,16 @@ update_geo() {
             show_menu
             ;;
         1)
-            update_geofiles "main"
-            echo -e "${green}Loyalsoldier datasets have been updated successfully!${plain}"
-            restart
+            run_geo_update "Loyalsoldier datasets" update_geofiles "main"
             ;;
         2)
-            update_geofiles "IR"
-            echo -e "${green}chocolate4u datasets have been updated successfully!${plain}"
-            restart
+            run_geo_update "chocolate4u datasets" update_geofiles "IR"
             ;;
         3)
-            update_geofiles "RU"
-            echo -e "${green}runetfreedom datasets have been updated successfully!${plain}"
-            restart
+            run_geo_update "runetfreedom datasets" update_geofiles "RU"
             ;;
         4)
-            update_all_geofiles
-            echo -e "${green}All geo files have been updated successfully!${plain}"
-            restart
+            run_geo_update "geo files" update_all_geofiles
             ;;
         *)
             echo -e "${red}Invalid option. Please select a valid number.${plain}\n"
@@ -1243,7 +1301,7 @@ ssl_cert_issue_main() {
             ssl_cert_issue_main
             ;;
         2)
-            local domains=$(find /root/cert/ -mindepth 1 -maxdepth 1 -type d -exec basename {} \;)
+            local domains=$(find /root/cert/ -mindepth 1 -maxdepth 1 -type d -exec basename {} \; 2> /dev/null)
             if [ -z "$domains" ]; then
                 echo "No certificates found to revoke."
             else
@@ -1284,7 +1342,7 @@ ssl_cert_issue_main() {
             ssl_cert_issue_main
             ;;
         3)
-            local domains=$(find /root/cert/ -mindepth 1 -maxdepth 1 -type d -exec basename {} \;)
+            local domains=$(find /root/cert/ -mindepth 1 -maxdepth 1 -type d -exec basename {} \; 2> /dev/null)
             if [ -z "$domains" ]; then
                 echo "No certificates found to renew."
             else
@@ -1301,9 +1359,9 @@ ssl_cert_issue_main() {
             ssl_cert_issue_main
             ;;
         4)
-            local domains=$(find /root/cert/ -mindepth 1 -maxdepth 1 -type d -exec basename {} \;)
+            local domains=$(find /root/cert/ -mindepth 1 -maxdepth 1 -type d -exec basename {} \; 2> /dev/null)
             if [ -z "$domains" ]; then
-                echo "No certificates found."
+                echo "No certificates found under /root/cert."
             else
                 echo "Existing domains and their paths:"
                 for domain in $domains; do
@@ -1318,10 +1376,39 @@ ssl_cert_issue_main() {
                     fi
                 done
             fi
+            # The panel's configured certificate may live outside /root/cert
+            # (e.g. certbot under /etc/letsencrypt) — show it too (#5070).
+            local panel_cert=$(${xui_folder}/x-ui setting -getCert true | grep 'cert:' | awk -F': ' '{print $2}' | tr -d '[:space:]')
+            if [[ -n "${panel_cert}" && "${panel_cert}" != /root/cert/* ]]; then
+                echo -e "Panel certificate (custom path): ${panel_cert}"
+                if [[ -f "${panel_cert}" ]] && command -v openssl > /dev/null 2>&1; then
+                    local panel_sans=$(openssl x509 -in "${panel_cert}" -noout -ext subjectAltName 2> /dev/null \
+                        | grep -Eo 'DNS:[^,[:space:]]+' | cut -d: -f2 | tr '\n' ' ')
+                    [[ -n "${panel_sans}" ]] && echo -e "\tCovers: ${panel_sans}"
+                fi
+            fi
             ssl_cert_issue_main
             ;;
         5)
-            local domains=$(find /root/cert/ -mindepth 1 -maxdepth 1 -type d -exec basename {} \;)
+            echo -e "${green}\t1.${plain} Use a certificate from /root/cert"
+            echo -e "${green}\t2.${plain} Enter custom certificate file paths (e.g. certbot, /etc/letsencrypt/...)"
+            read -rp "Choose an option: " pathChoice
+            if [[ "$pathChoice" == "2" ]]; then
+                read -rp "Certificate file path (fullchain): " webCertFile
+                read -rp "Private key file path: " webKeyFile
+                if [[ -f "${webCertFile}" && -f "${webKeyFile}" ]]; then
+                    ${xui_folder}/x-ui cert -webCert "$webCertFile" -webCertKey "$webKeyFile"
+                    echo "Panel certificate paths set:"
+                    echo "  - Certificate File: $webCertFile"
+                    echo "  - Private Key File: $webKeyFile"
+                    restart
+                else
+                    echo "Certificate or private key file not found."
+                fi
+                ssl_cert_issue_main
+                return
+            fi
+            local domains=$(find /root/cert/ -mindepth 1 -maxdepth 1 -type d -exec basename {} \; 2> /dev/null)
             if [ -z "$domains" ]; then
                 echo "No certificates found."
             else
@@ -1703,7 +1790,7 @@ ssl_cert_issue() {
     if [[ ${cert_exists} -eq 0 ]]; then
         # issue the certificate
         ~/.acme.sh/acme.sh --set-default-ca --server letsencrypt --force
-        ~/.acme.sh/acme.sh --issue -d ${domain} --listen-v6 --standalone --httpport ${WebPort} --force
+        ~/.acme.sh/acme.sh --issue -d ${domain} $(acme_listen_flag) --standalone --httpport ${WebPort} --force
         if [ $? -ne 0 ]; then
             LOGE "Issuing certificate failed, please check logs."
             rm -rf ~/.acme.sh/${domain} ~/.acme.sh/${domain}_ecc
@@ -1998,409 +2085,6 @@ ip_validation() {
     ipv4_regex="^((25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]?|0)\.){3}(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]?|0)$"
 }
 
-iplimit_main() {
-    echo -e "\n${green}\t1.${plain} Install Fail2ban and configure IP Limit"
-    echo -e "${green}\t2.${plain} Change Ban Duration"
-    echo -e "${green}\t3.${plain} Unban Everyone"
-    echo -e "${green}\t4.${plain} Ban Logs"
-    echo -e "${green}\t5.${plain} Ban an IP Address"
-    echo -e "${green}\t6.${plain} Unban an IP Address"
-    echo -e "${green}\t7.${plain} Real-Time Logs"
-    echo -e "${green}\t8.${plain} Service Status"
-    echo -e "${green}\t9.${plain} Service Restart"
-    echo -e "${green}\t10.${plain} Uninstall Fail2ban and IP Limit"
-    echo -e "${green}\t0.${plain} Back to Main Menu"
-    read -rp "Choose an option: " choice
-    case "$choice" in
-        0)
-            show_menu
-            ;;
-        1)
-            confirm "Proceed with installation of Fail2ban & IP Limit?" "y"
-            if [[ $? == 0 ]]; then
-                install_iplimit
-            else
-                iplimit_main
-            fi
-            ;;
-        2)
-            read -rp "Please enter new Ban Duration in Minutes [default 30]: " NUM
-            if [[ $NUM =~ ^[0-9]+$ ]]; then
-                create_iplimit_jails ${NUM}
-                if [[ $release == "alpine" ]]; then
-                    rc-service fail2ban restart
-                else
-                    systemctl restart fail2ban
-                fi
-            else
-                echo -e "${red}${NUM} is not a number! Please, try again.${plain}"
-            fi
-            iplimit_main
-            ;;
-        3)
-            confirm "Proceed with Unbanning everyone from IP Limit jail?" "y"
-            if [[ $? == 0 ]]; then
-                fail2ban-client reload --restart --unban 3x-ipl
-                truncate -s 0 "${iplimit_banned_log_path}"
-                echo -e "${green}All users Unbanned successfully.${plain}"
-                iplimit_main
-            else
-                echo -e "${yellow}Cancelled.${plain}"
-            fi
-            iplimit_main
-            ;;
-        4)
-            show_banlog
-            iplimit_main
-            ;;
-        5)
-            read -rp "Enter the IP address you want to ban: " ban_ip
-            ip_validation
-            if [[ $ban_ip =~ $ipv4_regex || $ban_ip =~ $ipv6_regex ]]; then
-                fail2ban-client set 3x-ipl banip "$ban_ip"
-                echo -e "${green}IP Address ${ban_ip} has been banned successfully.${plain}"
-            else
-                echo -e "${red}Invalid IP address format! Please try again.${plain}"
-            fi
-            iplimit_main
-            ;;
-        6)
-            read -rp "Enter the IP address you want to unban: " unban_ip
-            ip_validation
-            if [[ $unban_ip =~ $ipv4_regex || $unban_ip =~ $ipv6_regex ]]; then
-                fail2ban-client set 3x-ipl unbanip "$unban_ip"
-                echo -e "${green}IP Address ${unban_ip} has been unbanned successfully.${plain}"
-            else
-                echo -e "${red}Invalid IP address format! Please try again.${plain}"
-            fi
-            iplimit_main
-            ;;
-        7)
-            tail -f /var/log/fail2ban.log
-            iplimit_main
-            ;;
-        8)
-            service fail2ban status
-            iplimit_main
-            ;;
-        9)
-            if [[ $release == "alpine" ]]; then
-                rc-service fail2ban restart
-            else
-                systemctl restart fail2ban
-            fi
-            iplimit_main
-            ;;
-        10)
-            remove_iplimit
-            iplimit_main
-            ;;
-        *)
-            echo -e "${red}Invalid option. Please select a valid number.${plain}\n"
-            iplimit_main
-            ;;
-    esac
-}
-
-install_iplimit() {
-    if ! command -v fail2ban-client &> /dev/null; then
-        echo -e "${green}Fail2ban is not installed. Installing now...!${plain}\n"
-
-        # Install fail2ban together with nftables. Recent fail2ban packages
-        # default to `banaction = nftables-multiport` in /etc/fail2ban/jail.conf,
-        # but the `nftables` package isn't pulled in as a dependency on most
-        # minimal server images (Debian 12+, Ubuntu 24+, fresh RHEL-family).
-        # Without `nft` in PATH the default sshd jail fails to ban with
-        #   stderr: '/bin/sh: 1: nft: not found'
-        # even though our own 3x-ipl jail uses iptables. Bundling the binary
-        # at install time prevents that confusing log spam for new installs.
-        case "${release}" in
-            ubuntu)
-                apt-get update
-                if [[ "${os_version}" -ge 24 ]]; then
-                    apt-get install python3-pip -y
-                    python3 -m pip install pyasynchat --break-system-packages
-                fi
-                apt-get install fail2ban nftables -y
-                ;;
-            debian)
-                apt-get update
-                if [ "$os_version" -ge 12 ]; then
-                    apt-get install -y python3-systemd
-                fi
-                apt-get install -y fail2ban nftables
-                ;;
-            armbian)
-                apt-get update && apt-get install fail2ban nftables -y
-                ;;
-            fedora | amzn | virtuozzo | rhel | almalinux | rocky | ol)
-                dnf -y update && dnf -y install fail2ban nftables
-                ;;
-            centos)
-                if [[ "${VERSION_ID}" =~ ^7 ]]; then
-                    yum update -y && yum install epel-release -y
-                    yum -y install fail2ban nftables
-                else
-                    dnf -y update && dnf -y install fail2ban nftables
-                fi
-                ;;
-            arch | manjaro | parch)
-                pacman -Syu --noconfirm fail2ban nftables
-                ;;
-            alpine)
-                apk add fail2ban nftables
-                ;;
-            *)
-                echo -e "${red}Unsupported operating system. Please check the script and install the necessary packages manually.${plain}\n"
-                exit 1
-                ;;
-        esac
-
-        if ! command -v fail2ban-client &> /dev/null; then
-            echo -e "${red}Fail2ban installation failed.${plain}\n"
-            exit 1
-        fi
-
-        echo -e "${green}Fail2ban installed successfully!${plain}\n"
-    else
-        echo -e "${yellow}Fail2ban is already installed.${plain}\n"
-    fi
-
-    echo -e "${green}Configuring IP Limit...${plain}\n"
-
-    # make sure there's no conflict for jail files
-    iplimit_remove_conflicts
-
-    # Check if log file exists
-    if ! test -f "${iplimit_banned_log_path}"; then
-        touch ${iplimit_banned_log_path}
-    fi
-
-    # Check if service log file exists so fail2ban won't return error
-    if ! test -f "${iplimit_log_path}"; then
-        touch ${iplimit_log_path}
-    fi
-
-    # Create the iplimit jail files
-    # we didn't pass the bantime here to use the default value
-    create_iplimit_jails
-
-    # Launching fail2ban
-    if [[ $release == "alpine" ]]; then
-        if [[ $(rc-service fail2ban status | grep -F 'status: started' -c) == 0 ]]; then
-            rc-service fail2ban start
-        else
-            rc-service fail2ban restart
-        fi
-        rc-update add fail2ban
-    else
-        if ! systemctl is-active --quiet fail2ban; then
-            systemctl start fail2ban
-        else
-            systemctl restart fail2ban
-        fi
-        systemctl enable fail2ban
-    fi
-
-    echo -e "${green}IP Limit installed and configured successfully!${plain}\n"
-    before_show_menu
-}
-
-remove_iplimit() {
-    echo -e "${green}\t1.${plain} Only remove IP Limit configurations"
-    echo -e "${green}\t2.${plain} Uninstall Fail2ban and IP Limit"
-    echo -e "${green}\t0.${plain} Back to Main Menu"
-    read -rp "Choose an option: " num
-    case "$num" in
-        1)
-            rm -f /etc/fail2ban/filter.d/3x-ipl.conf
-            rm -f /etc/fail2ban/action.d/3x-ipl.conf
-            rm -f /etc/fail2ban/jail.d/3x-ipl.conf
-            if [[ $release == "alpine" ]]; then
-                rc-service fail2ban restart
-            else
-                systemctl restart fail2ban
-            fi
-            echo -e "${green}IP Limit removed successfully!${plain}\n"
-            before_show_menu
-            ;;
-        2)
-            rm -rf /etc/fail2ban
-            if [[ $release == "alpine" ]]; then
-                rc-service fail2ban stop
-            else
-                systemctl stop fail2ban
-            fi
-            case "${release}" in
-                ubuntu | debian | armbian)
-                    apt-get remove -y fail2ban
-                    apt-get purge -y fail2ban -y
-                    apt-get autoremove -y
-                    ;;
-                fedora | amzn | virtuozzo | rhel | almalinux | rocky | ol)
-                    dnf remove fail2ban -y
-                    dnf autoremove -y
-                    ;;
-                centos)
-                    if [[ "${VERSION_ID}" =~ ^7 ]]; then
-                        yum remove fail2ban -y
-                        yum autoremove -y
-                    else
-                        dnf remove fail2ban -y
-                        dnf autoremove -y
-                    fi
-                    ;;
-                arch | manjaro | parch)
-                    pacman -Rns --noconfirm fail2ban
-                    ;;
-                alpine)
-                    apk del fail2ban
-                    ;;
-                *)
-                    echo -e "${red}Unsupported operating system. Please uninstall Fail2ban manually.${plain}\n"
-                    exit 1
-                    ;;
-            esac
-            echo -e "${green}Fail2ban and IP Limit removed successfully!${plain}\n"
-            before_show_menu
-            ;;
-        0)
-            show_menu
-            ;;
-        *)
-            echo -e "${red}Invalid option. Please select a valid number.${plain}\n"
-            remove_iplimit
-            ;;
-    esac
-}
-
-show_banlog() {
-    local system_log="/var/log/fail2ban.log"
-
-    echo -e "${green}Checking ban logs...${plain}\n"
-
-    if [[ $release == "alpine" ]]; then
-        if [[ $(rc-service fail2ban status | grep -F 'status: started' -c) == 0 ]]; then
-            echo -e "${red}Fail2ban service is not running!${plain}\n"
-            return 1
-        fi
-    else
-        if ! systemctl is-active --quiet fail2ban; then
-            echo -e "${red}Fail2ban service is not running!${plain}\n"
-            return 1
-        fi
-    fi
-
-    if [[ -f "$system_log" ]]; then
-        echo -e "${green}Recent system ban activities from fail2ban.log:${plain}"
-        grep "3x-ipl" "$system_log" | grep -E "Ban|Unban" | tail -n 10 || echo -e "${yellow}No recent system ban activities found${plain}"
-        echo ""
-    fi
-
-    if [[ -f "${iplimit_banned_log_path}" ]]; then
-        echo -e "${green}3X-IPL ban log entries:${plain}"
-        if [[ -s "${iplimit_banned_log_path}" ]]; then
-            grep -v "INIT" "${iplimit_banned_log_path}" | tail -n 10 || echo -e "${yellow}No ban entries found${plain}"
-        else
-            echo -e "${yellow}Ban log file is empty${plain}"
-        fi
-    else
-        echo -e "${red}Ban log file not found at: ${iplimit_banned_log_path}${plain}"
-    fi
-
-    echo -e "\n${green}Current jail status:${plain}"
-    fail2ban-client status 3x-ipl || echo -e "${yellow}Unable to get jail status${plain}"
-}
-
-create_iplimit_jails() {
-    # Use default bantime if not passed => 30 minutes
-    local bantime="${1:-30}"
-
-    # Uncomment 'allowipv6 = auto' in fail2ban.conf
-    sed -i 's/#allowipv6 = auto/allowipv6 = auto/g' /etc/fail2ban/fail2ban.conf
-
-    # On Debian 12+ fail2ban's default backend should be changed to systemd
-    if [[ "${release}" == "debian" && ${os_version} -ge 12 ]]; then
-        sed -i '0,/action =/s/backend = auto/backend = systemd/' /etc/fail2ban/jail.conf
-    fi
-
-    cat << EOF > /etc/fail2ban/jail.d/3x-ipl.conf
-[3x-ipl]
-enabled=true
-backend=auto
-filter=3x-ipl
-action=3x-ipl
-logpath=${iplimit_log_path}
-maxretry=1
-findtime=32
-bantime=${bantime}m
-EOF
-
-    cat << EOF > /etc/fail2ban/filter.d/3x-ipl.conf
-[Definition]
-datepattern = ^%%Y/%%m/%%d %%H:%%M:%%S
-failregex   = \[LIMIT_IP\]\s*Email\s*=\s*<F-USER>.+</F-USER>\s*\|\|\s*Disconnecting OLD IP\s*=\s*<ADDR>\s*\|\|\s*Timestamp\s*=\s*\d+
-ignoreregex =
-EOF
-
-    # Ports to exempt from the ban so an over-limit proxy client can never lock
-    # the administrator out of SSH or the panel. The ban still covers every other
-    # TCP port (including all Xray inbounds), so IP-limit keeps working for inbounds
-    # added later without regenerating these files.
-    local ssh_ports
-    ssh_ports=$(grep -oP '^[[:space:]]*Port[[:space:]]+\K[0-9]+' /etc/ssh/sshd_config 2>/dev/null | paste -sd, -)
-    [[ -z "${ssh_ports}" ]] && ssh_ports="22"
-    local panel_port
-    panel_port=$(${xui_folder}/x-ui setting -show true 2>/dev/null | grep -Eo 'port: .+' | awk '{print $2}')
-    local exempt_ports="${ssh_ports}"
-    [[ -n "${panel_port}" ]] && exempt_ports="${exempt_ports},${panel_port}"
-
-    cat << EOF > /etc/fail2ban/action.d/3x-ipl.conf
-[INCLUDES]
-before = iptables-allports.conf
-
-[Definition]
-actionstart = <iptables> -N f2b-<name>
-              <iptables> -A f2b-<name> -j <returntype>
-              <iptables> -I <chain> -p <protocol> -j f2b-<name>
-
-actionstop = <iptables> -D <chain> -p <protocol> -j f2b-<name>
-             <actionflush>
-             <iptables> -X f2b-<name>
-
-actioncheck = <iptables> -n -L <chain> | grep -q 'f2b-<name>[ \t]'
-
-actionban = <iptables> -I f2b-<name> 1 -s <ip> -p <protocol> -m multiport ! --dports <exemptports> -j <blocktype>
-            echo "\$(date +"%%Y/%%m/%%d %%H:%%M:%%S")   BAN   [Email] = <F-USER> [IP] = <ip> banned for <bantime> seconds." >> ${iplimit_banned_log_path}
-
-actionunban = <iptables> -D f2b-<name> -s <ip> -p <protocol> -m multiport ! --dports <exemptports> -j <blocktype>
-              echo "\$(date +"%%Y/%%m/%%d %%H:%%M:%%S")   UNBAN   [Email] = <F-USER> [IP] = <ip> unbanned." >> ${iplimit_banned_log_path}
-
-[Init]
-name = default
-protocol = tcp
-chain = INPUT
-exemptports = ${exempt_ports}
-EOF
-
-    echo -e "${green}Ip Limit jail files created with a bantime of ${bantime} minutes.${plain}"
-}
-
-iplimit_remove_conflicts() {
-    local jail_files=(
-        /etc/fail2ban/jail.conf
-        /etc/fail2ban/jail.local
-    )
-
-    for file in "${jail_files[@]}"; do
-        # Check for [3x-ipl] config in jail file then remove it
-        if test -f "${file}" && grep -qw '3x-ipl' ${file}; then
-            sed -i "/\[3x-ipl\]/,/^$/d" ${file}
-            echo -e "${yellow}Removing conflicts of [3x-ipl] in jail (${file})!${plain}\n"
-        fi
-    done
-}
-
 SSH_port_forwarding() {
     local URL_lists=(
         "https://api4.ipify.org"
@@ -2626,6 +2310,63 @@ pg_require_installed() {
         LOGE "PostgreSQL is not installed. Use option 1 (Install PostgreSQL) in this menu first."
         return 1
     fi
+}
+
+# Completely removes the PostgreSQL server and ALL of its databases from the system.
+# Gated behind an explicit confirmation because this is system-wide and irreversible:
+# any other application sharing this PostgreSQL instance loses its data too. Mirrors the
+# package names used by pg_install_local() so the right packages are removed per distro.
+purge_postgresql() {
+    echo ""
+    echo -e "${yellow}This panel was using PostgreSQL.${plain}"
+    echo -e "${red}WARNING:${plain} purging removes the PostgreSQL server and ${red}ALL${plain} of its databases on"
+    echo -e "this machine, including any used by other applications. This cannot be undone."
+    confirm "Also purge PostgreSQL and delete all of its data?" "n"
+    if [[ $? != 0 ]]; then
+        LOGI "Left PostgreSQL installed; its data was not removed."
+        return 0
+    fi
+
+    if [[ $release == "alpine" ]]; then
+        rc-service postgresql stop 2> /dev/null
+        rc-update del postgresql 2> /dev/null
+    else
+        systemctl stop "$(pg_systemd_unit)" 2> /dev/null
+        systemctl disable "$(pg_systemd_unit)" 2> /dev/null
+    fi
+
+    case "${release}" in
+        ubuntu | debian | armbian)
+            apt-get -y --purge remove 'postgresql*'
+            apt-get -y autoremove --purge
+            ;;
+        fedora | amzn | virtuozzo | rhel | almalinux | rocky | ol)
+            dnf remove -y postgresql postgresql-server postgresql-contrib
+            ;;
+        centos)
+            if [[ "${VERSION_ID}" =~ ^7 ]]; then
+                yum remove -y postgresql postgresql-server postgresql-contrib
+            else
+                dnf remove -y postgresql postgresql-server postgresql-contrib
+            fi
+            ;;
+        arch | manjaro | parch)
+            pacman -Rns --noconfirm postgresql
+            ;;
+        opensuse-tumbleweed | opensuse-leap)
+            zypper -q remove -y postgresql postgresql-server postgresql-contrib
+            ;;
+        alpine)
+            apk del postgresql postgresql-contrib postgresql-client
+            ;;
+        *)
+            LOGE "Unsupported distro for automatic PostgreSQL purge: ${release}. Remove it manually."
+            return 1
+            ;;
+    esac
+
+    rm -rf /var/lib/postgresql /var/lib/pgsql /var/lib/postgres /etc/postgresql
+    LOGI "PostgreSQL has been purged."
 }
 
 # Installs a local PostgreSQL server and creates a dedicated xui user/database.
@@ -3021,8 +2762,8 @@ show_usage() {
 │  ${blue}x-ui enable${plain}                - Enable Autostart on OS Startup   │
 │  ${blue}x-ui disable${plain}               - Disable Autostart on OS Startup  │
 │  ${blue}x-ui log${plain}                   - Check logs                       │
-│  ${blue}x-ui banlog${plain}                - Check Fail2ban ban logs          │
 │  ${blue}x-ui update${plain}                - Update                           │
+│  ${blue}x-ui update-dev${plain}            - Update to Dev channel (latest)   │
 │  ${blue}x-ui update-all-geofiles${plain}   - Update all geo files             │
 │  ${blue}x-ui migrateDB [file]${plain}      - Convert .db <-> .dump (SQLite)   │
 │  ${blue}x-ui legacy${plain}                - Legacy version disabled disabled                   │
@@ -3034,42 +2775,41 @@ show_usage() {
 show_menu() {
     echo -e "
 ╔────────────────────────────────────────────────╗
-│   ${green}Heimdall Panel Management Script${plain}             │
-│   ${green}0.${plain} Exit Script                               │
+│  ${green}Heimdall Panel Management Script${plain}             │
+│  ${green}0.${plain} Exit Script                               │
 │────────────────────────────────────────────────│
-│   ${green}1.${plain} Install                                   │
-│   ${green}2.${plain} Update                                    │
-│   ${green}3.${plain} Update Menu                               │
-│   ${green}4.${plain} Legacy Version (Disabled)                 │
-│   ${green}5.${plain} Uninstall                                 │
+│  ${green}1.${plain} Install                                   │
+│  ${green}2.${plain} Update                                    │
+│  ${green}3.${plain} Update to Dev Channel (latest commit)     │
+│  ${green}4.${plain} Update Menu                               │
+│  ${green}5.${plain} Legacy Version (Disabled)                 │
+│  ${green}6.${plain} Uninstall                                 │
 │────────────────────────────────────────────────│
-│   ${green}6.${plain} Reset Username & Password                 │
-│   ${green}7.${plain} Reset Web Base Path                       │
-│   ${green}8.${plain} Reset Settings                            │
-│   ${green}9.${plain} Change Port                               │
-│  ${green}10.${plain} View Current Settings                     │
+│  ${green}7.${plain} Reset Username & Password                 │
+│  ${green}8.${plain} Reset Web Base Path                       │
+│  ${green}9.${plain} Reset Settings                            │
+│  ${green}10.${plain} Change Port                              │
+│  ${green}11.${plain} View Current Settings                    │
 │────────────────────────────────────────────────│
-│  ${green}11.${plain} Start                                     │
-│  ${green}12.${plain} Stop                                      │
-│  ${green}13.${plain} Restart                                   │
-|  ${green}14.${plain} Restart Xray                              │
-│  ${green}15.${plain} Check Status                              │
-│  ${green}16.${plain} Logs Management                           │
+│  ${green}12.${plain} Start                                    │
+│  ${green}13.${plain} Stop                                     │
+│  ${green}14.${plain} Restart                                  │
+│  ${green}15.${plain} Restart Xray                             │
+│  ${green}16.${plain} Check Status                             │
+│  ${green}17.${plain} Logs Management                          │
 │────────────────────────────────────────────────│
-│  ${green}17.${plain} Enable Autostart                          │
-│  ${green}18.${plain} Disable Autostart                         │
+│  ${green}18.${plain} Enable Autostart                         │
+│  ${green}19.${plain} Disable Autostart                        │
 │────────────────────────────────────────────────│
-│  ${green}19.${plain} SSL Certificate Management                │
-│  ${green}20.${plain} Cloudflare SSL Certificate                │
-│  ${green}21.${plain} IP Limit Management                       │
-│  ${green}22.${plain} Firewall Management                       │
-│  ${green}23.${plain} SSH Port Forwarding Management            │
+│  ${green}20.${plain} SSL Certificate Management               │
+│  ${green}21.${plain} Cloudflare SSL Certificate               │
+│  ${green}22.${plain} Firewall Management                      │
+│  ${green}23.${plain} SSH Port Forwarding Management           │
+│  ${green}24.${plain} PostgreSQL Management                    │
 │────────────────────────────────────────────────│
-│  ${green}24.${plain} Enable BBR                                │
-│  ${green}25.${plain} Update Geo Files                          │
-│  ${green}26.${plain} Speedtest by Ookla                        │
-│────────────────────────────────────────────────│
-│  ${green}27.${plain} PostgreSQL Management                     │
+│  ${green}25.${plain} Enable BBR                               │
+│  ${green}26.${plain} Update Geo Files                         │
+│  ${green}27.${plain} Speedtest by Ookla                       │
 ╚────────────────────────────────────────────────╝
 "
     show_status
@@ -3086,61 +2826,61 @@ show_menu() {
             check_install && update
             ;;
         3)
-            check_install && update_menu
+            check_install && update_dev
             ;;
         4)
-            check_install && legacy_version
+            check_install && update_menu
             ;;
         5)
-            check_install && uninstall
+            check_install && legacy_version
             ;;
         6)
-            check_install && reset_user
+            check_install && uninstall
             ;;
         7)
-            check_install && reset_webbasepath
+            check_install && reset_user
             ;;
         8)
-            check_install && reset_config
+            check_install && reset_webbasepath
             ;;
         9)
-            check_install && set_port
+            check_install && reset_config
             ;;
         10)
-            check_install && check_config
+            check_install && set_port
             ;;
         11)
-            check_install && start
+            check_install && check_config
             ;;
         12)
-            check_install && stop
+            check_install && start
             ;;
         13)
-            check_install && restart
+            check_install && stop
             ;;
         14)
-            check_install && restart_xray
+            check_install && restart
             ;;
         15)
-            check_install && status
+            check_install && restart_xray
             ;;
         16)
-            check_install && show_log
+            check_install && status
             ;;
         17)
-            check_install && enable
+            check_install && show_log
             ;;
         18)
-            check_install && disable
+            check_install && enable
             ;;
         19)
-            ssl_cert_issue_main
+            check_install && disable
             ;;
         20)
-            ssl_cert_issue_CF
+            ssl_cert_issue_main
             ;;
         21)
-            iplimit_main
+            ssl_cert_issue_CF
             ;;
         22)
             firewall_menu
@@ -3149,16 +2889,16 @@ show_menu() {
             SSH_port_forwarding
             ;;
         24)
-            bbr_menu
+            postgresql_menu
             ;;
         25)
-            update_geo
+            bbr_menu
             ;;
         26)
-            run_speedtest
+            update_geo
             ;;
         27)
-            postgresql_menu
+            run_speedtest
             ;;
         *)
             LOGE "Please enter the correct number [0-27]"
@@ -3195,11 +2935,11 @@ if [[ $# > 0 ]]; then
         "log")
             check_install 0 && show_log 0
             ;;
-        "banlog")
-            check_install 0 && show_banlog 0
-            ;;
         "update")
             check_install 0 && update 0
+            ;;
+        "update-dev")
+            check_install 0 && update_dev 0
             ;;
         "legacy")
             check_install 0 && legacy_version 0
@@ -3211,7 +2951,10 @@ if [[ $# > 0 ]]; then
             check_install 0 && uninstall 0
             ;;
         "update-all-geofiles")
-            check_install 0 && update_all_geofiles 0 && restart 0
+            geo_updated=0
+            if check_install 0 && update_all_geofiles 0; then
+                [[ $geo_updated -eq 0 ]] || restart 0
+            fi
             ;;
         "migrateDB")
             migrate_db "$2" "$3"

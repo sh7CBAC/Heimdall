@@ -854,33 +854,6 @@ config_after_update() {
     fi
 }
 
-# setup_fail2ban auto-installs and configures fail2ban for the IP Limit feature
-# by invoking the freshly downloaded x-ui CLI. IP Limit is load-bearing on
-# fail2ban (without it the panel disables the limitIp field and zeroes existing
-# limits), so updating an older install should make it work without a manual
-# trip through the IP Limit menu. Non-fatal: a fail2ban failure must never abort
-# the update. XUI_ENABLE_FAIL2BAN is honored (load_xui_env exports it from the
-# persisted env file, so a deliberate opt-out survives updates).
-setup_fail2ban() {
-    if [[ -n "${XUI_ENABLE_FAIL2BAN+x}" && "${XUI_ENABLE_FAIL2BAN}" != "true" ]]; then
-        echo -e "${yellow}XUI_ENABLE_FAIL2BAN=${XUI_ENABLE_FAIL2BAN}, skipping Fail2ban auto-setup.${plain}"
-        return 0
-    fi
-
-    if [[ ! -x /usr/bin/x-ui ]]; then
-        echo -e "${yellow}x-ui CLI not found; skipping Fail2ban auto-setup.${plain}"
-        return 0
-    fi
-
-    echo -e "${green}Setting up Fail2ban for the IP Limit feature...${plain}"
-    if /usr/bin/x-ui setup-fail2ban; then
-        echo -e "${green}Fail2ban setup complete.${plain}"
-    else
-        echo -e "${yellow}Fail2ban setup did not finish; IP Limit stays disabled until you run 'x-ui' and open the IP Limit menu. Continuing.${plain}"
-    fi
-    return 0
-}
-
 update_x-ui() {
     cd ${xui_folder%/x-ui}/
 
@@ -1090,11 +1063,6 @@ update_x-ui() {
 
     config_after_update
 
-    # IP Limit relies on fail2ban; install + configure it now so the feature
-    # works out of the box on update too (no-op when XUI_ENABLE_FAIL2BAN=false).
-    # Never fatal.
-    setup_fail2ban
-
     
     installed_xui_version=$(${xui_folder}/x-ui -v 2> /dev/null | tr -d '[:space:]' || true)
     expected_xui_version="${tag_version#v}"
@@ -1117,7 +1085,6 @@ update_x-ui() {
 │  ${blue}x-ui enable${plain}       - Enable Autostart on OS Startup   │
 │  ${blue}x-ui disable${plain}      - Disable Autostart on OS Startup  │
 │  ${blue}x-ui log${plain}          - Check logs                       │
-│  ${blue}x-ui banlog${plain}       - Check Fail2ban ban logs          │
 │  ${blue}x-ui update${plain}       - Update                           │
 │  ${blue}x-ui legacy${plain}       - Legacy version                   │
 │  ${blue}x-ui install${plain}      - Install                          │
