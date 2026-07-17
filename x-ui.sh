@@ -2775,41 +2775,41 @@ show_usage() {
 show_menu() {
     echo -e "
 ╔────────────────────────────────────────────────╗
-│  ${green}Heimdall Panel Management Script${plain}             │
-│  ${green}0.${plain} Exit Script                               │
+│  ${green}Heimdall Panel Management Script${plain}              │
+│  ${green}0.${plain} Exit Script                                │
 │────────────────────────────────────────────────│
-│  ${green}1.${plain} Install                                   │
-│  ${green}2.${plain} Update                                    │
-│  ${green}3.${plain} Update to Dev Channel (latest commit)     │
-│  ${green}4.${plain} Update Menu                               │
-│  ${green}5.${plain} Legacy Version (Disabled)                 │
-│  ${green}6.${plain} Uninstall                                 │
+│  ${green}1.${plain} Install                                    │
+│  ${green}2.${plain} Update                                     │
+│  ${green}3.${plain} Update to Dev Channel (latest commit)      │
+│  ${green}4.${plain} Update Menu                                │
+│  ${green}5.${plain} Legacy Version (Disabled)                  │
+│  ${green}6.${plain} Uninstall                                  │
 │────────────────────────────────────────────────│
-│  ${green}7.${plain} Reset Username & Password                 │
-│  ${green}8.${plain} Reset Web Base Path                       │
-│  ${green}9.${plain} Reset Settings                            │
-│  ${green}10.${plain} Change Port                              │
-│  ${green}11.${plain} View Current Settings                    │
+│  ${green}7.${plain} Reset Username & Password                  │
+│  ${green}8.${plain} Reset Web Base Path                        │
+│  ${green}9.${plain} Reset Settings                             │
+│  ${green}10.${plain} Change Port                               │
+│  ${green}11.${plain} View Current Settings                     │
 │────────────────────────────────────────────────│
-│  ${green}12.${plain} Start                                    │
-│  ${green}13.${plain} Stop                                     │
-│  ${green}14.${plain} Restart                                  │
-│  ${green}15.${plain} Restart Xray                             │
-│  ${green}16.${plain} Check Status                             │
-│  ${green}17.${plain} Logs Management                          │
+│  ${green}12.${plain} Start                                     │
+│  ${green}13.${plain} Stop                                      │
+│  ${green}14.${plain} Restart                                   │
+│  ${green}15.${plain} Restart Xray                              │
+│  ${green}16.${plain} Check Status                              │
+│  ${green}17.${plain} Logs Management                           │
 │────────────────────────────────────────────────│
-│  ${green}18.${plain} Enable Autostart                         │
-│  ${green}19.${plain} Disable Autostart                        │
+│  ${green}18.${plain} Enable Autostart                          │
+│  ${green}19.${plain} Disable Autostart                         │
 │────────────────────────────────────────────────│
-│  ${green}20.${plain} SSL Certificate Management               │
-│  ${green}21.${plain} Cloudflare SSL Certificate               │
-│  ${green}22.${plain} Firewall Management                      │
-│  ${green}23.${plain} SSH Port Forwarding Management           │
-│  ${green}24.${plain} PostgreSQL Management                    │
+│  ${green}20.${plain} SSL Certificate Management                │
+│  ${green}21.${plain} Cloudflare SSL Certificate                │
+│  ${green}22.${plain} Firewall Management                       │
+│  ${green}23.${plain} SSH Port Forwarding Management            │
+│  ${green}24.${plain} PostgreSQL Management                     │
 │────────────────────────────────────────────────│
-│  ${green}25.${plain} Enable BBR                               │
-│  ${green}26.${plain} Update Geo Files                         │
-│  ${green}27.${plain} Speedtest by Ookla                       │
+│  ${green}25.${plain} Enable BBR                                │
+│  ${green}26.${plain} Update Geo Files                          │
+│  ${green}27.${plain} Speedtest by Ookla                        │
 ╚────────────────────────────────────────────────╝
 "
     show_status
