@@ -173,30 +173,6 @@ update_dev() {
     fi
 }
 
-update_menu() {
-    echo -e "${yellow}Updating Menu${plain}"
-    confirm "This function will update the menu to the latest changes." "y"
-    if [[ $? != 0 ]]; then
-        LOGE "Cancelled"
-        if [[ $# == 0 ]]; then
-            before_show_menu
-        fi
-        return 0
-    fi
-
-    curl -fLRo /usr/bin/x-ui https://raw.githubusercontent.com/sh7CBAC/Heimdall/main/x-ui.sh
-    chmod +x ${xui_folder}/x-ui.sh
-    chmod +x /usr/bin/x-ui
-
-    if [[ $? == 0 ]]; then
-        echo -e "${green}Update successful. The panel has automatically restarted.${plain}"
-        exit 0
-    else
-        echo -e "${red}Failed to update the menu.${plain}"
-        return 1
-    fi
-}
-
 legacy_version() {
     LOGE "Legacy version installation is disabled in Heimdall to prevent upstream overwrite."
     LOGI "Use the official Heimdall update path instead."
@@ -2781,39 +2757,38 @@ show_menu() {
 │  ${green}1.${plain} Install                                    │
 │  ${green}2.${plain} Update                                     │
 │  ${green}3.${plain} Update to Dev Channel (latest commit)      │
-│  ${green}4.${plain} Update Menu                                │
-│  ${green}5.${plain} Legacy Version (Disabled)                  │
-│  ${green}6.${plain} Uninstall                                  │
+│  ${green}4.${plain} Legacy Version (Disabled)                  │
+│  ${green}5.${plain} Uninstall                                  │
 │────────────────────────────────────────────────│
-│  ${green}7.${plain} Reset Username & Password                  │
-│  ${green}8.${plain} Reset Web Base Path                        │
-│  ${green}9.${plain} Reset Settings                             │
-│  ${green}10.${plain} Change Port                               │
-│  ${green}11.${plain} View Current Settings                     │
+│  ${green}6.${plain} Reset Username & Password                  │
+│  ${green}7.${plain} Reset Web Base Path                        │
+│  ${green}8.${plain} Reset Settings                             │
+│  ${green}9.${plain} Change Port                                │
+│  ${green}10.${plain} View Current Settings                     │
 │────────────────────────────────────────────────│
-│  ${green}12.${plain} Start                                     │
-│  ${green}13.${plain} Stop                                      │
-│  ${green}14.${plain} Restart                                   │
-│  ${green}15.${plain} Restart Xray                              │
-│  ${green}16.${plain} Check Status                              │
-│  ${green}17.${plain} Logs Management                           │
+│  ${green}11.${plain} Start                                     │
+│  ${green}12.${plain} Stop                                      │
+│  ${green}13.${plain} Restart                                   │
+│  ${green}14.${plain} Restart Xray                              │
+│  ${green}15.${plain} Check Status                              │
+│  ${green}16.${plain} Logs Management                           │
 │────────────────────────────────────────────────│
-│  ${green}18.${plain} Enable Autostart                          │
-│  ${green}19.${plain} Disable Autostart                         │
+│  ${green}17.${plain} Enable Autostart                          │
+│  ${green}18.${plain} Disable Autostart                         │
 │────────────────────────────────────────────────│
-│  ${green}20.${plain} SSL Certificate Management                │
-│  ${green}21.${plain} Cloudflare SSL Certificate                │
-│  ${green}22.${plain} Firewall Management                       │
-│  ${green}23.${plain} SSH Port Forwarding Management            │
-│  ${green}24.${plain} PostgreSQL Management                     │
+│  ${green}19.${plain} SSL Certificate Management                │
+│  ${green}20.${plain} Cloudflare SSL Certificate                │
+│  ${green}21.${plain} Firewall Management                       │
+│  ${green}22.${plain} SSH Port Forwarding Management            │
+│  ${green}23.${plain} PostgreSQL Management                     │
 │────────────────────────────────────────────────│
-│  ${green}25.${plain} Enable BBR                                │
-│  ${green}26.${plain} Update Geo Files                          │
-│  ${green}27.${plain} Speedtest by Ookla                        │
+│  ${green}24.${plain} Enable BBR                                │
+│  ${green}25.${plain} Update Geo Files                          │
+│  ${green}26.${plain} Speedtest by Ookla                        │
 ╚────────────────────────────────────────────────╝
 "
     show_status
-    echo && read -rp "Please enter your selection [0-27]: " num
+    echo && read -rp "Please enter your selection [0-26]: " num
 
     case "${num}" in
         0)
@@ -2829,79 +2804,76 @@ show_menu() {
             check_install && update_dev
             ;;
         4)
-            check_install && update_menu
-            ;;
-        5)
             check_install && legacy_version
             ;;
-        6)
+        5)
             check_install && uninstall
             ;;
-        7)
+        6)
             check_install && reset_user
             ;;
-        8)
+        7)
             check_install && reset_webbasepath
             ;;
-        9)
+        8)
             check_install && reset_config
             ;;
-        10)
+        9)
             check_install && set_port
             ;;
-        11)
+        10)
             check_install && check_config
             ;;
-        12)
+        11)
             check_install && start
             ;;
-        13)
+        12)
             check_install && stop
             ;;
-        14)
+        13)
             check_install && restart
             ;;
-        15)
+        14)
             check_install && restart_xray
             ;;
-        16)
+        15)
             check_install && status
             ;;
-        17)
+        16)
             check_install && show_log
             ;;
-        18)
+        17)
             check_install && enable
             ;;
-        19)
+        18)
             check_install && disable
             ;;
-        20)
+        19)
             ssl_cert_issue_main
             ;;
-        21)
+        20)
             ssl_cert_issue_CF
             ;;
-        22)
+        21)
             firewall_menu
             ;;
-        23)
+        22)
             SSH_port_forwarding
             ;;
-        24)
+        23)
             postgresql_menu
             ;;
-        25)
+        24)
             bbr_menu
             ;;
-        26)
+        25)
             update_geo
             ;;
-        27)
+        26)
             run_speedtest
             ;;
         *)
-            LOGE "Please enter the correct number [0-27]"
+            LOGE "Please enter the correct number [0-26]"
             ;;
     esac
 }
