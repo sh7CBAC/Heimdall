@@ -63,6 +63,7 @@ import { useNodesQuery } from '@/api/queries/useNodesQuery';
 import { useDatepicker } from '@/hooks/useDatepicker';
 import type { ClientRecord, InboundOption, ExternalLink, ExternalLinkInput } from '@/hooks/useClients';
 import ClientTrafficCell from '@/components/clients/ClientTrafficCell';
+import ClientSpeedTag, { isActiveSpeed } from '@/components/clients/ClientSpeedTag';
 import { HttpUtil, IntlUtil, SizeFormatter } from '@/utils';
 import { setMessageInstance } from '@/utils/messageBus';
 import { LazyMount } from '@/components/utility';
@@ -239,6 +240,7 @@ export default function ClientsPage() {
     tgBotEnable, expireDiff, trafficDiff, pageSize,
     create, update, remove, bulkDelete, bulkAdjust, bulkEnable, bulkDisable, bulkAddToGroup, bulkRemoveFromGroup, attach, setExternalLinks, bulkAttach, detach, bulkDetach,
     resetTraffic, resetAllTraffics, delDepleted, delOrphans, exportClients, importClients, setEnable,
+    clientSpeed,
     applyTrafficEvent, applyClientStatsEvent,
     refresh,
     hydrate,
@@ -1258,6 +1260,17 @@ const getLimitMessage = (message: string) => {
       ),
     },
     {
+      title: t('pages.clients.speed'),
+      key: 'speed',
+      width: 110,
+      align: 'center',
+      render: (_v, record) => {
+        const speed = clientSpeed[record.email];
+        if (!isActiveSpeed(speed)) return <Tag color="default">—</Tag>;
+        return <ClientSpeedTag speed={speed} />;
+      },
+    },
+    {
       title: t('pages.clients.remaining'),
       key: 'remaining',
       width: 130,
@@ -1274,7 +1287,7 @@ const getLimitMessage = (message: string) => {
       ),
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  ], [t, togglingEmail, clientBucket, isOnline, inboundsById, filters, allGroups, datepicker, trafficDiff]);
+  ], [t, togglingEmail, clientBucket, isOnline, inboundsById, filters, allGroups, datepicker, trafficDiff, clientSpeed]);
 
   const tablePagination = {
     current: currentPage,
@@ -1802,6 +1815,15 @@ const getLimitMessage = (message: string) => {
                                     enabled={row.enable}
                                     trafficDiff={trafficDiff}
                                   />
+                                  {(() => {
+                                    const speed = clientSpeed[row.email];
+                                    if (!isActiveSpeed(speed)) return null;
+                                    return (
+                                      <div className="client-card-speed">
+                                        <ClientSpeedTag speed={speed} />
+                                      </div>
+                                    );
+                                  })()}
                                 </div>
                               );
                             })}

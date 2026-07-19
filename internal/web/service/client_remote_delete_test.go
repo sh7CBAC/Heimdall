@@ -51,8 +51,8 @@ func TestDeleteByEmailPropagatesFullDeleteToNode(t *testing.T) {
 	if got := fake.deleteClient.Load(); got != 1 {
 		t.Fatalf("full node delete calls = %d, want 1", got)
 	}
-	if got := fake.deleteUser.Load(); got != 1 {
-		t.Fatalf("inbound detach calls = %d, want 1", got)
+	if got := fake.deleteUser.Load(); got != 0 {
+		t.Fatalf("inbound detach calls = %d, want 0 after full node delete", got)
 	}
 	if inboundHasClientEmail(t, inboundSvc, ib.Id, email) {
 		t.Fatal("client remained in central inbound settings")

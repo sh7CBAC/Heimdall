@@ -85,7 +85,9 @@ func (s *ClientService) BulkResetTraffic(inboundSvc *InboundService, emails []st
 		if err == nil && !rec.Enable {
 			updated := rec.ToClient()
 			updated.Enable = true
-			_, _ = s.Update(inboundSvc, rec.Id, *updated)
+			if _, uErr := s.Update(inboundSvc, rec.Id, *updated); uErr != nil {
+				logger.Warning("Failed to auto-enable client during bulk traffic reset:", uErr)
+			}
 		}
 	}
 
@@ -93,6 +95,9 @@ func (s *ClientService) BulkResetTraffic(inboundSvc *InboundService, emails []st
 	err := submitTrafficWrite(func() error {
 		db := database.GetDB()
 		return db.Transaction(func(tx *gorm.DB) error {
+			if err := adjustGroupBaselinesForRemovedTraffic(tx, cleanEmails); err != nil {
+				return err
+			}
 			for _, batch := range chunkStrings(cleanEmails, sqlInChunk) {
 				res := tx.Model(xray.ClientTraffic{}).
 					Where("email IN ?", batch).
@@ -120,9 +125,13 @@ func (s *ClientService) BulkResetTraffic(inboundSvc *InboundService, emails []st
 }
 
 func (s *ClientService) ResetAllClientTraffics(inboundSvc *InboundService, id int) error {
-	return submitTrafficWrite(func() error {
+	err := submitTrafficWrite(func() error {
 		return s.resetAllClientTrafficsLocked(id)
 	})
+	if err == nil {
+		inboundSvc.resetAllMtprotoQuotas()
+	}
+	return err
 }
 
 func (s *ClientService) resetAllClientTrafficsLocked(id int) error {
@@ -154,6 +163,10 @@ func (s *ClientService) resetAllClientTrafficsLocked(id int) error {
 		}
 		if len(resetEmails) == 0 {
 			return nil
+		}
+
+		if err := adjustGroupBaselinesForRemovedTraffic(tx, resetEmails); err != nil {
+			return err
 		}
 
 		result := tx.Model(xray.ClientTraffic{}).

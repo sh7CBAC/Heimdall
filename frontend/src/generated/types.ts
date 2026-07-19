@@ -4,6 +4,7 @@ export type OnlineAPISupport = number;
 export type ProcessState = string;
 export type Protocol = string;
 export type SubLinkProvider = unknown;
+export type remoteClientDeleter = unknown;
 export type staticEgressResolver = string;
 export type transportBits = number;
 
@@ -212,21 +213,33 @@ export interface AllSettingView {
 
 export interface ApiToken {
   createdAt: number;
+  createdByAdminId?: number | null;
   enabled: boolean;
+  expiresAt: number;
   id: number;
+  kind: string;
   name: string;
-  token: string;
+  subjectAdminId?: number | null;
 }
 
 export interface ApiTokenView {
   createdAt: number;
+  createdByAdminId?: number | null;
   enabled: boolean;
+  expired: boolean;
+  expiresAt: number;
   id: number;
+  kind: string;
   name: string;
+  scopes: string[];
+  subjectAdminId?: number | null;
+  subjectRoleName?: string;
+  subjectUsername?: string;
   token?: string;
 }
 
 export interface Client {
+  adTag?: string;
   allowedIPs?: string[];
   auth?: string;
   comment: string;
@@ -246,6 +259,7 @@ export interface Client {
   publicKey?: string;
   reset: number;
   reverse?: ClientReverse | null;
+  secret?: string;
   security: string;
   subId: string;
   tgId: number;
@@ -262,6 +276,7 @@ export interface ClientInbound {
 }
 
 export interface ClientRecord {
+  adTag: string;
   allowedIPs: string;
   auth: string;
   comment: string;
@@ -284,6 +299,7 @@ export interface ClientRecord {
   publicKey: string;
   reset: number;
   reverse: unknown;
+  secret: string;
   security: string;
   subId: string;
   tgId: number;
@@ -331,6 +347,7 @@ export interface Host {
   excludeFromSubTypes: string[];
   finalMask: string;
   fingerprint: string;
+  groupId: string;
   hostHeader: string;
   id: number;
   inboundId: number;
@@ -354,6 +371,40 @@ export interface Host {
   sortOrder: number;
   tags: string[];
   updatedAt: number;
+  verifyPeerCertByName: string;
+  vlessRoute: string;
+}
+
+export interface HostGroup {
+  allowInsecure: boolean;
+  alpn: string[];
+  echConfigList: string;
+  excludeFromSubTypes: string[];
+  finalMask: string;
+  fingerprint: string;
+  groupId: string;
+  hostHeader: string;
+  hosts: string[];
+  inboundIds: number[];
+  isDisabled: boolean;
+  isHidden: boolean;
+  keepSniBlank: boolean;
+  mihomoIpVersion: string;
+  mihomoX25519: boolean;
+  muxParams: string;
+  nodeGuids: string[];
+  overrideSniFromAddress: boolean;
+  path: string;
+  pinnedPeerCertSha256: string[];
+  port: number;
+  remark: string;
+  security: string;
+  serverDescription: string;
+  shuffleHost: boolean;
+  sni: string;
+  sockoptParams: string;
+  sortOrder: number;
+  tags: string[];
   verifyPeerCertByName: string;
   vlessRoute: string;
 }
@@ -404,11 +455,17 @@ export interface InboundFallback {
 }
 
 export interface InboundOption {
+  enable: boolean;
   id: number;
+  listen?: string;
+  mtprotoDomain?: string;
+  nodeAddress?: string;
   nodeId?: number | null;
   port: number;
   protocol: string;
   remark: string;
+  shareAddr?: string;
+  shareAddrStrategy?: string;
   ssMethod: string;
   tag: string;
   tlsFlowCapable: boolean;
@@ -473,6 +530,13 @@ export interface OutboundTraffics {
   tag: string;
   total: number;
   up: number;
+}
+
+export interface PanelUpdateStatus {
+  exitCode: number;
+  finishedAt: number;
+  runId: string;
+  state: string;
 }
 
 export interface ProbeResultUI {

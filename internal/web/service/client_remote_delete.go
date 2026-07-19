@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -10,15 +11,19 @@ import (
 	"github.com/mhsanaei/3x-ui/v3/internal/database/model"
 	"github.com/mhsanaei/3x-ui/v3/internal/logger"
 	"github.com/mhsanaei/3x-ui/v3/internal/web/runtime"
+
+	"gorm.io/gorm"
 )
 
 // remoteClientDeleter is intentionally narrower than runtime.Runtime. Detaching
 // a client from one inbound and deleting the client record from a node are
 // different operations; only Remote implements the latter.
 type remoteClientDeleter interface {
-	DeleteClient(ctx context.Context, email string, keepTraffic bool) error
-	DeleteClients(ctx context.Context, emails []string, keepTraffic bool) error
+	DeleteClientRecord(ctx context.Context, email string, keepTraffic bool) error
+	DeleteClientRecords(ctx context.Context, emails []string, keepTraffic bool) error
 }
+
+var _ remoteClientDeleter = (*runtime.Remote)(nil)
 
 type remoteClientDeleteTarget struct {
 	nodeID  int
@@ -93,15 +98,17 @@ func resolveRemoteDeleteTargets(nodeIDs []int) ([]remoteClientDeleteTarget, erro
 	if len(nodeIDs) == 0 {
 		return nil, nil
 	}
-	mgr := runtime.GetManager()
-	if mgr == nil {
-		return nil, fmt.Errorf("runtime manager not initialised")
-	}
-
+	var mgr *runtime.Manager
 	targets := make([]remoteClientDeleteTarget, 0, len(nodeIDs))
 	nodeSvc := NodeService{}
 	for _, nodeID := range nodeIDs {
 		enabled, status, _, _, err := nodeSvc.NodeSyncState(nodeID)
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			// Stale node_client_traffics history must not block deleting the
+			// central client. A live inbound still referencing this missing node
+			// is reported later by its per-inbound mutation path.
+			continue
+		}
 		if err != nil {
 			return nil, fmt.Errorf("resolve node %d for client delete: %w", nodeID, err)
 		}
@@ -110,6 +117,12 @@ func resolveRemoteDeleteTargets(nodeIDs []int) ([]remoteClientDeleteTarget, erro
 		}
 		if status != "online" {
 			return nil, fmt.Errorf("node %d is not online (status %q); client delete was not committed", nodeID, status)
+		}
+		if mgr == nil {
+			mgr = runtime.GetManager()
+			if mgr == nil {
+				return nil, fmt.Errorf("runtime manager not initialised")
+			}
 		}
 		rt, err := mgr.RuntimeFor(&nodeID)
 		if err != nil {
@@ -163,7 +176,7 @@ func deleteClientsFromRemoteNodes(
 
 	succeeded := make([]int, 0, len(targets))
 	for _, target := range targets {
-		if err := target.deleter.DeleteClients(ctx, emails, keepTraffic); err != nil {
+		if err := target.deleter.DeleteClientRecords(ctx, emails, keepTraffic); err != nil {
 			markNodesDirtyBestEffort(succeeded)
 			return succeeded, fmt.Errorf("delete clients from node %d: %w", target.nodeID, err)
 		}

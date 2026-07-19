@@ -3,6 +3,7 @@ package job
 import (
 	"encoding/json"
 	"errors"
+	"sort"
 	"time"
 
 	"github.com/mhsanaei/3x-ui/v3/internal/database"
@@ -19,19 +20,16 @@ type IPWithTimestamp struct {
 	Timestamp int64  `json:"timestamp"`
 }
 
-// CheckClientIpJob monitors client IP addresses and manages IP blocking based
-// on configured limits. The per-client IPs come from the core's online-stats
-// API; no access log is involved. On a core too old to expose that API the job
-// simply skips the run (the bundled core always supports it).
+// CheckClientIpJob records online client IP observations for panel display
+// and cross-node attribution. Simultaneous-IP enforcement remains entirely
+// inside Heimdall's custom Xray Core.
 type CheckClientIpJob struct {
 	xrayService service.XrayService
 }
 
 var job *CheckClientIpJob
 
-const defaultXrayAPIPort = 62789
-
-const ipStaleAfterSeconds = int64(30 * 60)
+const ipScanChunk = 400
 
 // NewCheckClientIpJob creates a new client IP monitoring job instance.
 func NewCheckClientIpJob() *CheckClientIpJob {
@@ -86,7 +84,9 @@ func (j *CheckClientIpJob) collectFromOnlineAPI() (map[string]map[string]int64, 
 	return observed, true
 }
 
-func (j *CheckClientIpJob) resolveObservedRuntimeEmails(observed map[string]map[string]int64) map[string]map[string]int64 {
+func (j *CheckClientIpJob) resolveObservedRuntimeEmails(
+	observed map[string]map[string]int64,
+) map[string]map[string]int64 {
 	if len(observed) == 0 {
 		return observed
 	}
@@ -95,46 +95,61 @@ func (j *CheckClientIpJob) resolveObservedRuntimeEmails(observed map[string]map[
 	for email := range observed {
 		emails = append(emails, email)
 	}
+	sort.Strings(emails)
 
-	var rows []struct {
-		StatEmail string `gorm:"column:stat_email"`
-		Email     string `gorm:"column:email"`
-	}
-	if err := database.GetDB().
-		Model(&model.ClientInboundTraffic{}).
-		Select("stat_email, email").
-		Where("stat_email IN ?", emails).
-		Find(&rows).
-		Error; err != nil {
-		logger.Debug("[LimitIP] resolve runtime observed emails failed:", err)
-		return observed
-	}
-
-	logicalByRuntime := make(map[string]string, len(rows))
-	for _, row := range rows {
-		if row.StatEmail == "" || row.Email == "" {
-			continue
+	logicalByRuntime := make(map[string]string, len(emails))
+	for _, batch := range chunkEmails(emails, ipScanChunk) {
+		var rows []struct {
+			StatEmail string `gorm:"column:stat_email"`
+			Email     string `gorm:"column:email"`
 		}
-		logicalByRuntime[row.StatEmail] = row.Email
+
+		if err := database.GetDB().
+			Model(&model.ClientInboundTraffic{}).
+			Select("stat_email, email").
+			Where("stat_email IN ?", batch).
+			Find(&rows).
+			Error; err != nil {
+			logger.Debug(
+				"[LimitIP] resolve runtime observed emails failed:",
+				err,
+			)
+			return observed
+		}
+
+		for _, row := range rows {
+			if row.StatEmail == "" || row.Email == "" {
+				continue
+			}
+			logicalByRuntime[row.StatEmail] = row.Email
+		}
 	}
 
 	if len(logicalByRuntime) == 0 {
 		return observed
 	}
 
-	resolved := make(map[string]map[string]int64, len(observed))
-	for email, ipTimestamps := range observed {
-		logicalEmail := email
-		if mapped, ok := logicalByRuntime[email]; ok {
+	resolved := make(
+		map[string]map[string]int64,
+		len(observed),
+	)
+
+	for runtimeEmail, ipTimestamps := range observed {
+		logicalEmail := runtimeEmail
+		if mapped, ok := logicalByRuntime[runtimeEmail]; ok {
 			logicalEmail = mapped
 		}
 
 		if _, exists := resolved[logicalEmail]; !exists {
-			resolved[logicalEmail] = make(map[string]int64, len(ipTimestamps))
+			resolved[logicalEmail] = make(
+				map[string]int64,
+				len(ipTimestamps),
+			)
 		}
 
 		for ip, timestamp := range ipTimestamps {
-			if existing, seen := resolved[logicalEmail][ip]; !seen || timestamp > existing {
+			current, seen := resolved[logicalEmail][ip]
+			if !seen || timestamp > current {
 				resolved[logicalEmail][ip] = timestamp
 			}
 		}
@@ -143,70 +158,303 @@ func (j *CheckClientIpJob) resolveObservedRuntimeEmails(observed map[string]map[
 	return resolved
 }
 
-// processObserved runs collection + enforcement for one scan's observations
-// (email -> ip -> last-seen unix seconds). observedAreLive marks the
-// observations as live connections, which bypass the stale cutoff: a connection
-// that opened hours ago is still live even though its timestamp is old. The
-// online-stats API always reports live connections, so the job passes true.
-func (j *CheckClientIpJob) processObserved(observed map[string]map[string]int64, observedAreLive bool) bool {
+func chunkEmails(items []string, size int) [][]string {
+	if len(items) == 0 {
+		return nil
+	}
+	if size <= 0 {
+		return [][]string{items}
+	}
+
+	chunks := make(
+		[][]string,
+		0,
+		(len(items)+size-1)/size,
+	)
+
+	for len(items) > size {
+		chunks = append(chunks, items[:size])
+		items = items[size:]
+	}
+
+	return append(chunks, items)
+}
+
+func (j *CheckClientIpJob) loadInboundsByEmails(
+	emails []string,
+) (map[string]*model.Inbound, error) {
+	db := database.GetDB()
+
+	minInboundByEmail := make(map[string]int, len(emails))
+
+	for _, batch := range chunkEmails(emails, ipScanChunk) {
+		var pairs []struct {
+			Email     string
+			InboundID int `gorm:"column:inbound_id"`
+		}
+
+		if err := db.Table("client_inbounds").
+			Select(
+				"clients.email AS email, "+
+					"client_inbounds.inbound_id AS inbound_id",
+			).
+			Joins(
+				"JOIN clients "+
+					"ON clients.id = client_inbounds.client_id",
+			).
+			Where("clients.email IN ?", batch).
+			Scan(&pairs).
+			Error; err != nil {
+			return nil, err
+		}
+
+		for _, pair := range pairs {
+			current, exists := minInboundByEmail[pair.Email]
+			if !exists || pair.InboundID < current {
+				minInboundByEmail[pair.Email] = pair.InboundID
+			}
+		}
+	}
+
+	uniqueIDs := make(
+		map[int]struct{},
+		len(minInboundByEmail),
+	)
+	ids := make([]int, 0, len(minInboundByEmail))
+
+	for _, id := range minInboundByEmail {
+		if _, exists := uniqueIDs[id]; exists {
+			continue
+		}
+		uniqueIDs[id] = struct{}{}
+		ids = append(ids, id)
+	}
+
+	sort.Ints(ids)
+
+	inboundsByID := make(map[int]*model.Inbound, len(ids))
+
+	for start := 0; start < len(ids); start += ipScanChunk {
+		end := start + ipScanChunk
+		if end > len(ids) {
+			end = len(ids)
+		}
+
+		var page []*model.Inbound
+		if err := db.
+			Where("id IN ?", ids[start:end]).
+			Find(&page).
+			Error; err != nil {
+			return nil, err
+		}
+
+		for _, inbound := range page {
+			inboundsByID[inbound.Id] = inbound
+		}
+	}
+
+	result := make(
+		map[string]*model.Inbound,
+		len(minInboundByEmail),
+	)
+
+	for email, id := range minInboundByEmail {
+		if inbound, exists := inboundsByID[id]; exists {
+			result[email] = inbound
+		}
+	}
+
+	return result, nil
+}
+
+func (j *CheckClientIpJob) loadClientIPRows(
+	emails []string,
+) (map[string]*model.InboundClientIps, error) {
+	db := database.GetDB()
+	result := make(
+		map[string]*model.InboundClientIps,
+		len(emails),
+	)
+
+	for _, batch := range chunkEmails(emails, ipScanChunk) {
+		var rows []model.InboundClientIps
+
+		if err := db.
+			Where("client_email IN ?", batch).
+			Find(&rows).
+			Error; err != nil {
+			return nil, err
+		}
+
+		for index := range rows {
+			result[rows[index].ClientEmail] = &rows[index]
+		}
+	}
+
+	return result, nil
+}
+
+// processObserved persists one online-IP scan using chunked reads and one
+// write transaction. It never performs IP-limit enforcement or disconnects;
+// those responsibilities belong exclusively to the custom Xray Core.
+func (j *CheckClientIpJob) processObserved(
+	observed map[string]map[string]int64,
+	observedAreLive bool,
+) bool {
+	if len(observed) == 0 {
+		return false
+	}
+
 	now := time.Now().Unix()
 	observed = j.resolveObservedRuntimeEmails(observed)
 
-	// attribution accumulates this scan's local observations per email so they can
-	// be recorded under this panel's own guid for cross-node IP attribution.
-	attribution := make(map[string][]model.ClientIpEntry, len(observed))
-	for email, ipTimestamps := range observed {
+	emails := make([]string, 0, len(observed))
+	for email := range observed {
+		emails = append(emails, email)
+	}
+	sort.Strings(emails)
 
-		// The observations can still reference a client that was just renamed
-		// or deleted; its email no longer matches any inbound. Skip it (and
-		// drop any orphaned tracking row) instead of recreating a row and
-		// logging an ERROR every run (#4963).
-		_, err := j.getInboundByEmail(email)
-		if err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				logger.Debugf("[LimitIP] skipping stale observed email %q (renamed or deleted)", email)
-				j.delInboundClientIps(email)
-			} else {
-				j.checkError(err)
+	inboundByEmail, err := j.loadInboundsByEmails(emails)
+	if err != nil {
+		logger.Debug(
+			"[LimitIP] batch inbound lookup failed; "+
+				"using exact fallback:",
+			err,
+		)
+		inboundByEmail = make(map[string]*model.Inbound)
+	}
+
+	ipRowByEmail, err := j.loadClientIPRows(emails)
+	if err != nil {
+		j.checkError(err)
+		return false
+	}
+
+	attribution := make(
+		map[string][]model.ClientIpEntry,
+		len(observed),
+	)
+
+	db := database.GetDB()
+	tx := db.Begin()
+	if tx.Error != nil {
+		j.checkError(tx.Error)
+		return false
+	}
+
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback().Error
+		}
+	}()
+
+	for _, email := range emails {
+		if _, linked := inboundByEmail[email]; !linked {
+			if _, lookupErr := j.getInboundByEmail(email); lookupErr != nil {
+				if errors.Is(lookupErr, gorm.ErrRecordNotFound) {
+					logger.Debugf(
+						"[LimitIP] skipping stale observed email %q "+
+							"(renamed or deleted)",
+						email,
+					)
+
+					if deleteErr := j.deleteInboundClientIPs(
+						tx,
+						email,
+					); deleteErr != nil {
+						j.checkError(deleteErr)
+						return false
+					}
+				} else {
+					j.checkError(lookupErr)
+				}
+
+				continue
 			}
-			continue
 		}
 
-		// Convert to IPWithTimestamp slice
-		ipsWithTime := make([]IPWithTimestamp, 0, len(ipTimestamps))
-		attrEntries := make([]model.ClientIpEntry, 0, len(ipTimestamps))
-		for ip, timestamp := range ipTimestamps {
-			ipsWithTime = append(ipsWithTime, IPWithTimestamp{IP: ip, Timestamp: timestamp})
-			// Live API observations may carry an old lastSeen (connection start),
-			// so stamp attribution with now; otherwise the stale cutoff would evict
-			// an IP that is connected right now.
-			attrTs := timestamp
+		ipTimestamps := observed[email]
+		ips := make([]string, 0, len(ipTimestamps))
+		for ip := range ipTimestamps {
+			ips = append(ips, ip)
+		}
+		sort.Strings(ips)
+
+		ipsWithTime := make(
+			[]IPWithTimestamp,
+			0,
+			len(ips),
+		)
+		attrEntries := make(
+			[]model.ClientIpEntry,
+			0,
+			len(ips),
+		)
+
+		for _, ip := range ips {
+			timestamp := ipTimestamps[ip]
+
+			ipsWithTime = append(
+				ipsWithTime,
+				IPWithTimestamp{
+					IP:        ip,
+					Timestamp: timestamp,
+				},
+			)
+
+			attributionTimestamp := timestamp
 			if observedAreLive {
-				attrTs = now
+				attributionTimestamp = now
 			}
-			attrEntries = append(attrEntries, model.ClientIpEntry{IP: ip, Timestamp: attrTs})
+
+			attrEntries = append(
+				attrEntries,
+				model.ClientIpEntry{
+					IP:        ip,
+					Timestamp: attributionTimestamp,
+				},
+			)
 		}
+
 		if len(attrEntries) > 0 {
 			attribution[email] = attrEntries
 		}
 
-		clientIpsRecord, err := j.getInboundClientIps(email)
-		if err != nil {
-			_ = j.addInboundClientIps(email, ipsWithTime)
-			continue
+		encoded, encodeErr := json.Marshal(ipsWithTime)
+		if encodeErr != nil {
+			j.checkError(encodeErr)
+			return false
 		}
 
-		j.updateInboundClientIps(clientIpsRecord, ipsWithTime)
+		record, exists := ipRowByEmail[email]
+		if !exists {
+			record = &model.InboundClientIps{
+				ClientEmail: email,
+			}
+		}
+
+		record.Ips = string(encoded)
+
+		if saveErr := tx.Save(record).Error; saveErr != nil {
+			j.checkError(saveErr)
+			return false
+		}
 	}
 
-	j.recordLocalAttribution(attribution)
+	if err := tx.Commit().Error; err != nil {
+		j.checkError(err)
+		return false
+	}
+	committed = true
 
+	j.recordLocalAttribution(attribution)
 	return false
 }
 
 // recordLocalAttribution stores this scan's local observations under this panel's
 // own guid so a parent panel can attribute each IP to the node it is on.
-// Best-effort: attribution is advisory and must never block IP-limit enforcement.
+// Best-effort: attribution is advisory and must never block IP observation.
 func (j *CheckClientIpJob) recordLocalAttribution(attribution map[string][]model.ClientIpEntry) {
 	if len(attribution) == 0 {
 		return
@@ -226,66 +474,14 @@ func (j *CheckClientIpJob) checkError(e error) {
 	}
 }
 
-func (j *CheckClientIpJob) getInboundClientIps(clientEmail string) (*model.InboundClientIps, error) {
-	db := database.GetDB()
-	InboundClientIps := &model.InboundClientIps{}
-	err := db.Model(model.InboundClientIps{}).Where("client_email = ?", clientEmail).First(InboundClientIps).Error
-	if err != nil {
-		return nil, err
-	}
-	return InboundClientIps, nil
-}
-
-func (j *CheckClientIpJob) addInboundClientIps(clientEmail string, ipsWithTime []IPWithTimestamp) error {
-	inboundClientIps := &model.InboundClientIps{}
-	jsonIps, err := json.Marshal(ipsWithTime)
-	j.checkError(err)
-
-	inboundClientIps.ClientEmail = clientEmail
-	inboundClientIps.Ips = string(jsonIps)
-
-	db := database.GetDB()
-	tx := db.Begin()
-
-	defer func() {
-		if err == nil {
-			tx.Commit()
-		} else {
-			tx.Rollback()
-		}
-	}()
-
-	err = tx.Save(inboundClientIps).Error
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-// delInboundClientIps drops the inbound_client_ips tracking row for an email
-// that no longer maps to any inbound (a renamed or deleted client), so stale
-// access-log entries don't keep a ghost row alive (#4963).
-func (j *CheckClientIpJob) delInboundClientIps(clientEmail string) {
-	db := database.GetDB()
-	if err := db.Where("client_email = ?", clientEmail).Delete(&model.InboundClientIps{}).Error; err != nil {
-		j.checkError(err)
-	}
-}
-
-func (j *CheckClientIpJob) updateInboundClientIps(
-	inboundClientIps *model.InboundClientIps,
-	newIpsWithTime []IPWithTimestamp,
-) {
-	jsonIps, err := json.Marshal(newIpsWithTime)
-	if err != nil {
-		logger.Warningf("[LimitIP] failed to encode online IPs: %v", err)
-		return
-	}
-
-	inboundClientIps.Ips = string(jsonIps)
-	if err := database.GetDB().Save(inboundClientIps).Error; err != nil {
-		logger.Warningf("[LimitIP] failed to save online IPs: %v", err)
-	}
+func (j *CheckClientIpJob) deleteInboundClientIPs(
+	tx *gorm.DB,
+	clientEmail string,
+) error {
+	return tx.
+		Where("client_email = ?", clientEmail).
+		Delete(&model.InboundClientIps{}).
+		Error
 }
 
 // getInboundByEmail resolves the inbound that owns a client email. It prefers

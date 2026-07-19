@@ -648,6 +648,7 @@ func (s *ClientService) bulkAdjustInboundClients(
 		}
 		return res
 	}
+	prevSettings := oldInbound.Settings
 	oldInbound.Settings = string(newSettings)
 
 	// A flow change rewrites the user's xray config, which the lightweight
@@ -673,6 +674,7 @@ func (s *ClientService) bulkAdjustInboundClients(
 				push = false
 			}
 			if push {
+				pushFailed := false
 				for email := range foundEmails {
 					entry := plan[email]
 					updated := *entry.record.ToClient()
@@ -685,7 +687,11 @@ func (s *ClientService) bulkAdjustInboundClients(
 					updated.UpdatedAt = nowMs
 					if err1 := rt.UpdateUser(context.Background(), oldInbound, email, updated); err1 != nil {
 						logger.Warning("Error in updating client on", rt.Name(), ":", err1)
+						pushFailed = true
 					}
+				}
+				if !pushFailed {
+					advancePushedInbound(rt, prevSettings, oldInbound)
 				}
 			}
 		}
@@ -834,7 +840,7 @@ func (s *ClientService) BulkDelete(inboundSvc *InboundService, emails []string, 
 	tombstoneClientEmails(tombstoneEmails)
 
 	for inboundId, ibEmails := range emailsByInbound {
-		ibResult := s.bulkDelInboundClients(inboundSvc, inboundId, ibEmails, recordsByEmail, false)
+		ibResult := s.bulkDelInboundClients(inboundSvc, inboundId, ibEmails, recordsByEmail, keepTraffic)
 		if ibResult.needRestart {
 			needRestart = true
 		}
@@ -856,16 +862,24 @@ func (s *ClientService) BulkDelete(inboundSvc *InboundService, emails []string, 
 	}
 
 	if len(successIds) > 0 {
-		// Serialize row cleanup against the traffic poll and keep Heimdall
-		// activity cleanup semantics.
+		// Serialize row cleanup against the traffic poll and preserve
+		// Heimdall's activity lifecycle. When accounting is retained, shift
+		// group baselines before deleting ClientRecord rows; otherwise the
+		// complete traffic purge below performs that adjustment exactly once.
 		err = runSerializedTx(func(tx *gorm.DB) error {
-			// Activity is always deleted with the client, including when
-			// keepTraffic preserves ordinary traffic accounting rows.
 			if err := (&ClientActivityService{}).
 				DeleteForClientIDs(tx, successIds); err != nil {
 				return err
 			}
 
+			if keepTraffic && len(successEmails) > 0 {
+				if err := adjustGroupBaselinesForRemovedTraffic(
+					tx,
+					successEmails,
+				); err != nil {
+					return err
+				}
+			}
 			for _, batch := range chunkInts(successIds, sqlInChunk) {
 				if err := tx.
 					Where("client_id IN ?", batch).
@@ -1094,25 +1108,9 @@ func (s *ClientService) bulkDelInboundClients(
 			}
 		}
 	} else {
-		rt, push, _, perr := inboundSvc.nodePushPlan(oldInbound)
-		if perr != nil {
-			for email := range foundEmails {
-				res.perEmailSkipped[email] = perr.Error()
-				delete(foundEmails, email)
-			}
-		} else {
-			// Large batches collapse into one reconcile push rather than M deletes.
-			if push && len(foundEmails) > nodeBulkPushThreshold {
-				push = false
-			}
-			if push {
-				for email := range foundEmails {
-					if err1 := rt.DeleteUser(context.Background(), oldInbound, email); err1 != nil {
-						logger.Warning("Error in deleting client on", rt.Name(), ":", err1)
-					}
-				}
-			}
-		}
+		// BulkDelete already completed one fail-closed full-delete RPC per node
+		// before entering this per-inbound settings update. Dispatching here again
+		// duplicates the destructive operation and inflates one batch into M calls.
 	}
 
 	// Serialize against the traffic poll to avoid the cross-transaction
@@ -1248,7 +1246,7 @@ func (s *ClientService) BulkCreate(inboundSvc *InboundService, payloads []Client
 
 	db := database.GetDB()
 	const lookupChunk = 400
-	existingEmailSub := make(map[string]string, len(emails))
+	existingByEmail := make(map[string]model.ClientRecord, len(emails))
 	for start := 0; start < len(emails); start += lookupChunk {
 		end := min(start+lookupChunk, len(emails))
 		var rows []model.ClientRecord
@@ -1256,7 +1254,7 @@ func (s *ClientService) BulkCreate(inboundSvc *InboundService, payloads []Client
 			return result, false, e
 		}
 		for i := range rows {
-			existingEmailSub[strings.ToLower(rows[i].Email)] = rows[i].SubID
+			existingByEmail[strings.ToLower(rows[i].Email)] = rows[i]
 		}
 	}
 	existingSubOwner := make(map[string]string, len(subIDs))
@@ -1292,10 +1290,24 @@ func (s *ClientService) BulkCreate(inboundSvc *InboundService, payloads []Client
 
 	for idx := range prep {
 		le := strings.ToLower(prep[idx].client.Email)
-		if existSub, ok := existingEmailSub[le]; ok && existSub != prep[idx].client.SubID {
-			failed[idx] = true
-			reason[idx] = "email already in use: " + prep[idx].client.Email
-			continue
+		if rec, ok := existingByEmail[le]; ok {
+			if rec.SubID != prep[idx].client.SubID {
+				failed[idx] = true
+				reason[idx] = "email already in use: " + prep[idx].client.Email
+				continue
+			}
+			if prep[idx].client.ID == "" {
+				prep[idx].client.ID = rec.UUID
+			}
+			if prep[idx].client.Password == "" {
+				prep[idx].client.Password = rec.Password
+			}
+			if prep[idx].client.Auth == "" {
+				prep[idx].client.Auth = rec.Auth
+			}
+			if prep[idx].client.Secret == "" {
+				prep[idx].client.Secret = rec.Secret
+			}
 		}
 		if owner, ok := existingSubOwner[prep[idx].client.SubID]; ok && owner != le {
 			failed[idx] = true
@@ -1615,6 +1627,7 @@ func (s *ClientService) bulkSetEnableInboundClients(inboundSvc *InboundService, 
 		}
 		return res
 	}
+	prevSettings := oldInbound.Settings
 	oldInbound.Settings = string(newSettings)
 
 	rt, push, _, perr := inboundSvc.nodePushPlan(oldInbound)
@@ -1680,12 +1693,17 @@ func (s *ClientService) bulkSetEnableInboundClients(inboundSvc *InboundService, 
 			}
 		}
 	} else if push {
+		pushFailed := false
 		for _, ch := range changed {
 			updated := ch.client
 			updated.UpdatedAt = nowMs
 			if err1 := rt.UpdateUser(context.Background(), oldInbound, ch.email, updated); err1 != nil {
 				logger.Warning("Error in updating client on", rt.Name(), ":", err1)
+				pushFailed = true
 			}
+		}
+		if !pushFailed {
+			advancePushedInbound(rt, prevSettings, oldInbound)
 		}
 	}
 

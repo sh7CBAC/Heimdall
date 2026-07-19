@@ -44,11 +44,12 @@ func (*orphanDeleteRuntime) ResetClientTraffic(context.Context, *model.Inbound, 
 }
 func (*orphanDeleteRuntime) ResetInboundTraffic(context.Context, *model.Inbound) error { return nil }
 func (*orphanDeleteRuntime) ResetAllTraffics(context.Context) error                    { return nil }
-func (f *orphanDeleteRuntime) DeleteClient(context.Context, string, bool) error {
+func (*orphanDeleteRuntime) DeleteClient(context.Context, string) error                { return nil }
+func (f *orphanDeleteRuntime) DeleteClientRecord(context.Context, string, bool) error {
 	f.deleted++
 	return nil
 }
-func (f *orphanDeleteRuntime) DeleteClients(_ context.Context, emails []string, _ bool) error {
+func (f *orphanDeleteRuntime) DeleteClientRecords(_ context.Context, emails []string, _ bool) error {
 	f.deleted += len(emails)
 	return nil
 }

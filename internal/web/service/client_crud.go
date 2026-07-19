@@ -96,6 +96,20 @@ func (s *ClientService) Create(inboundSvc *InboundService, payload *ClientCreate
 		if existing.SubID == "" || existing.SubID != client.SubID {
 			return false, common.NewError("email already in use:", client.Email)
 		}
+		// Reuse stored credentials when re-adding an existing identity, or
+		// fillProtocolDefaults mints a fresh UUID that desyncs other inbounds.
+		if client.ID == "" {
+			client.ID = existing.UUID
+		}
+		if client.Password == "" {
+			client.Password = existing.Password
+		}
+		if client.Auth == "" {
+			client.Auth = existing.Auth
+		}
+		if client.Secret == "" {
+			client.Secret = existing.Secret
+		}
 	}
 
 	if client.SubID != "" {
@@ -171,8 +185,34 @@ func (s *ClientService) fillProtocolDefaults(c *model.Client, ib *model.Inbound)
 		if c.Auth == "" {
 			c.Auth = strings.ReplaceAll(uuid.NewString(), "-", "")
 		}
+	case model.MTProto:
+		if c.Secret == "" {
+			c.Secret = model.GenerateFakeTLSSecret(mtprotoDomainFromSettings(ib.Settings))
+		}
 	}
 	return nil
+}
+
+// defaultMtprotoDomain is the FakeTLS fronting domain used when an mtproto
+// inbound carries no fakeTlsDomain of its own; it mirrors the frontend default.
+const defaultMtprotoDomain = "www.cloudflare.com"
+
+// mtprotoDomainFromSettings returns the inbound-level FakeTLS domain, falling
+// back to the default when unset, so a generated client secret always fronts a
+// real hostname.
+func mtprotoDomainFromSettings(settings string) string {
+	domain := ""
+	if settings != "" {
+		var m map[string]any
+		if err := json.Unmarshal([]byte(settings), &m); err == nil {
+			domain, _ = m["fakeTlsDomain"].(string)
+		}
+	}
+	domain = strings.TrimSpace(domain)
+	if domain == "" {
+		return defaultMtprotoDomain
+	}
+	return domain
 }
 
 func clientWithInboundFlow(c model.Client, ib *model.Inbound) model.Client {
@@ -351,6 +391,9 @@ func (s *ClientService) Update(inboundSvc *InboundService, id int, updated model
 	if updated.Auth == "" {
 		updated.Auth = existing.Auth
 	}
+	if updated.Secret == "" {
+		updated.Secret = existing.Secret
+	}
 
 	if updated.Email != existing.Email {
 		var collisionCount int64
@@ -361,23 +404,6 @@ func (s *ClientService) Update(inboundSvc *InboundService, id int, updated model
 		}
 		if collisionCount > 0 {
 			return false, common.NewError("Duplicate email:", updated.Email)
-		}
-		// Change the database identity and invalidate trackers for the previous
-		// email atomically. Activity history remains attached to the stable
-		// client_id and is therefore preserved across the rename.
-		if err := database.GetDB().Transaction(func(tx *gorm.DB) error {
-			if err := tx.
-				Model(&model.ClientRecord{}).
-				Where("id = ?", id).
-				Update("email", updated.Email).
-				Error; err != nil {
-				return err
-			}
-
-			return (&ClientActivityService{}).
-				BumpGenerationForClientID(tx, id)
-		}); err != nil {
-			return false, err
 		}
 	}
 
@@ -429,6 +455,33 @@ func (s *ClientService) Update(inboundSvc *InboundService, id int, updated model
 		}
 	}
 
+	// UpdateInboundClient renames the record atomically with each inbound's
+	// settings JSON. The guarded direct write covers a record with no inbound
+	// left. The same transaction invalidates activity collectors for the old
+	// runtime identity while preserving history on the stable client id.
+	if updated.Email != existing.Email {
+		if err := database.GetDB().Transaction(
+			func(tx *gorm.DB) error {
+				if err := tx.
+					Model(&model.ClientRecord{}).
+					Where(
+						"id = ? AND email = ?",
+						id,
+						existing.Email,
+					).
+					Update("email", updated.Email).
+					Error; err != nil {
+					return err
+				}
+
+				return (&ClientActivityService{}).
+					BumpGenerationForClientID(tx, id)
+			},
+		); err != nil {
+			return needRestart, err
+		}
+	}
+
 	reverseStr := ""
 	if updated.Reverse != nil && strings.TrimSpace(updated.Reverse.Tag) != "" {
 		if b, mErr := json.Marshal(updated.Reverse); mErr == nil {
@@ -450,6 +503,15 @@ func (s *ClientService) Update(inboundSvc *InboundService, id int, updated model
 	if err := database.GetDB().Model(&model.ClientRecord{}).
 		Where("id = ?", id).
 		UpdateColumn("group_name", updated.Group).Error; err != nil {
+		return needRestart, err
+	}
+
+	// Same shape as the group write above: SyncInbound keeps a stored ad-tag
+	// when the incoming settings carry none, so clearing the override must be
+	// applied here, where the editor always round-trips the field.
+	if err := database.GetDB().Model(&model.ClientRecord{}).
+		Where("id = ?", id).
+		UpdateColumn("ad_tag", updated.AdTag).Error; err != nil {
 		return needRestart, err
 	}
 
@@ -481,10 +543,14 @@ func (s *ClientService) Delete(inboundSvc *InboundService, id int, keepTraffic b
 		return false, err
 	}
 
-	nodeIDs, err := remoteDeleteNodeIDs([]string{existing.Email}, inboundIds)
+	nodeIDs, err := remoteDeleteNodeIDs(
+		[]string{existing.Email},
+		inboundIds,
+	)
 	if err != nil {
 		return false, err
 	}
+
 	remoteDeletedNodeIDs, err := deleteClientsFromRemoteNodes(
 		context.Background(),
 		nodeIDs,
@@ -494,8 +560,9 @@ func (s *ClientService) Delete(inboundSvc *InboundService, id int, keepTraffic b
 	if err != nil {
 		return false, err
 	}
-	// If any later central mutation fails, the node-side delete must not become
-	// authoritative. A dirty reconcile restores the still-present central state.
+
+	// If a later central mutation fails, the successful remote deletion must
+	// not become authoritative. A dirty reconcile restores central state.
 	defer func() {
 		if err != nil {
 			markNodesDirtyBestEffort(remoteDeletedNodeIDs)
@@ -504,12 +571,15 @@ func (s *ClientService) Delete(inboundSvc *InboundService, id int, keepTraffic b
 
 	tombstoneClientEmail(existing.Email)
 
+	needRestart = false
+	var delErrs []error
 	for _, ibId := range inboundIds {
 		if _, getErr := inboundSvc.GetInbound(ibId); getErr != nil {
 			if errors.Is(getErr, gorm.ErrRecordNotFound) {
 				continue
 			}
-			return needRestart, getErr
+			delErrs = append(delErrs, fmt.Errorf("inbound %d: %w", ibId, getErr))
+			continue
 		}
 
 		// Always delete by email — the client's stable identity. This removes
@@ -519,23 +589,29 @@ func (s *ClientService) Delete(inboundSvc *InboundService, id int, keepTraffic b
 		if existing.Email == "" {
 			continue
 		}
-		nr, delErr := s.DelInboundClientByEmail(inboundSvc, ibId, existing.Email, false)
+		nr, delErr := s.DelInboundClientByEmail(inboundSvc, ibId, existing.Email, keepTraffic, true)
 		if delErr != nil {
 			// The client is already absent from this inbound (data drift or a
 			// retried delete). Skip it — deletion stays idempotent.
 			if errors.Is(delErr, ErrClientNotInInbound) {
 				continue
 			}
-			return needRestart, delErr
+			delErrs = append(delErrs, fmt.Errorf("inbound %d: %w", ibId, delErr))
+			continue
 		}
 		if nr {
 			needRestart = true
 		}
 	}
+	// A failed inbound still holds the client in its settings JSON: keep the
+	// record so the next delete retries exactly the leftovers, and report it.
+	if len(delErrs) > 0 {
+		return needRestart, errors.Join(delErrs...)
+	}
 
 	db := database.GetDB()
 	if err = db.Transaction(func(tx *gorm.DB) error {
-		// Activity belongs to the client identity and is always removed,
+		// Activity belongs to the stable client identity and is always removed,
 		// independently from the keepTraffic option.
 		if err := (&ClientActivityService{}).
 			DeleteForClientID(tx, id); err != nil {
@@ -556,17 +632,33 @@ func (s *ClientService) Delete(inboundSvc *InboundService, id int, keepTraffic b
 			return err
 		}
 
-		if !keepTraffic && existing.Email != "" {
-			// A client can still have accounting rows after it has already been
-			// detached from every inbound. Use the shared purge helper here instead
-			// of deleting only the compatibility/global rows, otherwise
-			// client_inbound_traffics (and node baselines) survive as ghosts.
-			if err := inboundSvc.DelClientStat(tx, existing.Email); err != nil {
-				return err
-			}
+		if existing.Email != "" {
+			if keepTraffic {
+				// Deleting the ClientRecord removes its group association even
+				// though accounting rows remain. Shift the baseline once so
+				// historical group totals do not jump.
+				if err := adjustGroupBaselinesForRemovedTraffic(
+					tx,
+					[]string{existing.Email},
+				); err != nil {
+					return err
+				}
+			} else {
+				// DelClientStat performs the complete idempotent accounting
+				// purge, including global, per-inbound and node baselines.
+				if err := inboundSvc.DelClientStat(
+					tx,
+					existing.Email,
+				); err != nil {
+					return err
+				}
 
-			if err := inboundSvc.DelClientIPs(tx, existing.Email); err != nil {
-				return err
+				if err := inboundSvc.DelClientIPs(
+					tx,
+					existing.Email,
+				); err != nil {
+					return err
+				}
 			}
 		}
 
@@ -701,7 +793,12 @@ func (s *ClientService) DeleteByEmail(inboundSvc *InboundService, email string, 
 		return false, err
 	}
 	if len(inboundIds) == 0 && len(nodeIDs) == 0 {
-		return false, common.NewError(fmt.Sprintf("client %q not found in any inbound, client record, or node history", email))
+		return false, common.NewError(
+			fmt.Sprintf(
+				"client %q not found in any inbound, client record, or node history",
+				email,
+			),
+		)
 	}
 
 	remoteDeletedNodeIDs, err := deleteClientsFromRemoteNodes(
@@ -713,6 +810,7 @@ func (s *ClientService) DeleteByEmail(inboundSvc *InboundService, email string, 
 	if err != nil {
 		return false, err
 	}
+
 	defer func() {
 		if err != nil {
 			markNodesDirtyBestEffort(remoteDeletedNodeIDs)
@@ -720,17 +818,24 @@ func (s *ClientService) DeleteByEmail(inboundSvc *InboundService, email string, 
 	}()
 
 	tombstoneClientEmail(email)
+
+	needRestart = false
+	var delErrs []error
 	for _, ibId := range inboundIds {
-		nr, delErr := s.DelInboundClientByEmail(inboundSvc, ibId, email, false)
+		nr, delErr := s.DelInboundClientByEmail(inboundSvc, ibId, email, keepTraffic, true)
 		if delErr != nil {
 			if errors.Is(delErr, ErrClientNotInInbound) {
 				continue
 			}
-			return needRestart, delErr
+			delErrs = append(delErrs, fmt.Errorf("inbound %d: %w", ibId, delErr))
+			continue
 		}
 		if nr {
 			needRestart = true
 		}
+	}
+	if len(delErrs) > 0 {
+		return needRestart, errors.Join(delErrs...)
 	}
 	if !keepTraffic {
 		err = runSerializedTx(func(tx *gorm.DB) error {
@@ -786,7 +891,7 @@ func (s *ClientService) Detach(inboundSvc *InboundService, id int, inboundIds []
 		if existing.Email == "" {
 			continue
 		}
-		nr, delErr := s.DelInboundClientByEmail(inboundSvc, ibId, existing.Email, true)
+		nr, delErr := s.DelInboundClientByEmail(inboundSvc, ibId, existing.Email, true, false)
 		if delErr != nil {
 			if errors.Is(delErr, ErrClientNotInInbound) {
 				continue

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -253,19 +254,55 @@ func (s *InboundService) disableClientsByOwnerAdminID(ownerAdminID int, disabled
 		}
 	}
 
-	disabledNodeIDs := make(map[int]struct{})
 	for inboundID, group := range remoteByInbound {
 		emailsForInbound := make(map[string]struct{}, len(group))
-		for _, t := range group {
-			emailsForInbound[t.Email] = struct{}{}
+
+		for _, target := range group {
+			emailsForInbound[target.Email] = struct{}{}
 		}
-		if pushErr := s.disableRemoteClients(db, inboundID, emailsForInbound); pushErr != nil {
-			logger.Warning("DisableClientsByOwnerAdminID: push to remote failed for inbound", inboundID, ":", pushErr)
-			needRestart = true
-		} else {
-			for _, t := range group {
-				if t.NodeID != nil {
-					disabledNodeIDs[*t.NodeID] = struct{}{}
+
+		if pushErr := s.disableRemoteClients(
+			db,
+			inboundID,
+			emailsForInbound,
+		); pushErr != nil {
+			logger.Warning(
+				"DisableClientsByOwnerAdminID: push to remote failed for inbound",
+				inboundID,
+				":",
+				pushErr,
+			)
+
+			seenNodes := make(
+				map[int]struct{},
+				len(group),
+			)
+
+			for _, target := range group {
+				if target.NodeID == nil {
+					continue
+				}
+
+				nodeID := *target.NodeID
+
+				if _, seen := seenNodes[nodeID]; seen {
+					continue
+				}
+
+				seenNodes[nodeID] = struct{}{}
+
+				if dirtyErr := (&NodeService{}).
+					MarkNodeDirty(nodeID); dirtyErr != nil {
+					return true,
+						int64(len(cleanEmails)),
+						errors.Join(
+							pushErr,
+							fmt.Errorf(
+								"mark node %d dirty after RBAC disable failure: %w",
+								nodeID,
+								dirtyErr,
+							),
+						)
 				}
 			}
 		}
@@ -290,14 +327,6 @@ func (s *InboundService) disableClientsByOwnerAdminID(ownerAdminID int, disabled
 		Where("owner_admin_id = ? AND email IN ?", ownerAdminID, cleanEmails).
 		Updates(recordUpdates).Error; err != nil {
 		return needRestart, int64(len(cleanEmails)), err
-	}
-
-	nodeIDs := make([]int, 0, len(disabledNodeIDs))
-	for nodeID := range disabledNodeIDs {
-		nodeIDs = append(nodeIDs, nodeID)
-	}
-	if len(nodeIDs) > 0 {
-		s.restartRemoteNodesOnDisable(nodeIDs)
 	}
 
 	return needRestart, int64(len(cleanEmails)), nil
@@ -462,13 +491,23 @@ func (s *InboundService) disableInvalidClients(tx *gorm.DB) (bool, int64, []int,
 		}
 	}
 
-	result := tx.Model(xray.ClientTraffic{}).
-		Where(cond+" AND enable = ?", now, true).
-		Update("enable", false)
-	err = result.Error
-	count := result.RowsAffected
-	if err != nil {
-		return needRestart, count, nil, err
+	// Flip the rows already collected above by primary key instead of
+	// re-evaluating the depleted predicate, which was a second full scan of
+	// client_traffics on every poll. Sorted ids keep the lock order stable.
+	ids := make([]int, 0, len(depletedRows))
+	for i := range depletedRows {
+		ids = append(ids, depletedRows[i].Id)
+	}
+	slices.Sort(ids)
+	var count int64
+	for _, batch := range chunkInts(ids, sqlInChunk) {
+		result := tx.Model(xray.ClientTraffic{}).
+			Where("id IN ? AND enable = ?", batch, true).
+			Update("enable", false)
+		if result.Error != nil {
+			return needRestart, count, nil, result.Error
+		}
+		count += result.RowsAffected
 	}
 
 	if len(depletedEmails) > 0 {
@@ -483,11 +522,19 @@ func (s *InboundService) disableInvalidClients(tx *gorm.DB) (bool, int64, []int,
 	}
 
 	disabledNodeIDs := make(map[int]struct{})
+
 	committedRemoteNodeIDs := func() []int {
-		nodeIDs := make([]int, 0, len(disabledNodeIDs))
+		nodeIDs := make(
+			[]int,
+			0,
+			len(disabledNodeIDs),
+		)
+
 		for nodeID := range disabledNodeIDs {
 			nodeIDs = append(nodeIDs, nodeID)
 		}
+
+		slices.Sort(nodeIDs)
 		return nodeIDs
 	}
 	for inboundID, group := range remoteByInbound {
@@ -542,17 +589,20 @@ func (s *InboundService) disableInvalidClients(tx *gorm.DB) (bool, int64, []int,
 				}
 			}
 
-			needRestart = true
-		} else {
-			for _, t := range group {
-				if t.NodeID != nil {
-					disabledNodeIDs[*t.NodeID] = struct{}{}
-				}
+			continue
+		}
+
+		for _, target := range group {
+			if target.NodeID != nil {
+				disabledNodeIDs[*target.NodeID] = struct{}{}
 			}
 		}
 	}
 
-	return needRestart, count, committedRemoteNodeIDs(), nil
+	return needRestart,
+		count,
+		committedRemoteNodeIDs(),
+		nil
 }
 
 // markClientsDisabledInSettings flips client.enable=false in the inbound's
@@ -617,6 +667,9 @@ func (e *remoteDisableSettingsError) Unwrap() error {
 	return e.err
 }
 
+// disableRemoteClients flips clients off in stored settings and hot-updates
+// the node inbound. UpdateInbound is the complete runtime mutation; a full
+// node restart here would drop unrelated healthy connections.
 func (s *InboundService) disableRemoteClients(tx *gorm.DB, inboundID int, emails map[string]struct{}) error {
 	oldSnapshot, ib, err := s.markClientsDisabledInSettings(tx, inboundID, emails)
 	if err != nil {

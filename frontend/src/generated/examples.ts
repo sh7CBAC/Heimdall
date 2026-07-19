@@ -203,19 +203,34 @@ export const EXAMPLES: Record<string, unknown> = {
   },
   "ApiToken": {
     "createdAt": 0,
+    "createdByAdminId": null,
     "enabled": false,
+    "expiresAt": 0,
     "id": 0,
+    "kind": "",
     "name": "",
-    "token": ""
+    "subjectAdminId": null
   },
   "ApiTokenView": {
     "createdAt": 1736000000,
+    "createdByAdminId": 1,
     "enabled": true,
+    "expired": false,
+    "expiresAt": 1767536000,
     "id": 2,
-    "name": "central-panel-a",
-    "token": "new-token-string"
+    "kind": "delegated",
+    "name": "telegram-bot-a",
+    "scopes": [
+      "clients:read",
+      "clients:create"
+    ],
+    "subjectAdminId": 3,
+    "subjectRoleName": "Operator",
+    "subjectUsername": "operator-a",
+    "token": "hmd_d_new-token-string"
   },
   "Client": {
+    "adTag": "0123456789abcdef0123456789abcdef",
     "allowedIPs": [
       ""
     ],
@@ -237,6 +252,7 @@ export const EXAMPLES: Record<string, unknown> = {
     "publicKey": "",
     "reset": 0,
     "reverse": null,
+    "secret": "ee1234567890abcdef1234567890abcd7777772e636c6f7564666c6172652e636f6d",
     "security": "",
     "subId": "",
     "tgId": 0,
@@ -251,6 +267,7 @@ export const EXAMPLES: Record<string, unknown> = {
     "inboundId": 0
   },
   "ClientRecord": {
+    "adTag": "",
     "allowedIPs": "",
     "auth": "",
     "comment": "",
@@ -273,6 +290,7 @@ export const EXAMPLES: Record<string, unknown> = {
     "publicKey": "",
     "reset": 0,
     "reverse": null,
+    "secret": "",
     "security": "",
     "subId": "",
     "tgId": 0,
@@ -319,6 +337,7 @@ export const EXAMPLES: Record<string, unknown> = {
     ],
     "finalMask": "",
     "fingerprint": "",
+    "groupId": "",
     "hostHeader": "",
     "id": 1,
     "inboundId": 1,
@@ -350,6 +369,53 @@ export const EXAMPLES: Record<string, unknown> = {
     "updatedAt": 0,
     "verifyPeerCertByName": "",
     "vlessRoute": "443"
+  },
+  "HostGroup": {
+    "allowInsecure": false,
+    "alpn": [
+      ""
+    ],
+    "echConfigList": "",
+    "excludeFromSubTypes": [
+      ""
+    ],
+    "finalMask": "",
+    "fingerprint": "",
+    "groupId": "",
+    "hostHeader": "",
+    "hosts": [
+      ""
+    ],
+    "inboundIds": [
+      0
+    ],
+    "isDisabled": false,
+    "isHidden": false,
+    "keepSniBlank": false,
+    "mihomoIpVersion": "dual",
+    "mihomoX25519": false,
+    "muxParams": "",
+    "nodeGuids": [
+      ""
+    ],
+    "overrideSniFromAddress": false,
+    "path": "",
+    "pinnedPeerCertSha256": [
+      ""
+    ],
+    "port": 0,
+    "remark": "",
+    "security": "same",
+    "serverDescription": "",
+    "shuffleHost": false,
+    "sni": "",
+    "sockoptParams": "",
+    "sortOrder": 0,
+    "tags": [
+      ""
+    ],
+    "verifyPeerCertByName": "",
+    "vlessRoute": ""
   },
   "Inbound": {
     "clientStats": [
@@ -409,11 +475,17 @@ export const EXAMPLES: Record<string, unknown> = {
     "xver": 0
   },
   "InboundOption": {
+    "enable": true,
     "id": 1,
+    "listen": "",
+    "mtprotoDomain": "",
+    "nodeAddress": "",
     "nodeId": null,
     "port": 443,
     "protocol": "vless",
     "remark": "VLESS-443",
+    "shareAddr": "",
+    "shareAddrStrategy": "",
     "ssMethod": "",
     "tag": "in-443-tcp",
     "tlsFlowCapable": true,
@@ -477,6 +549,12 @@ export const EXAMPLES: Record<string, unknown> = {
     "tag": "",
     "total": 0,
     "up": 0
+  },
+  "PanelUpdateStatus": {
+    "exitCode": 0,
+    "finishedAt": 1735689612,
+    "runId": "1735689600123456789",
+    "state": "success"
   },
   "ProbeResultUI": {
     "cpuPct": 12.5,

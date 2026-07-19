@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-func TestRemoteDeleteClientUsesFullDeleteEndpoint(t *testing.T) {
+func TestRemoteDeleteClientRecordUsesFullDeleteEndpoint(t *testing.T) {
 	var paths []string
 	var queries []string
 	var methods []string
@@ -22,10 +22,10 @@ func TestRemoteDeleteClientUsesFullDeleteEndpoint(t *testing.T) {
 	defer srv.Close()
 
 	r := NewRemote(nodeForPlainServer(t, srv, "verify", "tok"), nil)
-	if err := r.DeleteClient(context.Background(), "gogoli1", false); err != nil {
+	if err := r.DeleteClientRecord(context.Background(), "gogoli1", false); err != nil {
 		t.Fatalf("DeleteClient without traffic retention: %v", err)
 	}
-	if err := r.DeleteClient(context.Background(), "gogoli1", true); err != nil {
+	if err := r.DeleteClientRecord(context.Background(), "gogoli1", true); err != nil {
 		t.Fatalf("DeleteClient with traffic retention: %v", err)
 	}
 
@@ -48,7 +48,7 @@ func TestRemoteDeleteClientUsesFullDeleteEndpoint(t *testing.T) {
 	}
 }
 
-func TestRemoteDeleteClientIsIdempotentForMissingClient(t *testing.T) {
+func TestRemoteDeleteClientRecordIsIdempotentForMissingClient(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"success":false,"msg":"client not found"}`))
@@ -56,12 +56,12 @@ func TestRemoteDeleteClientIsIdempotentForMissingClient(t *testing.T) {
 	defer srv.Close()
 
 	r := NewRemote(nodeForPlainServer(t, srv, "verify", "tok"), nil)
-	if err := r.DeleteClient(context.Background(), "already-gone", false); err != nil {
+	if err := r.DeleteClientRecord(context.Background(), "already-gone", false); err != nil {
 		t.Fatalf("missing client must be an idempotent success: %v", err)
 	}
 }
 
-func TestRemoteDeleteClientsUsesBulkEndpoint(t *testing.T) {
+func TestRemoteDeleteClientRecordsUsesBulkEndpoint(t *testing.T) {
 	var gotPath, gotQuery, gotMethod string
 	var gotBody map[string]any
 	var decodeErr error
@@ -77,7 +77,7 @@ func TestRemoteDeleteClientsUsesBulkEndpoint(t *testing.T) {
 	defer srv.Close()
 
 	r := NewRemote(nodeForPlainServer(t, srv, "verify", "tok"), nil)
-	if err := r.DeleteClients(context.Background(), []string{"a@x", "b@x"}, true); err != nil {
+	if err := r.DeleteClientRecords(context.Background(), []string{"a@x", "b@x"}, true); err != nil {
 		t.Fatalf("DeleteClients: %v", err)
 	}
 	if decodeErr != nil {
@@ -95,7 +95,7 @@ func TestRemoteDeleteClientsUsesBulkEndpoint(t *testing.T) {
 	}
 }
 
-func TestRemoteDeleteClientsRejectsNonNotFoundSkip(t *testing.T) {
+func TestRemoteDeleteClientRecordsRejectsNonNotFoundSkip(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"success":true,"obj":{"deleted":1,"skipped":[{"email":"b@x","reason":"database locked"}]}}`))
@@ -103,7 +103,26 @@ func TestRemoteDeleteClientsRejectsNonNotFoundSkip(t *testing.T) {
 	defer srv.Close()
 
 	r := NewRemote(nodeForPlainServer(t, srv, "verify", "tok"), nil)
-	if err := r.DeleteClients(context.Background(), []string{"a@x", "b@x"}, false); err == nil {
+	if err := r.DeleteClientRecords(context.Background(), []string{"a@x", "b@x"}, false); err == nil {
 		t.Fatal("DeleteClients accepted a non-idempotent skipped result")
+	}
+}
+
+func TestRemoteDeleteClientRuntimeContractDefaultsToNoTrafficRetention(t *testing.T) {
+	var gotPath, gotQuery string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		gotQuery = r.URL.RawQuery
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"success":true,"msg":"ok"}`))
+	}))
+	defer srv.Close()
+
+	r := NewRemote(nodeForPlainServer(t, srv, "verify", "tok"), nil)
+	if err := r.DeleteClient(context.Background(), "runtime-contract"); err != nil {
+		t.Fatalf("DeleteClient: %v", err)
+	}
+	if gotPath != "/panel/api/clients/del/runtime-contract" || gotQuery != "" {
+		t.Fatalf("request = %s?%s", gotPath, gotQuery)
 	}
 }

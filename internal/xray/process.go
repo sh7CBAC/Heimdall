@@ -51,8 +51,22 @@ func GetGeoipPath() string {
 	return config.GetBinFolderPath() + "/geoip.dat"
 }
 
-// GetAccessLogPath reads the Xray config and returns the access log file path.
-func GetAccessLogPath() (string, error) {
+// GetIPLimitLogPath returns the path to the IP limit log file.
+func GetIPLimitLogPath() string {
+	return config.GetLogFolder() + "/3xipl.log"
+}
+
+// GetIPLimitBannedLogPath returns the path to the banned IP log file.
+func GetIPLimitBannedLogPath() string {
+	return config.GetLogFolder() + "/3xipl-banned.log"
+}
+
+// GetIPLimitBannedPrevLogPath returns the path to the previous banned IP log file.
+func GetIPLimitBannedPrevLogPath() string {
+	return config.GetLogFolder() + "/3xipl-banned.prev.log"
+}
+
+func getLogPath(key string) (string, error) {
 	config, err := os.ReadFile(GetConfigPath())
 	if err != nil {
 		logger.Warningf("Failed to read configuration file: %s", err)
@@ -66,14 +80,22 @@ func GetAccessLogPath() (string, error) {
 		return "", err
 	}
 
-	if jsonConfig["log"] != nil {
-		jsonLog := jsonConfig["log"].(map[string]any)
-		if jsonLog["access"] != nil {
-			accessLogPath := jsonLog["access"].(string)
-			return accessLogPath, nil
+	if jsonLog, ok := jsonConfig["log"].(map[string]any); ok {
+		if logPath, ok := jsonLog[key].(string); ok {
+			return logPath, nil
 		}
 	}
 	return "", err
+}
+
+// GetAccessLogPath reads the Xray config and returns the access log file path.
+func GetAccessLogPath() (string, error) {
+	return getLogPath("access")
+}
+
+// GetErrorLogPath reads the Xray config and returns the error log file path.
+func GetErrorLogPath() (string, error) {
+	return getLogPath("error")
 }
 
 // stopProcess calls Stop on the given Process instance.

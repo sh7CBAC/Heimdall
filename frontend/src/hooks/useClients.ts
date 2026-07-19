@@ -37,6 +37,7 @@ import {
   type BulkDetachResult,
 } from "@/schemas/client";
 import { DefaultsPayloadSchema } from "@/schemas/defaults";
+import { TRAFFIC_POLL_INTERVAL_S } from "@/lib/traffic/poll-interval";
 
 // One row sent to POST /clients/:email/externalLinks.
 export type ExternalLinkInput = { kind: 'link' | 'subscription'; value: string; remark: string };
@@ -92,6 +93,11 @@ const DEFAULT_SUMMARY: ClientsSummary = {
   trafficTotal: 0,
   trafficRemaining: 0,
 };
+
+export interface ClientSpeedEntry {
+  up: number;
+  down: number;
+}
 
 type ClientStatRow = ClientTraffic & { email?: string };
 
@@ -348,6 +354,7 @@ export function useClients() {
   // The client_stats WebSocket payload is global, so it must not overwrite top
   // cards for non-owner admins/operators.
   const [, setAllClientStats] = useState<ClientStatRow[]>([]);
+  const [clientSpeed, setClientSpeed] = useState<Record<string, ClientSpeedEntry>>({});
   const summary = listQuery.data?.summary ?? DEFAULT_SUMMARY;
 
   const invalidateAll = useCallback(() => {
@@ -745,9 +752,23 @@ export function useClients() {
   const applyTrafficEvent = useCallback(
     (payload: unknown) => {
       if (!payload || typeof payload !== "object") return;
-      const p = payload as { onlineClients?: string[] };
+      const p = payload as {
+        onlineClients?: string[];
+        clientTraffics?: { email: string; up: number; down: number }[];
+      };
       if (Array.isArray(p.onlineClients)) {
         queryClient.setQueryData(keys.clients.onlines(), p.onlineClients);
+      }
+      if (Array.isArray(p.clientTraffics)) {
+        const next: Record<string, ClientSpeedEntry> = {};
+        for (const ct of p.clientTraffics) {
+          if (!ct || !ct.email) continue;
+          next[ct.email] = {
+            up: (ct.up || 0) / TRAFFIC_POLL_INTERVAL_S,
+            down: (ct.down || 0) / TRAFFIC_POLL_INTERVAL_S,
+          };
+        }
+        setClientSpeed(next);
       }
     },
     [queryClient],
@@ -756,9 +777,12 @@ export function useClients() {
   const applyClientStatsEvent = useCallback(
     (payload: unknown) => {
       if (!payload || typeof payload !== "object") return;
-      const p = payload as { clients?: ClientStatRow[] };
+      const p = payload as {
+        clients?: ClientStatRow[];
+        snapshot?: boolean;
+      };
       if (!Array.isArray(p.clients) || p.clients.length === 0) return;
-      setAllClientStats(p.clients);
+      if (p.snapshot !== false) setAllClientStats(p.clients);
       const byEmail = new Map<string, ClientTraffic>();
       for (const row of p.clients) {
         if (row && row.email) byEmail.set(row.email, row);
@@ -841,6 +865,7 @@ export function useClients() {
     exportClients,
     importClients,
     setEnable,
+    clientSpeed,
     applyTrafficEvent,
     applyClientStatsEvent,
   };

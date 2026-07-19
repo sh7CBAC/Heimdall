@@ -104,6 +104,9 @@ export class AllSetting {
   hasWarpSecret = false;
   hasNordSecret = false;
   hasSmtpPassword = false;
+  clearTgBotToken = false;
+  clearLdapPassword = false;
+  clearSmtpPassword = false;
 
   constructor(data?: unknown) {
     if (data != null) {

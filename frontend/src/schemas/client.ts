@@ -50,6 +50,8 @@ export const ClientRecordSchema = z
     allowedIPs: z.string().optional(),
     preSharedKey: z.string().optional(),
     keepAlive: z.number().optional(),
+    secret: z.string().optional(),
+    adTag: z.string().optional(),
     createdAt: z.number().optional(),
     updatedAt: z.number().optional(),
   })
@@ -67,8 +69,16 @@ export const InboundOptionSchema = z
     wgPublicKey: z.string().optional(),
     wgMtu: z.number().optional(),
     wgDns: z.string().optional(),
+    mtprotoDomain: z.string().optional(),
     // Hosting node id; absent/null for this panel's own inbounds (#4997).
     nodeId: z.number().nullable().optional(),
+    // Share-host resolution inputs, mirroring the backend resolveInboundAddress so
+    // the clients page picks the same WireGuard endpoint host as the subscription:
+    // the hosting node address, the inbound listen, and its share-address strategy.
+    nodeAddress: z.string().optional(),
+    listen: z.string().optional(),
+    shareAddr: z.string().optional(),
+    shareAddrStrategy: z.string().optional(),
   })
   .loose();
 

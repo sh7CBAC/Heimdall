@@ -64,7 +64,7 @@ type ApiTokenView struct {
 	SubjectUsername  string   `json:"subjectUsername,omitempty" example:"operator-a"`
 	SubjectRoleName  string   `json:"subjectRoleName,omitempty" example:"Operator"`
 	CreatedByAdminId *int     `json:"createdByAdminId,omitempty" example:"1"`
-	Scopes           []string `json:"scopes" example:"clients:read,clients:create"`
+	Scopes           []string `json:"scopes" example:"[\"clients:read\",\"clients:create\"]"`
 	ExpiresAt        int64    `json:"expiresAt" example:"1767536000"`
 	Expired          bool     `json:"expired" example:"false"`
 	Enabled          bool     `json:"enabled" example:"true"`
