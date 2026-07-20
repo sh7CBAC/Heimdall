@@ -3,6 +3,7 @@ package service
 import (
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/mhsanaei/3x-ui/v3/internal/database"
 	"github.com/mhsanaei/3x-ui/v3/internal/database/model"
@@ -208,4 +209,269 @@ func TestRuntimeUserMapForInboundTagKeepsWireGuard(t *testing.T) {
 	if got["email"] != "wg@x" {
 		t.Fatalf("wireguard email must stay logical, got %#v", got["email"])
 	}
+}
+
+func seedDelayedAccurateBillingInbound(
+	t *testing.T,
+	svc *InboundService,
+	email string,
+	tag string,
+	port int,
+	multiplier float64,
+	duration int64,
+	addRollup bool,
+) (*model.Inbound, model.Client) {
+	t.Helper()
+
+	client := model.Client{
+		Email:      email,
+		ID:         "22222222-2222-4222-8222-222222222222",
+		SubID:      "sub-" + email,
+		Enable:     true,
+		TotalGB:    10 * 1024 * 1024 * 1024,
+		ExpiryTime: -duration,
+	}
+	inbound := &model.Inbound{
+		UserId:          1,
+		Tag:             tag,
+		Enable:          true,
+		Port:            port,
+		Protocol:        model.VLESS,
+		Settings:        clientsSettings(t, []model.Client{client}),
+		UsageMultiplier: multiplier,
+	}
+
+	db := database.GetDB()
+	if err := db.Create(inbound).Error; err != nil {
+		t.Fatalf("create delayed inbound: %v", err)
+	}
+	if err := svc.clientService.SyncInbound(db, inbound.Id, []model.Client{client}); err != nil {
+		t.Fatalf("SyncInbound delayed client: %v", err)
+	}
+	if addRollup {
+		if err := svc.AddClientStat(db, inbound.Id, &client); err != nil {
+			t.Fatalf("AddClientStat delayed client: %v", err)
+		}
+	}
+	if err := svc.EnsureClientInboundTrafficMappingsForInbound(inbound.Id); err != nil {
+		t.Fatalf("EnsureClientInboundTrafficMappingsForInbound delayed client: %v", err)
+	}
+
+	return inbound, client
+}
+
+func assertDelayedExpiryState(
+	t *testing.T,
+	svc *InboundService,
+	email string,
+	inboundIDs []int,
+	want int64,
+) {
+	t.Helper()
+
+	db := database.GetDB()
+
+	var rollup xray.ClientTraffic
+	if err := db.Model(xray.ClientTraffic{}).Where("email = ?", email).First(&rollup).Error; err != nil {
+		t.Fatalf("read rollup %q: %v", email, err)
+	}
+	if rollup.ExpiryTime != want {
+		t.Fatalf("rollup expiry = %d, want %d", rollup.ExpiryTime, want)
+	}
+
+	var record model.ClientRecord
+	if err := db.Where("email = ?", email).First(&record).Error; err != nil {
+		t.Fatalf("read client record %q: %v", email, err)
+	}
+	if record.ExpiryTime != want {
+		t.Fatalf("client record expiry = %d, want %d", record.ExpiryTime, want)
+	}
+
+	for _, inboundID := range inboundIDs {
+		inbound, err := svc.GetInbound(inboundID)
+		if err != nil {
+			t.Fatalf("GetInbound(%d): %v", inboundID, err)
+		}
+		clients, err := svc.GetClients(inbound)
+		if err != nil {
+			t.Fatalf("GetClients(%d): %v", inboundID, err)
+		}
+		if len(clients) != 1 {
+			t.Fatalf("inbound %d clients = %d, want 1", inboundID, len(clients))
+		}
+		if clients[0].Email != email {
+			t.Fatalf("inbound %d email = %q, want %q", inboundID, clients[0].Email, email)
+		}
+		if clients[0].ExpiryTime != want {
+			t.Fatalf("inbound %d expiry = %d, want %d", inboundID, clients[0].ExpiryTime, want)
+		}
+	}
+}
+
+func TestAccurateBillingActivatesDelayedStart(t *testing.T) {
+	initAccurateBillingTestDB(t)
+
+	const oneDay = int64(24 * 60 * 60 * 1000)
+	const email = "accurate-delayed@x"
+
+	svc := &InboundService{}
+	inbound, _ := seedDelayedAccurateBillingInbound(
+		t,
+		svc,
+		email,
+		"accurate-delayed",
+		45005,
+		2,
+		oneDay,
+		true,
+	)
+	statEmail := clientInboundStatEmail(email, inbound.Id)
+
+	// A zero-delta poll is not a first use and must not start the timer.
+	if _, _, _, err := svc.addTrafficLocked(nil, []*xray.ClientTraffic{{Email: statEmail}}); err != nil {
+		t.Fatalf("zero-delta addTrafficLocked: %v", err)
+	}
+	assertDelayedExpiryState(t, svc, email, []int{inbound.Id}, -oneDay)
+
+	before := time.Now().UnixMilli()
+	if _, _, _, err := svc.addTrafficLocked(nil, []*xray.ClientTraffic{{
+		Email: statEmail,
+		Up:    100,
+		Down:  50,
+	}}); err != nil {
+		t.Fatalf("first-use addTrafficLocked: %v", err)
+	}
+
+	var rollup xray.ClientTraffic
+	if err := database.GetDB().Model(xray.ClientTraffic{}).Where("email = ?", email).First(&rollup).Error; err != nil {
+		t.Fatalf("read activated rollup: %v", err)
+	}
+	if rollup.ExpiryTime < before+oneDay-5000 || rollup.ExpiryTime > before+oneDay+5000 {
+		t.Fatalf("activated expiry = %d, want ~%d", rollup.ExpiryTime, before+oneDay)
+	}
+	if rollup.Up != 200 || rollup.Down != 100 {
+		t.Fatalf("activated rollup usage = %d/%d, want 200/100", rollup.Up, rollup.Down)
+	}
+	firstDeadline := rollup.ExpiryTime
+	assertDelayedExpiryState(t, svc, email, []int{inbound.Id}, firstDeadline)
+
+	var detail model.ClientInboundTraffic
+	if err := database.GetDB().Where("stat_email = ?", statEmail).First(&detail).Error; err != nil {
+		t.Fatalf("read activated detail: %v", err)
+	}
+	if detail.ActualUp != 100 || detail.ActualDown != 50 || detail.BillableUp != 200 || detail.BillableDown != 100 {
+		t.Fatalf(
+			"detail usage = actual:%d/%d billable:%d/%d, want actual:100/50 billable:200/100",
+			detail.ActualUp,
+			detail.ActualDown,
+			detail.BillableUp,
+			detail.BillableDown,
+		)
+	}
+
+	// Later traffic must add usage without moving the first-use deadline.
+	if _, _, _, err := svc.addTrafficLocked(nil, []*xray.ClientTraffic{{
+		Email: statEmail,
+		Up:    7,
+		Down:  11,
+	}}); err != nil {
+		t.Fatalf("second addTrafficLocked: %v", err)
+	}
+	assertDelayedExpiryState(t, svc, email, []int{inbound.Id}, firstDeadline)
+
+	if err := database.GetDB().Model(xray.ClientTraffic{}).Where("email = ?", email).First(&rollup).Error; err != nil {
+		t.Fatalf("read second rollup: %v", err)
+	}
+	if rollup.Up != 214 || rollup.Down != 122 {
+		t.Fatalf("second rollup usage = %d/%d, want 214/122", rollup.Up, rollup.Down)
+	}
+}
+
+func TestAccurateBillingDelayedStartSharedAcrossInbounds(t *testing.T) {
+	initAccurateBillingTestDB(t)
+
+	const oneDay = int64(24 * 60 * 60 * 1000)
+	const email = "accurate-delayed-shared@x"
+
+	svc := &InboundService{}
+	first, _ := seedDelayedAccurateBillingInbound(
+		t,
+		svc,
+		email,
+		"accurate-delayed-shared-1",
+		45006,
+		2,
+		oneDay,
+		true,
+	)
+	second, _ := seedDelayedAccurateBillingInbound(
+		t,
+		svc,
+		email,
+		"accurate-delayed-shared-2",
+		45007,
+		3,
+		oneDay,
+		true,
+	)
+
+	before := time.Now().UnixMilli()
+	if _, _, _, err := svc.addTrafficLocked(nil, []*xray.ClientTraffic{
+		{Email: clientInboundStatEmail(email, first.Id), Up: 10, Down: 20},
+		{Email: clientInboundStatEmail(email, second.Id), Up: 30, Down: 40},
+	}); err != nil {
+		t.Fatalf("shared addTrafficLocked: %v", err)
+	}
+
+	var rollup xray.ClientTraffic
+	if err := database.GetDB().Model(xray.ClientTraffic{}).Where("email = ?", email).First(&rollup).Error; err != nil {
+		t.Fatalf("read shared rollup: %v", err)
+	}
+	if rollup.ExpiryTime < before+oneDay-5000 || rollup.ExpiryTime > before+oneDay+5000 {
+		t.Fatalf("shared expiry = %d, want ~%d", rollup.ExpiryTime, before+oneDay)
+	}
+	if rollup.Up != 110 || rollup.Down != 160 {
+		t.Fatalf("shared rollup usage = %d/%d, want 110/160", rollup.Up, rollup.Down)
+	}
+	assertDelayedExpiryState(t, svc, email, []int{first.Id, second.Id}, rollup.ExpiryTime)
+}
+
+func TestAccurateBillingDelayedStartRepairsMissingRollup(t *testing.T) {
+	initAccurateBillingTestDB(t)
+
+	const oneDay = int64(24 * 60 * 60 * 1000)
+	const email = "accurate-delayed-missing-rollup@x"
+
+	svc := &InboundService{}
+	inbound, _ := seedDelayedAccurateBillingInbound(
+		t,
+		svc,
+		email,
+		"accurate-delayed-missing-rollup",
+		45008,
+		2,
+		oneDay,
+		false,
+	)
+
+	before := time.Now().UnixMilli()
+	if _, _, _, err := svc.addTrafficLocked(nil, []*xray.ClientTraffic{{
+		Email: clientInboundStatEmail(email, inbound.Id),
+		Up:    5,
+		Down:  6,
+	}}); err != nil {
+		t.Fatalf("missing-rollup addTrafficLocked: %v", err)
+	}
+
+	var rollup xray.ClientTraffic
+	if err := database.GetDB().Model(xray.ClientTraffic{}).Where("email = ?", email).First(&rollup).Error; err != nil {
+		t.Fatalf("read repaired rollup: %v", err)
+	}
+	if rollup.ExpiryTime < before+oneDay-5000 || rollup.ExpiryTime > before+oneDay+5000 {
+		t.Fatalf("repaired expiry = %d, want ~%d", rollup.ExpiryTime, before+oneDay)
+	}
+	if rollup.Up != 10 || rollup.Down != 12 {
+		t.Fatalf("repaired rollup usage = %d/%d, want 10/12", rollup.Up, rollup.Down)
+	}
+	assertDelayedExpiryState(t, svc, email, []int{inbound.Id}, rollup.ExpiryTime)
 }

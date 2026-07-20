@@ -336,16 +336,20 @@ func (s *InboundService) addClientTraffic(tx *gorm.DB, traffics []*xray.ClientTr
 	// above only touches up/down/last_online. Only converted emails are written:
 	// updating every polled row issued one no-op UPDATE per active client per
 	// poll. Sorted order keeps concurrent writers lock-compatible on Postgres.
+	persistConvertedClientExpiries(tx, convertedExpiryByEmail)
+
+	return nil
+}
+
+func persistConvertedClientExpiries(tx *gorm.DB, convertedExpiryByEmail map[string]int64) {
 	for _, email := range slices.Sorted(maps.Keys(convertedExpiryByEmail)) {
-		if err = tx.Exec(
+		if err := tx.Exec(
 			`UPDATE client_traffics SET expiry_time = ? WHERE email = ? AND expiry_time < 0`,
 			convertedExpiryByEmail[email], email,
 		).Error; err != nil {
 			logger.Warning("AddClientTraffic update expiry_time ", err)
 		}
 	}
-
-	return nil
 }
 
 func (s *InboundService) adjustTraffics(tx *gorm.DB, dbClientTraffics []*xray.ClientTraffic) ([]*xray.ClientTraffic, map[string]int64, error) {

@@ -378,6 +378,82 @@ func (s *InboundService) addAccurateClientInboundTraffic(tx *gorm.DB, traffics [
 		}
 	}
 
+	// Runtime stat identities are consumed by this accurate-billing path and do
+	// not reach addClientTraffic's legacy email-keyed path. Activate delayed-start
+	// clients before taking any per-client traffic locks so both paths keep the
+	// same lock order (inbounds/clients first, client_traffics second).
+	//
+	// Use the canonical client expiry only to select candidates. The rollup row,
+	// when present, remains authoritative for the stored negative duration. A
+	// missing rollup is represented by a synthetic row so repair/recovery states
+	// still receive the same absolute deadline and the later insert uses it.
+	delayedEmails := make([]string, 0)
+	delayedMappingByEmail := make(map[string]runtimeClientTrafficMapping)
+	for _, t := range statTraffics {
+		if t.Up == 0 && t.Down == 0 {
+			continue
+		}
+		mapping, ok := mappings[t.Email]
+		if !ok || mapping.ExpiryTime >= 0 {
+			continue
+		}
+		if _, duplicate := delayedMappingByEmail[mapping.Email]; duplicate {
+			continue
+		}
+		delayedMappingByEmail[mapping.Email] = mapping
+		delayedEmails = append(delayedEmails, mapping.Email)
+	}
+
+	if len(delayedEmails) > 0 {
+		delayedRows := make([]*xray.ClientTraffic, 0, len(delayedEmails))
+		existingByEmail := make(map[string]*xray.ClientTraffic, len(delayedEmails))
+		for _, batch := range chunkStrings(delayedEmails, sqlInChunk) {
+			var rows []*xray.ClientTraffic
+			if err := tx.Model(xray.ClientTraffic{}).
+				Where("email IN ?", batch).
+				Find(&rows).Error; err != nil {
+				return nil, err
+			}
+			for _, row := range rows {
+				if row == nil {
+					continue
+				}
+				existingByEmail[row.Email] = row
+			}
+		}
+
+		for _, email := range delayedEmails {
+			if row, ok := existingByEmail[email]; ok {
+				delayedRows = append(delayedRows, row)
+				continue
+			}
+			mapping := delayedMappingByEmail[email]
+			delayedRows = append(delayedRows, &xray.ClientTraffic{
+				InboundId:  mapping.InboundID,
+				Email:      mapping.Email,
+				Enable:     mapping.Enable,
+				Total:      mapping.Total,
+				ExpiryTime: mapping.ExpiryTime,
+				Reset:      mapping.Reset,
+			})
+		}
+
+		_, convertedExpiryByEmail, err := s.adjustTraffics(tx, delayedRows)
+		if err != nil {
+			return nil, err
+		}
+		persistConvertedClientExpiries(tx, convertedExpiryByEmail)
+
+		if len(convertedExpiryByEmail) > 0 {
+			for statEmail, mapping := range mappings {
+				if expiry, ok := convertedExpiryByEmail[mapping.Email]; ok {
+					mapping.ExpiryTime = expiry
+					mappings[statEmail] = mapping
+				}
+			}
+		}
+	}
+
 	now := time.Now().UnixMilli()
 	for _, t := range statTraffics {
 		if t.Up == 0 && t.Down == 0 {
