@@ -1,4 +1,4 @@
-[English](/README.md) | [فارسی](/README.fa_IR.md) | [العربية](/README.ar_EG.md) | [中文](/README.zh_CN.md) | [Español](/README.es_ES.md) | [Русский](/README.ru_RU.md) | [Türkçe](/README.tr_TR.md)
+[English](/README.md) | [فارسی](/docs/readme/fa-IR.md) | [العربية](/docs/readme/ar-EG.md) | [中文](/docs/readme/zh-CN.md) | [Español](/docs/readme/es-ES.md) | [Русский](/docs/readme/ru-RU.md) | [Türkçe](/docs/readme/tr-TR.md)
 
 <p align="center">
   <picture>
@@ -8,17 +8,16 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/MHSanaei/3x-ui/releases"><img src="https://img.shields.io/github/v/release/mhsanaei/3x-ui" alt="Release"></a>
-  <a href="https://github.com/MHSanaei/3x-ui/actions"><img src="https://img.shields.io/github/actions/workflow/status/mhsanaei/3x-ui/release.yml.svg" alt="Build"></a>
-  <a href="#"><img src="https://img.shields.io/github/go-mod/go-version/mhsanaei/3x-ui.svg" alt="GO Version"></a>
-  <a href="https://github.com/MHSanaei/3x-ui/releases/latest"><img src="https://img.shields.io/github/downloads/mhsanaei/3x-ui/total.svg" alt="Downloads"></a>
+  <a href="https://github.com/sh7CBAC/Heimdall/releases"><img src="https://img.shields.io/github/v/release/sh7CBAC/Heimdall" alt="Release"></a>
+  <a href="https://github.com/sh7CBAC/Heimdall/actions"><img src="https://img.shields.io/github/actions/workflow/status/sh7CBAC/Heimdall/release.yml.svg" alt="Build"></a>
+  <a href="#"><img src="https://img.shields.io/github/go-mod/go-version/sh7CBAC/Heimdall.svg" alt="GO Version"></a>
+  <a href="https://github.com/sh7CBAC/Heimdall/releases/latest"><img src="https://img.shields.io/github/downloads/sh7CBAC/Heimdall/total.svg" alt="Downloads"></a>
   <a href="https://www.gnu.org/licenses/gpl-3.0.en.html"><img src="https://img.shields.io/badge/license-GPL%20V3-blue.svg?longCache=true" alt="License"></a>
-  <a href="https://pkg.go.dev/github.com/mhsanaei/3x-ui/v3"><img src="https://pkg.go.dev/badge/github.com/mhsanaei/3x-ui/v3.svg" alt="Go Reference"></a>
 </p>
 
-**3X-UI** is an advanced, open-source web control panel for managing [Xray-core](https://github.com/XTLS/Xray-core) servers. It provides a clean, multi-language interface for deploying, configuring, and monitoring a wide range of proxy and VPN protocols — from a single VPS to multi-node deployments.
+**Heimdall** is an advanced, open-source web control panel for managing [Xray-core](https://github.com/XTLS/Xray-core) servers. It provides a clean, multi-language interface for deploying, configuring, and monitoring a wide range of proxy and VPN protocols — from a single VPS to multi-node deployments.
 
-Built as an enhanced fork of the original X-UI project, 3X-UI adds broader protocol support, improved stability, per-client traffic accounting, and many quality-of-life features.
+Heimdall is built on the 3X-UI codebase and extends it with project-specific capabilities. The inherited platform adds broader protocol support, improved stability, per-client traffic accounting, and many quality-of-life features.
 
 > [!IMPORTANT]
 > This project is intended for personal use only. Please do not use it for illegal purposes or in a production environment.
@@ -68,24 +67,24 @@ Built as an enhanced fork of the original X-UI project, 3X-UI adds broader proto
 ## Quick Start
 
 ```bash
-bash <(curl -Ls https://raw.githubusercontent.com/mhsanaei/3x-ui/master/install.sh)
+bash <(curl -Ls https://raw.githubusercontent.com/sh7CBAC/Heimdall/main/install.sh)
 ```
 
-To install a specific version, append its tag (e.g. `v3.4.0`):
+To install a specific version, append its tag (e.g. `vX.Y.Z`):
 
 ```bash
-bash <(curl -Ls https://raw.githubusercontent.com/mhsanaei/3x-ui/master/install.sh) v3.4.0
+bash <(curl -Ls https://raw.githubusercontent.com/sh7CBAC/Heimdall/main/install.sh) vX.Y.Z
 ```
 
 To install the rolling **dev** build (latest per-commit pre-release from `main`, not a stable release), pass `dev-latest`:
 
 ```bash
-bash <(curl -Ls https://raw.githubusercontent.com/mhsanaei/3x-ui/master/install.sh) dev-latest
+bash <(curl -Ls https://raw.githubusercontent.com/sh7CBAC/Heimdall/main/install.sh) dev-latest
 ```
 
 During installation a random username, password, and access path are generated. After installation, run `x-ui` to open the management menu, where you can start/stop the service, view or reset your login credentials, manage SSL certificates, and more.
 
-For full documentation, please visit the [project Wiki](https://github.com/MHSanaei/3x-ui/wiki).
+For full documentation, please visit the [project Wiki](https://github.com/sh7CBAC/Heimdall/wiki).
 
 ### Unattended install
 
@@ -137,7 +136,7 @@ docker compose --profile postgres up -d
 
 
 ```bash
-docker run -d --cap-add=NET_ADMIN --cap-add=NET_RAW ... ghcr.io/mhsanaei/3x-ui
+docker run -d --cap-add=NET_ADMIN --cap-add=NET_RAW ... ghcr.io/sh7cbac/heimdall
 ```
 
 ## Environment Variables
@@ -200,4 +199,4 @@ Tools and integrations built by the community around 3x-ui.
 
 ## Stargazers over Time
 
-[![Stargazers over time](https://starchart.cc/MHSanaei/3x-ui.svg?variant=adaptive)](https://starchart.cc/MHSanaei/3x-ui)
+[![Stargazers over time](https://starchart.cc/sh7CBAC/Heimdall.svg?variant=adaptive)](https://starchart.cc/sh7CBAC/Heimdall)

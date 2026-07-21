@@ -901,3 +901,234 @@ func TestBuildWireguardProxyForClashNoKey(t *testing.T) {
 		t.Fatalf("buildProxy = %v, want nil for a keyless wireguard client", proxy)
 	}
 }
+
+func TestSubClashServiceModernProfileProduction(t *testing.T) {
+	t.Run("TLS", func(t *testing.T) {
+		subReq := &SubService{}
+		inbound := &model.Inbound{
+			Listen:   "0.0.0.0",
+			Port:     27543,
+			Protocol: model.VLESS,
+			Remark:   "modern-clash-tls",
+			Settings: `{"encryption":"none"}`,
+			StreamSettings: `{
+				"network":"tcp",
+				"security":"none",
+				"tcpSettings":{"header":{"type":"none"}},
+				"externalProxy":[
+					{
+						"enabled":false,
+						"network":"ws",
+						"security":"tls",
+						"dest":"disabled.example.com",
+						"port":443
+					},
+					{
+						"enabled":true,
+						"remark":"modern-ws-tls",
+						"dest":"cdn.example.com",
+						"port":8443,
+						"network":"ws",
+						"security":"tls",
+						"wsSettings":{
+							"path":"/modern",
+							"host":"origin.example.com",
+							"headers":{"Host":"origin.example.com"}
+						},
+						"tlsSettings":{
+							"serverName":"sni.example.com",
+							"alpn":["h2"],
+							"settings":{
+								"fingerprint":"chrome",
+								"allowInsecure":true
+							}
+						}
+					}
+				]
+			}`,
+		}
+		client := model.Client{
+			ID:    "11111111-2222-4333-8444-555555555555",
+			Email: "modern-clash-user",
+		}
+
+		proxies := (&SubClashService{SubService: subReq}).getProxies(
+			subReq,
+			inbound,
+			client,
+			"panel.example.com",
+		)
+		if len(proxies) != 1 {
+			t.Fatalf("len(proxies) = %d, want 1 active profile", len(proxies))
+		}
+		proxy := proxies[0]
+		if proxy["server"] != "cdn.example.com" || proxy["port"] != 8443 {
+			t.Fatalf("endpoint = %#v", proxy)
+		}
+		if proxy["network"] != "ws" || proxy["tls"] != true {
+			t.Fatalf("network/tls = %#v", proxy)
+		}
+		if proxy["servername"] != "sni.example.com" {
+			t.Fatalf("servername = %v", proxy["servername"])
+		}
+		if proxy["client-fingerprint"] != "chrome" {
+			t.Fatalf("client-fingerprint = %v", proxy["client-fingerprint"])
+		}
+		if proxy["skip-cert-verify"] != true {
+			t.Fatalf("skip-cert-verify = %v", proxy["skip-cert-verify"])
+		}
+		wsOpts, _ := proxy["ws-opts"].(map[string]any)
+		if wsOpts["path"] != "/modern" {
+			t.Fatalf("ws-opts = %#v", wsOpts)
+		}
+	})
+
+	t.Run("Reality", func(t *testing.T) {
+		subReq := &SubService{}
+		inbound := &model.Inbound{
+			Listen:   "0.0.0.0",
+			Port:     27543,
+			Protocol: model.VLESS,
+			Remark:   "modern-clash-reality",
+			Settings: `{"encryption":"none"}`,
+			StreamSettings: `{
+				"network":"tcp",
+				"security":"none",
+				"tcpSettings":{"header":{"type":"none"}},
+				"externalProxy":[
+					{
+						"enabled":true,
+						"remark":"modern-reality",
+						"dest":"reality-edge.example.com",
+						"port":443,
+						"network":"tcp",
+						"security":"reality",
+						"tcpSettings":{"header":{"type":"none"}},
+						"realitySettings":{
+							"serverNames":["reality-sni.example.com"],
+							"shortIds":["ab12cd"],
+							"settings":{
+								"publicKey":"PROFILE_PUBLIC_KEY",
+								"fingerprint":"firefox"
+							}
+						}
+					}
+				]
+			}`,
+		}
+		client := model.Client{
+			ID:    "11111111-2222-4333-8444-555555555555",
+			Email: "modern-reality-user",
+		}
+
+		proxies := (&SubClashService{SubService: subReq}).getProxies(
+			subReq,
+			inbound,
+			client,
+			"panel.example.com",
+		)
+		if len(proxies) != 1 {
+			t.Fatalf("len(proxies) = %d, want 1", len(proxies))
+		}
+		proxy := proxies[0]
+		if proxy["server"] != "reality-edge.example.com" || proxy["port"] != 443 {
+			t.Fatalf("endpoint = %#v", proxy)
+		}
+		if proxy["servername"] != "reality-sni.example.com" {
+			t.Fatalf("servername = %v", proxy["servername"])
+		}
+		if proxy["client-fingerprint"] != "firefox" {
+			t.Fatalf("client-fingerprint = %v", proxy["client-fingerprint"])
+		}
+		realityOpts, _ := proxy["reality-opts"].(map[string]any)
+		if realityOpts["public-key"] != "PROFILE_PUBLIC_KEY" {
+			t.Fatalf("public-key = %v", realityOpts["public-key"])
+		}
+		if realityOpts["short-id"] != "ab12cd" {
+			t.Fatalf("short-id = %v", realityOpts["short-id"])
+		}
+	})
+
+	t.Run("Hysteria", func(t *testing.T) {
+		subReq := &SubService{}
+		inbound := &model.Inbound{
+			Listen:   "0.0.0.0",
+			Port:     27543,
+			Protocol: model.Hysteria,
+			Remark:   "modern-clash-hysteria",
+			Settings: `{"version":2}`,
+			StreamSettings: `{
+				"network":"hysteria",
+				"security":"tls",
+				"tlsSettings":{
+					"serverName":"base-sni.example.com",
+					"settings":{"fingerprint":"firefox","allowInsecure":false}
+				},
+				"hysteriaSettings":{"udpIdleTimeout":30},
+				"externalProxy":[
+					{
+						"enabled":true,
+						"remark":"modern-hysteria",
+						"dest":"hy-edge.example.com",
+						"port":2443,
+						"network":"hysteria",
+						"security":"tls",
+						"tlsSettings":{
+							"serverName":"profile-sni.example.com",
+							"alpn":["h3"],
+							"settings":{"fingerprint":"chrome","allowInsecure":true}
+						},
+						"hysteriaSettings":{"udpIdleTimeout":99},
+						"finalmask":{
+							"udp":[
+								{
+									"type":"salamander",
+									"settings":{"password":"profile-obfs"}
+								}
+							]
+						}
+					}
+				]
+			}`,
+		}
+		client := model.Client{
+			Email: "modern-hysteria-user",
+			Auth:  "profile-auth",
+		}
+
+		proxies := (&SubClashService{SubService: subReq}).getProxies(
+			subReq,
+			inbound,
+			client,
+			"panel.example.com",
+		)
+		if len(proxies) != 1 {
+			t.Fatalf("len(proxies) = %d, want 1", len(proxies))
+		}
+		proxy := proxies[0]
+		if proxy["type"] != "hysteria2" {
+			t.Fatalf("type = %v", proxy["type"])
+		}
+		if proxy["server"] != "hy-edge.example.com" || proxy["port"] != 2443 {
+			t.Fatalf("endpoint = %#v", proxy)
+		}
+		if proxy["password"] != "profile-auth" {
+			t.Fatalf("password = %v", proxy["password"])
+		}
+		if proxy["sni"] != "profile-sni.example.com" {
+			t.Fatalf("sni = %v", proxy["sni"])
+		}
+		if proxy["client-fingerprint"] != "chrome" {
+			t.Fatalf("client-fingerprint = %v", proxy["client-fingerprint"])
+		}
+		if proxy["skip-cert-verify"] != true {
+			t.Fatalf("skip-cert-verify = %v", proxy["skip-cert-verify"])
+		}
+		if proxy["obfs"] != "salamander" {
+			t.Fatalf("obfs = %v", proxy["obfs"])
+		}
+		if proxy["obfs-password"] != "profile-obfs" {
+			t.Fatalf("obfs-password = %v", proxy["obfs-password"])
+		}
+	})
+}

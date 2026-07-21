@@ -9,6 +9,7 @@ import {
 } from '@/schemas/protocols/security/tls';
 
 import { FinalMaskStreamSettingsSchema } from './finalmask';
+import { SockoptStreamSettingsSchema } from './sockopt';
 import { GrpcStreamSettingsSchema } from './grpc';
 import { HttpUpgradeStreamSettingsSchema } from './httpupgrade';
 import { KcpStreamSettingsSchema } from './kcp';
@@ -110,6 +111,16 @@ export const SubscriptionProfileMuxSchema = z.object({
 });
 export type SubscriptionProfileMux = z.infer<typeof SubscriptionProfileMuxSchema>;
 
+// Client/dialer-side Sockopt only. Server/listener fields are stripped.
+export const SubscriptionProfileSockoptSchema =
+  SockoptStreamSettingsSchema.omit({
+    acceptProxyProtocol: true,
+    V6Only: true,
+    trustedXForwardedFor: true,
+  });
+export type SubscriptionProfileSockopt =
+  typeof SubscriptionProfileSockoptSchema._output;
+
 // One inbound can advertise several complete client-side connection profiles.
 // Protocol and client identity remain owned by the parent inbound; address,
 // port, transport, security and client-only stream settings can be overridden.
@@ -132,6 +143,7 @@ export const ExternalProxyEntrySchema = z.object({
   realitySettings: SubscriptionProfileRealitySettingsSchema.optional(),
   finalmask: FinalMaskStreamSettingsSchema.optional(),
   mux: SubscriptionProfileMuxSchema.optional(),
+  sockopt: SubscriptionProfileSockoptSchema.optional(),
 
   // Heimdall phase-1 parity with Managed Hosts.
   excludeFromSubTypes: z.array(SubscriptionProfileSubTypeSchema).optional(),
@@ -154,6 +166,8 @@ export const ExternalProxyEntrySchema = z.object({
   alpn: z.array(AlpnSchema).optional(),
   pinnedPeerCertSha256: z.array(z.string()).optional(),
   verifyPeerCertByName: z.string().optional(),
+  overrideSniFromAddress: z.boolean().optional(),
+  keepSniBlank: z.boolean().optional(),
   echConfigList: z.string().optional(),
   allowInsecure: z.boolean().optional(),
 });

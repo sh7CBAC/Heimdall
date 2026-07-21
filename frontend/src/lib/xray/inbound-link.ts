@@ -154,8 +154,20 @@ function applyExternalProxyTLSObj(
   security: string,
 ): void {
   if (!externalProxy || security !== 'tls') return;
-  const sni = externalProxy.sni && externalProxy.sni.length > 0 ? externalProxy.sni : externalProxy.dest;
-  if (sni && sni.length > 0) obj.sni = sni;
+  const modernProfile = externalProxy.network !== undefined
+    || externalProxy.security !== undefined
+    || externalProxy.tlsSettings !== undefined;
+
+  if (externalProxy.keepSniBlank) {
+    delete obj.sni;
+  } else {
+    const sni = externalProxy.overrideSniFromAddress
+      ? externalProxy.dest
+      : externalProxy.sni
+        || (!modernProfile ? externalProxy.dest : '');
+
+    if (sni && sni.length > 0) obj.sni = sni;
+  }
   if (externalProxy.fingerprint && externalProxy.fingerprint.length > 0) obj.fp = externalProxy.fingerprint;
   const alpn = externalProxyAlpn(externalProxy.alpn);
   if (alpn.length > 0) obj.alpn = alpn;
@@ -307,8 +319,20 @@ function applyExternalProxyTLSParams(
   security: string,
 ): void {
   if (!externalProxy || security !== 'tls') return;
-  const sni = externalProxy.sni && externalProxy.sni.length > 0 ? externalProxy.sni : externalProxy.dest;
-  if (sni && sni.length > 0) params.set('sni', sni);
+  const modernProfile = externalProxy.network !== undefined
+    || externalProxy.security !== undefined
+    || externalProxy.tlsSettings !== undefined;
+
+  if (externalProxy.keepSniBlank) {
+    params.delete('sni');
+  } else {
+    const sni = externalProxy.overrideSniFromAddress
+      ? externalProxy.dest
+      : externalProxy.sni
+        || (!modernProfile ? externalProxy.dest : '');
+
+    if (sni && sni.length > 0) params.set('sni', sni);
+  }
   if (externalProxy.fingerprint && externalProxy.fingerprint.length > 0) params.set('fp', externalProxy.fingerprint);
   const alpn = externalProxyAlpn(externalProxy.alpn);
   if (alpn.length > 0) params.set('alpn', alpn);

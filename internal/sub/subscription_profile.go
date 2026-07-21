@@ -122,11 +122,87 @@ func effectiveSubscriptionProfileStream(baseStream, profile map[string]any) map[
 
 	applyProfileTransport(stream, profile)
 	applyProfileSecurity(stream, profile)
+	applySubscriptionProfileSNI(stream, profile)
+
+	if sockopt := clientSockoptOverride(profile["sockopt"]); sockopt != nil {
+		stream["sockopt"] = sockopt
+	}
 
 	if finalMask, ok := profile["finalmask"].(map[string]any); ok {
 		stream["finalmask"] = deepCloneJSON(finalMask)
 	}
 	return stream
+}
+
+func isModernSubscriptionProfile(profile map[string]any) bool {
+	if profile == nil {
+		return false
+	}
+	if isHost, _ := profile["isHost"].(bool); isHost {
+		return false
+	}
+	for _, key := range []string{
+		"network",
+		"security",
+		"tlsSettings",
+		"realitySettings",
+		"sockopt",
+		"mux",
+		"finalmask",
+		"overrideSniFromAddress",
+		"keepSniBlank",
+		"verifyPeerCertByName",
+		"tcpSettings",
+		"kcpSettings",
+		"wsSettings",
+		"grpcSettings",
+		"httpupgradeSettings",
+		"xhttpSettings",
+		"hysteriaSettings",
+	} {
+		if _, exists := profile[key]; exists {
+			return true
+		}
+	}
+	return false
+}
+
+func effectiveSubscriptionProfileProductionStream(
+	baseStream map[string]any,
+	profile map[string]any,
+) map[string]any {
+	productionProfile, _ := deepCloneJSON(profile).(map[string]any)
+	if productionProfile == nil {
+		productionProfile = map[string]any{}
+	}
+	delete(productionProfile, "sockopt")
+	delete(productionProfile, "finalmask")
+	return effectiveSubscriptionProfileStream(baseStream, productionProfile)
+}
+
+func applySubscriptionProfileSNI(
+	stream map[string]any,
+	profile map[string]any,
+) {
+	security, _ := stream["security"].(string)
+	if security != "tls" {
+		return
+	}
+
+	tlsSettings, _ := stream["tlsSettings"].(map[string]any)
+	if tlsSettings == nil {
+		return
+	}
+
+	if keepBlank, _ := profile["keepSniBlank"].(bool); keepBlank {
+		tlsSettings["serverName"] = ""
+		return
+	}
+
+	if override, _ := profile["overrideSniFromAddress"].(bool); override {
+		address, _ := profile["dest"].(string)
+		tlsSettings["serverName"] = strings.TrimSpace(address)
+	}
 }
 
 func applyProfileTransport(stream, profile map[string]any) {
@@ -225,6 +301,12 @@ func applyLegacyExternalProxyTLSFields(profile, stream map[string]any) {
 	if pins, ok := stringSliceValue(profile["pinnedPeerCertSha256"]); ok {
 		clientSettings["pinnedPeerCertSha256"] = pins
 	}
+	if vcn, ok := profile["verifyPeerCertByName"].(string); ok {
+		vcn = strings.TrimSpace(vcn)
+		if vcn != "" {
+			clientSettings["verifyPeerCertByName"] = vcn
+		}
+	}
 	if ech := strings.TrimSpace(stringValue(profile["echConfigList"])); ech != "" {
 		clientSettings["echConfigList"] = ech
 	}
@@ -304,6 +386,7 @@ func defaultProfileTLSSettings() map[string]any {
 			"fingerprint":          "chrome",
 			"echConfigList":        "",
 			"pinnedPeerCertSha256": []any{},
+			"verifyPeerCertByName": "",
 			"allowInsecure":        false,
 		},
 	}

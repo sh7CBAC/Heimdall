@@ -42,3 +42,6 @@ Thumbs.db
 # Docker and environment overrides
 docker-compose.override.yml
 .env
+
+# Local third-party Windows installers must never be committed.
+/packaging/windows/vendor/

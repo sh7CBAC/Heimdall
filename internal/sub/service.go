@@ -1547,7 +1547,9 @@ func applyExternalProxyTLSObj(ep map[string]any, obj map[string]any, security st
 	if security != "tls" {
 		return
 	}
-	if sni, ok := externalProxySNI(ep); ok {
+	if externalProxyKeepsSNIBlank(ep) {
+		delete(obj, "sni")
+	} else if sni, ok := externalProxySNI(ep); ok {
 		obj["sni"] = sni
 	}
 	if fp, ok := ep["fingerprint"].(string); ok && fp != "" {
@@ -1571,7 +1573,9 @@ func applyExternalProxyTLSParams(ep map[string]any, params map[string]string, se
 	if security != "tls" {
 		return
 	}
-	if sni, ok := externalProxySNI(ep); ok {
+	if externalProxyKeepsSNIBlank(ep) {
+		delete(params, "sni")
+	} else if sni, ok := externalProxySNI(ep); ok {
 		params["sni"] = sni
 	}
 	if fp, ok := ep["fingerprint"].(string); ok && fp != "" {
@@ -1639,7 +1643,9 @@ func applyExternalProxyTLSToStream(ep map[string]any, stream map[string]any, sec
 		tlsSettings = map[string]any{}
 		stream["tlsSettings"] = tlsSettings
 	}
-	if sni, ok := externalProxySNI(ep); ok {
+	if externalProxyKeepsSNIBlank(ep) {
+		tlsSettings["serverName"] = ""
+	} else if sni, ok := externalProxySNI(ep); ok {
 		tlsSettings["serverName"] = sni
 	}
 	if fp, ok := ep["fingerprint"].(string); ok && fp != "" {
@@ -1688,10 +1694,23 @@ func applyExternalProxyTLSToStream(ep map[string]any, stream map[string]any, sec
 	}
 }
 
+func externalProxyKeepsSNIBlank(ep map[string]any) bool {
+	keepBlank, _ := ep["keepSniBlank"].(bool)
+	return keepBlank
+}
+
 func externalProxySNI(ep map[string]any) (string, bool) {
-	if sni, ok := ep["sni"].(string); ok && sni != "" {
-		return sni, true
+	if override, _ := ep["overrideSniFromAddress"].(bool); override {
+		address, _ := ep["dest"].(string)
+		address = strings.TrimSpace(address)
+		return address, address != ""
 	}
+
+	if sni, ok := ep["sni"].(string); ok {
+		sni = strings.TrimSpace(sni)
+		return sni, sni != ""
+	}
+
 	return "", false
 }
 

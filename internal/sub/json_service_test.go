@@ -464,3 +464,300 @@ func TestSubJsonServiceWireguardNoKey(t *testing.T) {
 		t.Fatalf("genWireguard = %s, want nil for a keyless wireguard client", raw)
 	}
 }
+
+func modernProfileJSONOutbound(t *testing.T, raw []byte) map[string]any {
+	t.Helper()
+
+	var config map[string]any
+	if err := json.Unmarshal(raw, &config); err != nil {
+		t.Fatalf("unmarshal JSON subscription: %v", err)
+	}
+	outbounds, _ := config["outbounds"].([]any)
+	if len(outbounds) == 0 {
+		t.Fatalf("JSON subscription has no outbounds: %#v", config)
+	}
+	outbound, _ := outbounds[0].(map[string]any)
+	if outbound == nil {
+		t.Fatalf("first outbound has invalid shape: %#v", outbounds[0])
+	}
+	return outbound
+}
+
+func TestSubJsonServiceModernProfileProduction(t *testing.T) {
+	t.Run("TLS", func(t *testing.T) {
+		subReq := &SubService{}
+		inbound := &model.Inbound{
+			Listen:   "0.0.0.0",
+			Port:     27543,
+			Protocol: model.VLESS,
+			Remark:   "modern-json-tls",
+			Settings: `{"encryption":"none"}`,
+			StreamSettings: `{
+				"network":"tcp",
+				"security":"none",
+				"tcpSettings":{"header":{"type":"none"}},
+				"externalProxy":[
+					{
+						"enabled":false,
+						"network":"ws",
+						"security":"tls",
+						"dest":"disabled.example.com",
+						"port":443
+					},
+					{
+						"enabled":true,
+						"remark":"modern-ws-tls",
+						"dest":"cdn.example.com",
+						"port":8443,
+						"network":"ws",
+						"security":"tls",
+						"wsSettings":{
+							"path":"/modern",
+							"host":"origin.example.com",
+							"headers":{"Host":"origin.example.com"}
+						},
+						"tlsSettings":{
+							"serverName":"sni.example.com",
+							"alpn":["h2"],
+							"settings":{
+								"fingerprint":"chrome",
+								"allowInsecure":true
+							}
+						},
+						"sockopt":{
+							"tcpFastOpen":true,
+							"domainStrategy":"UseIP",
+							"acceptProxyProtocol":true,
+							"V6Only":true,
+							"trustedXForwardedFor":["127.0.0.1"]
+						},
+						"mux":{
+							"enabled":true,
+							"concurrency":4
+						},
+						"finalmask":{
+							"tcp":[{"type":"sudoku"}]
+						}
+					}
+				]
+			}`,
+		}
+		client := model.Client{
+			ID:    "11111111-2222-4333-8444-555555555555",
+			Email: "modern-json-user",
+		}
+
+		configs := NewSubJsonService("", "", "", subReq).getConfig(
+			subReq,
+			inbound,
+			client,
+			"panel.example.com",
+		)
+		if len(configs) != 1 {
+			t.Fatalf("len(configs) = %d, want 1 active profile", len(configs))
+		}
+
+		outbound := modernProfileJSONOutbound(t, configs[0])
+		settings, _ := outbound["settings"].(map[string]any)
+		if settings["address"] != "cdn.example.com" || settings["port"] != float64(8443) {
+			t.Fatalf("endpoint settings = %#v", settings)
+		}
+
+		stream, _ := outbound["streamSettings"].(map[string]any)
+		if stream["network"] != "ws" || stream["security"] != "tls" {
+			t.Fatalf("effective stream = %#v", stream)
+		}
+		ws, _ := stream["wsSettings"].(map[string]any)
+		if ws["path"] != "/modern" || ws["host"] != "origin.example.com" {
+			t.Fatalf("wsSettings = %#v", ws)
+		}
+		tlsSettings, _ := stream["tlsSettings"].(map[string]any)
+		if tlsSettings["serverName"] != "sni.example.com" {
+			t.Fatalf("serverName = %v", tlsSettings["serverName"])
+		}
+		if tlsSettings["fingerprint"] != "chrome" {
+			t.Fatalf("fingerprint = %v", tlsSettings["fingerprint"])
+		}
+		if tlsSettings["allowInsecure"] != true {
+			t.Fatalf("allowInsecure = %v", tlsSettings["allowInsecure"])
+		}
+
+		sockopt, _ := stream["sockopt"].(map[string]any)
+		if sockopt["tcpFastOpen"] != true || sockopt["domainStrategy"] != "UseIP" {
+			t.Fatalf("sockopt = %#v", sockopt)
+		}
+		for _, key := range []string{
+			"acceptProxyProtocol",
+			"V6Only",
+			"trustedXForwardedFor",
+		} {
+			if _, exists := sockopt[key]; exists {
+				t.Fatalf("listener-only sockopt key leaked: %s", key)
+			}
+		}
+
+		finalmask, _ := stream["finalmask"].(map[string]any)
+		tcpMasks, _ := finalmask["tcp"].([]any)
+		if len(tcpMasks) != 1 {
+			t.Fatalf("finalmask.tcp = %#v", finalmask["tcp"])
+		}
+
+		mux, _ := outbound["mux"].(map[string]any)
+		if mux["enabled"] != true || mux["concurrency"] != float64(4) {
+			t.Fatalf("mux = %#v", outbound["mux"])
+		}
+	})
+
+	t.Run("Reality", func(t *testing.T) {
+		subReq := &SubService{}
+		inbound := &model.Inbound{
+			Listen:   "0.0.0.0",
+			Port:     27543,
+			Protocol: model.VLESS,
+			Remark:   "modern-json-reality",
+			Settings: `{"encryption":"none"}`,
+			StreamSettings: `{
+				"network":"tcp",
+				"security":"none",
+				"tcpSettings":{"header":{"type":"none"}},
+				"externalProxy":[
+					{
+						"enabled":true,
+						"remark":"modern-reality",
+						"dest":"reality-edge.example.com",
+						"port":443,
+						"network":"tcp",
+						"security":"reality",
+						"tcpSettings":{"header":{"type":"none"}},
+						"realitySettings":{
+							"serverNames":["reality-sni.example.com"],
+							"shortIds":["ab12cd"],
+							"settings":{
+								"publicKey":"PROFILE_PUBLIC_KEY",
+								"fingerprint":"firefox"
+							}
+						}
+					}
+				]
+			}`,
+		}
+		client := model.Client{
+			ID:    "11111111-2222-4333-8444-555555555555",
+			Email: "modern-reality-user",
+		}
+
+		configs := NewSubJsonService("", "", "", subReq).getConfig(
+			subReq,
+			inbound,
+			client,
+			"panel.example.com",
+		)
+		if len(configs) != 1 {
+			t.Fatalf("len(configs) = %d, want 1", len(configs))
+		}
+
+		outbound := modernProfileJSONOutbound(t, configs[0])
+		settings, _ := outbound["settings"].(map[string]any)
+		if settings["address"] != "reality-edge.example.com" || settings["port"] != float64(443) {
+			t.Fatalf("endpoint settings = %#v", settings)
+		}
+		stream, _ := outbound["streamSettings"].(map[string]any)
+		if stream["security"] != "reality" {
+			t.Fatalf("security = %v", stream["security"])
+		}
+		realitySettings, _ := stream["realitySettings"].(map[string]any)
+		if realitySettings["serverName"] != "reality-sni.example.com" {
+			t.Fatalf("serverName = %v", realitySettings["serverName"])
+		}
+		if realitySettings["shortId"] != "ab12cd" {
+			t.Fatalf("shortId = %v", realitySettings["shortId"])
+		}
+		if realitySettings["publicKey"] != "PROFILE_PUBLIC_KEY" {
+			t.Fatalf("publicKey = %v", realitySettings["publicKey"])
+		}
+	})
+
+	t.Run("Hysteria", func(t *testing.T) {
+		subReq := &SubService{}
+		inbound := &model.Inbound{
+			Listen:   "0.0.0.0",
+			Port:     27543,
+			Protocol: model.Hysteria,
+			Remark:   "modern-json-hysteria",
+			Settings: `{"version":2}`,
+			StreamSettings: `{
+				"network":"hysteria",
+				"security":"tls",
+				"tlsSettings":{
+					"serverName":"base-sni.example.com",
+					"settings":{"fingerprint":"firefox","allowInsecure":false}
+				},
+				"hysteriaSettings":{
+					"udpIdleTimeout":30,
+					"masquerade":{"type":"proxy","url":"https://base.example.com"}
+				},
+				"externalProxy":[
+					{
+						"enabled":true,
+						"remark":"modern-hysteria",
+						"dest":"hy-edge.example.com",
+						"port":2443,
+						"network":"hysteria",
+						"security":"tls",
+						"tlsSettings":{
+							"serverName":"profile-sni.example.com",
+							"alpn":["h3"],
+							"settings":{"fingerprint":"chrome","allowInsecure":true}
+						},
+						"hysteriaSettings":{
+							"udpIdleTimeout":99,
+							"masquerade":{"type":"proxy","url":"https://profile.example.com"}
+						}
+					}
+				]
+			}`,
+		}
+		client := model.Client{
+			Email: "modern-hysteria-user",
+			Auth:  "profile-auth",
+		}
+
+		configs := NewSubJsonService("", "", "", subReq).getConfig(
+			subReq,
+			inbound,
+			client,
+			"panel.example.com",
+		)
+		if len(configs) != 1 {
+			t.Fatalf("len(configs) = %d, want 1", len(configs))
+		}
+
+		outbound := modernProfileJSONOutbound(t, configs[0])
+		settings, _ := outbound["settings"].(map[string]any)
+		if settings["address"] != "hy-edge.example.com" || settings["port"] != float64(2443) {
+			t.Fatalf("endpoint settings = %#v", settings)
+		}
+		stream, _ := outbound["streamSettings"].(map[string]any)
+		tlsSettings, _ := stream["tlsSettings"].(map[string]any)
+		if tlsSettings["serverName"] != "profile-sni.example.com" {
+			t.Fatalf("serverName = %v", tlsSettings["serverName"])
+		}
+		if tlsSettings["fingerprint"] != "chrome" {
+			t.Fatalf("fingerprint = %v", tlsSettings["fingerprint"])
+		}
+		if tlsSettings["allowInsecure"] != true {
+			t.Fatalf("allowInsecure = %v", tlsSettings["allowInsecure"])
+		}
+		hysteriaSettings, _ := stream["hysteriaSettings"].(map[string]any)
+		if hysteriaSettings["auth"] != "profile-auth" {
+			t.Fatalf("auth = %v", hysteriaSettings["auth"])
+		}
+		if hysteriaSettings["udpIdleTimeout"] != float64(99) {
+			t.Fatalf("udpIdleTimeout = %v", hysteriaSettings["udpIdleTimeout"])
+		}
+		masquerade, _ := hysteriaSettings["masquerade"].(map[string]any)
+		if masquerade["url"] != "https://profile.example.com" {
+			t.Fatalf("masquerade = %#v", masquerade)
+		}
+	})
+}

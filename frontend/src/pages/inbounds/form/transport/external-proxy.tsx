@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useFormContext } from 'react-hook-form';
 import { Button, Form, Switch } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 
@@ -20,6 +21,7 @@ function cloneProfile<T>(value: T): T {
 export default function ExternalProxyForm() {
   const { t } = useTranslation();
   const form = Form.useFormInstance();
+  const { setValue: setRHFValue } = useFormContext();
   const watchedParentPort = Form.useWatch('port', form);
   const parentPort = watchedParentPort ?? 443;
   const watchedProfiles = Form.useWatch(
@@ -46,6 +48,11 @@ export default function ExternalProxyForm() {
       && plan.setInboundPort !== current.inboundPort
     ) {
       form.setFieldValue('port', plan.setInboundPort);
+      setRHFValue(
+        'port',
+        plan.setInboundPort,
+        { shouldDirty: true },
+      );
     }
 
     if (
@@ -64,9 +71,22 @@ export default function ExternalProxyForm() {
   ]);
 
   const toggleProfiles = (on: boolean) => {
+    const profiles = on
+      ? [createSubscriptionProfileDraft(parentPort)]
+      : [];
+
     form.setFieldValue(
       ['streamSettings', 'externalProxy'],
-      on ? [createSubscriptionProfileDraft(parentPort)] : [],
+      profiles,
+    );
+
+    setRHFValue(
+      'streamSettings.externalProxy',
+      profiles,
+      {
+        shouldDirty: true,
+        shouldTouch: true,
+      },
     );
   };
 

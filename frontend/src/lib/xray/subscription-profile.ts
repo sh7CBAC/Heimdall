@@ -19,6 +19,8 @@ export function createSubscriptionProfileDraft(
     network: 'same',
     security: 'same',
     forceTls: 'same',
+    overrideSniFromAddress: false,
+    keepSniBlank: false,
     excludeFromSubTypes: [],
     mihomoX25519: false,
     shuffleHost: false,
@@ -88,6 +90,7 @@ function defaultTlsSettings(): Record<string, unknown> {
       fingerprint: 'chrome',
       echConfigList: '',
       pinnedPeerCertSha256: [],
+      verifyPeerCertByName: '',
       allowInsecure: false,
     },
   };
@@ -125,12 +128,39 @@ function applyLegacyTlsFields(profile: MutableProfile, stream: MutableStream): v
     settings.pinnedPeerCertSha256 = [...profile.pinnedPeerCertSha256];
   }
   if (profile.echConfigList) settings.echConfigList = profile.echConfigList;
+  if (profile.verifyPeerCertByName) {
+    settings.verifyPeerCertByName = profile.verifyPeerCertByName;
+  }
   if (typeof profile.allowInsecure === 'boolean') settings.allowInsecure = profile.allowInsecure;
+}
+
+function applySubscriptionProfileSniMode(
+  profile: ExternalProxyEntry,
+  stream: MutableStream,
+  resolvedAddress: string,
+): void {
+  if (stream.security !== 'tls') return;
+
+  const tlsSettings = stream.tlsSettings as
+    | Record<string, unknown>
+    | undefined;
+
+  if (!tlsSettings) return;
+
+  if (profile.keepSniBlank) {
+    tlsSettings.serverName = '';
+    return;
+  }
+
+  if (profile.overrideSniFromAddress) {
+    tlsSettings.serverName = resolvedAddress.trim();
+  }
 }
 
 export function effectiveSubscriptionProfileStream(
   base: StreamSettings,
   profile: ExternalProxyEntry,
+  resolvedAddress = '',
 ): StreamSettings {
   const stream = jsonClone(base) as unknown as MutableStream;
   delete stream.externalProxy;
@@ -184,6 +214,14 @@ export function effectiveSubscriptionProfileStream(
       break;
   }
 
+  applySubscriptionProfileSniMode(
+    profile,
+    stream,
+    resolvedAddress,
+  );
+
+  if (profile.mux) stream.mux = jsonClone(profile.mux);
+  if (profile.sockopt) stream.sockopt = jsonClone(profile.sockopt);
   if (profile.finalmask) stream.finalmask = jsonClone(profile.finalmask);
   return stream as unknown as StreamSettings;
 }
@@ -214,7 +252,11 @@ export function expandSubscriptionProfileEndpoints(
         ? profile.port
         : defaultPort,
       remark: profile.remark ?? '',
-      streamSettings: effectiveSubscriptionProfileStream(streamSettings, profile),
+      streamSettings: effectiveSubscriptionProfileStream(
+        streamSettings,
+        profile,
+        profile.dest?.trim() || defaultAddress,
+      ),
       profile,
     }));
 }

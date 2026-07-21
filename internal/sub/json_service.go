@@ -141,6 +141,10 @@ func (s *SubJsonService) GetJson(subId string, host string) (string, string, err
 
 func (s *SubJsonService) getConfig(subReq *SubService, inbound *model.Inbound, client model.Client, host string) []json_util.RawMessage {
 	var newJsonArray []json_util.RawMessage
+	rawStream := map[string]any{}
+	if err := json.Unmarshal([]byte(inbound.StreamSettings), &rawStream); err != nil || rawStream == nil {
+		rawStream = map[string]any{}
+	}
 	stream := s.streamData(inbound.StreamSettings, subKey(client))
 
 	// When externalProxy is empty the JSON config falls back to a
@@ -151,16 +155,6 @@ func (s *SubJsonService) getConfig(subReq *SubService, inbound *model.Inbound, c
 	defaultDest := subReq.resolveInboundAddress(inbound)
 	if defaultDest == "" {
 		defaultDest = host
-	}
-
-	// Per-inbound xmux takes precedence over the global subJsonMux.
-	// When xmux is present inside xhttpSettings, XHTTP multiplexing
-	// is handled by xmux — don't also set the legacy outbound.Mux.
-	mux := s.mux
-	if xhttp, ok := stream["xhttpSettings"].(map[string]any); ok {
-		if _, hasXmux := xhttp["xmux"]; hasXmux {
-			mux = ""
-		}
 	}
 
 	externalProxies, ok := stream["externalProxy"].([]any)
@@ -183,49 +177,86 @@ func (s *SubJsonService) getConfig(subReq *SubService, inbound *model.Inbound, c
 	network, _ := stream["network"].(string)
 
 	for _, ep := range externalProxies {
-		extPrxy := ep.(map[string]any)
+		extPrxy, ok := ep.(map[string]any)
+		if !ok || extPrxy == nil {
+			continue
+		}
+		if enabled, present := extPrxy["enabled"].(bool); present && !enabled {
+			continue
+		}
 		if endpointExcludedFromSubType(extPrxy, "json") {
 			continue
 		}
+
 		// Expand the host's {{VAR}} remark template for this client (no-op for
 		// the synthetic/legacy entry) before it's used as the config remark.
 		subReq.renderHostRemark(inbound, client, extPrxy, network)
-		inbound.Listen = extPrxy["dest"].(string)
-		inbound.Port = int(extPrxy["port"].(float64))
-		newStream := cloneStreamForExternalProxy(stream)
-		switch extPrxy["forceTls"].(string) {
-		case "tls":
-			if newStream["security"] != "tls" {
-				newStream["security"] = "tls"
-				newStream["tlsSettings"] = map[string]any{}
+
+		dest, _ := extPrxy["dest"].(string)
+		port, _ := extPrxy["port"].(float64)
+		inbound.Listen = dest
+		inbound.Port = int(port)
+
+		modernProfile := isModernSubscriptionProfile(extPrxy)
+		var newStream map[string]any
+		if modernProfile {
+			effectiveStream := effectiveSubscriptionProfileProductionStream(rawStream, extPrxy)
+			encoded, err := json.Marshal(effectiveStream)
+			if err != nil {
+				continue
 			}
-		case "none":
-			if newStream["security"] != "none" {
-				newStream["security"] = "none"
-				delete(newStream, "tlsSettings")
+			newStream = s.streamData(string(encoded), subKey(client))
+			applyHostStreamOverrides(extPrxy, newStream)
+		} else {
+			newStream = cloneStreamForExternalProxy(stream)
+			forceTLS, _ := extPrxy["forceTls"].(string)
+			switch forceTLS {
+			case "tls":
+				if newStream["security"] != "tls" {
+					newStream["security"] = "tls"
+					newStream["tlsSettings"] = map[string]any{}
+				}
+			case "none":
+				if newStream["security"] != "none" {
+					newStream["security"] = "none"
+					delete(newStream, "tlsSettings")
+				}
+			}
+			security, _ := newStream["security"].(string)
+			if hasExternalProxy {
+				applyExternalProxyTLSToStream(extPrxy, newStream, security)
+			}
+			applyHostStreamOverrides(extPrxy, newStream)
+		}
+
+		streamSettings, err := json.MarshalIndent(newStream, "", "  ")
+		if err != nil {
+			continue
+		}
+
+		// Per-inbound xmux takes precedence over the global subJsonMux.
+		// When xmux is present inside xhttpSettings, XHTTP multiplexing
+		// is handled by xmux — don't also set the legacy outbound.Mux.
+		outboundMux := jsonMux(s.mux, hostMuxOverride(extPrxy))
+		if xhttp, ok := newStream["xhttpSettings"].(map[string]any); ok {
+			if _, hasXmux := xhttp["xmux"]; hasXmux {
+				outboundMux = ""
 			}
 		}
-		security, _ := newStream["security"].(string)
-		if hasExternalProxy {
-			applyExternalProxyTLSToStream(extPrxy, newStream, security)
-		}
-		applyHostStreamOverrides(extPrxy, newStream)
-		streamSettings, _ := json.MarshalIndent(newStream, "", "  ")
-		hostMux := hostMuxOverride(extPrxy)
 
 		var newOutbounds []json_util.RawMessage
 
 		switch inbound.Protocol {
 		case "vmess":
-			newOutbounds = append(newOutbounds, s.genVnext(inbound, streamSettings, client, jsonMux(mux, hostMux)))
+			newOutbounds = append(newOutbounds, s.genVnext(inbound, streamSettings, client, outboundMux))
 		case "vless":
 			vc := client
 			vc.ID = applyVlessRoute(client.ID, hostVlessRoute(extPrxy))
-			newOutbounds = append(newOutbounds, s.genVless(subReq, inbound, streamSettings, vc, jsonMux(mux, hostMux)))
+			newOutbounds = append(newOutbounds, s.genVless(subReq, inbound, streamSettings, vc, outboundMux))
 		case "trojan", "shadowsocks":
-			newOutbounds = append(newOutbounds, s.genServer(subReq, inbound, streamSettings, client, jsonMux(mux, hostMux)))
+			newOutbounds = append(newOutbounds, s.genServer(subReq, inbound, streamSettings, client, outboundMux))
 		case "hysteria":
-			newOutbounds = append(newOutbounds, s.genHy(inbound, newStream, client, jsonMux(mux, hostMux)))
+			newOutbounds = append(newOutbounds, s.genHy(inbound, newStream, client, outboundMux))
 		case "wireguard":
 			wgOutbound := s.genWireguard(inbound, client)
 			if wgOutbound == nil {
@@ -242,7 +273,10 @@ func (s *SubJsonService) getConfig(subReq *SubService, inbound *model.Inbound, c
 		newConfigJson["outbounds"] = newOutbounds
 		newConfigJson["remarks"] = subReq.endpointRemark(inbound, client.Email, extPrxy, transport)
 
-		newConfig, _ := json.MarshalIndent(newConfigJson, "", "  ")
+		newConfig, err := json.MarshalIndent(newConfigJson, "", "  ")
+		if err != nil {
+			continue
+		}
 		newJsonArray = append(newJsonArray, newConfig)
 	}
 
@@ -330,8 +364,17 @@ func (s *SubJsonService) tlsData(tData map[string]any) map[string]any {
 
 	tlsData["serverName"] = tData["serverName"]
 	tlsData["alpn"] = tData["alpn"]
-	if fingerprint, ok := tlsClientSettings["fingerprint"].(string); ok {
+	if fingerprint, ok := tData["fingerprint"].(string); ok && fingerprint != "" {
 		tlsData["fingerprint"] = fingerprint
+	}
+	if fingerprint, ok := tlsClientSettings["fingerprint"].(string); ok && fingerprint != "" {
+		tlsData["fingerprint"] = fingerprint
+	}
+	if insecure, ok := tData["allowInsecure"].(bool); ok && insecure {
+		tlsData["allowInsecure"] = true
+	}
+	if insecure, ok := tlsClientSettings["allowInsecure"].(bool); ok && insecure {
+		tlsData["allowInsecure"] = true
 	}
 	if ech, ok := tlsClientSettings["echConfigList"].(string); ok && ech != "" {
 		tlsData["echConfigList"] = ech
@@ -495,7 +538,7 @@ func (s *SubJsonService) genHy(inbound *model.Inbound, newStream map[string]any,
 		outbound.Mux = json_util.RawMessage(mux)
 	}
 
-	var settings, stream map[string]any
+	var settings map[string]any
 	_ = json.Unmarshal([]byte(inbound.Settings), &settings)
 	version, _ := settings["version"].(float64)
 	outbound.Settings = map[string]any{
@@ -504,8 +547,10 @@ func (s *SubJsonService) genHy(inbound *model.Inbound, newStream map[string]any,
 		"port":    inbound.Port,
 	}
 
-	_ = json.Unmarshal([]byte(inbound.StreamSettings), &stream)
-	hyStream := stream["hysteriaSettings"].(map[string]any)
+	hyStream, _ := newStream["hysteriaSettings"].(map[string]any)
+	if hyStream == nil {
+		hyStream = map[string]any{}
+	}
 	outHyStream := map[string]any{
 		"version": int(version),
 		"auth":    client.Auth,

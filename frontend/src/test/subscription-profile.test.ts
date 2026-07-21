@@ -1,6 +1,9 @@
+import { readFileSync } from 'node:fs';
+
 import { describe, expect, it } from 'vitest';
 
 import type { StreamSettings } from '@/schemas/api/inbound';
+import { SubscriptionProfileSockoptSchema } from '@/schemas/protocols/stream/external-proxy';
 import {
   createSubscriptionProfileDraft,
   expandSubscriptionProfileEndpoints,
@@ -28,6 +31,8 @@ describe('subscription profile expansion', () => {
       network: 'same',
       security: 'same',
       forceTls: 'same',
+        overrideSniFromAddress: false,
+        keepSniBlank: false,
       excludeFromSubTypes: [],
       mihomoX25519: false,
       shuffleHost: false,
@@ -246,6 +251,159 @@ describe('subscription profile expansion', () => {
     expect(endpoint.streamSettings.tlsSettings.serverName).toBe('sni.example.com');
     expect(endpoint.streamSettings.tlsSettings.settings.fingerprint).toBe('firefox');
   });
+
+  it('applies profile Mux to the effective client stream', () => {
+    const stream: StreamSettings = {
+      ...baseStream(),
+      externalProxy: [{
+        enabled: true,
+        remark: 'mux-runtime',
+        dest: 'mux.example.com',
+        port: 443,
+        network: 'same',
+        security: 'same',
+        forceTls: 'same',
+        mux: {
+          enabled: true,
+          concurrency: 4,
+          xudpConcurrency: 8,
+          xudpProxyUDP443: 'allow',
+        },
+      }],
+    };
+
+    const [endpoint] = expandSubscriptionProfileEndpoints(
+      stream,
+      'node.example.com',
+      27543,
+    );
+
+    expect(
+      (endpoint.streamSettings as unknown as { mux?: unknown }).mux,
+    ).toEqual({
+      enabled: true,
+      concurrency: 4,
+      xudpConcurrency: 8,
+      xudpProxyUDP443: 'allow',
+    });
+  });
+
+  it('applies SNI modes and legacy certificate-name verification', () => {
+    const overrideStream: StreamSettings = {
+      ...baseStream(),
+      externalProxy: [{
+        enabled: true,
+        remark: 'override-sni',
+        dest: '',
+        port: 443,
+        network: 'same',
+        security: 'tls',
+        forceTls: 'same',
+        overrideSniFromAddress: true,
+        verifyPeerCertByName: 'verify.example.com',
+      }],
+    };
+
+    const [overrideEndpoint] = expandSubscriptionProfileEndpoints(
+      overrideStream,
+      'resolved.example.com',
+      443,
+    );
+
+    if (overrideEndpoint.streamSettings.security !== 'tls') {
+      throw new Error('expected tls');
+    }
+
+    expect(
+      overrideEndpoint.streamSettings.tlsSettings.serverName,
+    ).toBe('resolved.example.com');
+    expect(
+      overrideEndpoint.streamSettings.tlsSettings.settings
+        .verifyPeerCertByName,
+    ).toBe('verify.example.com');
+
+    const blankStream: StreamSettings = {
+      ...baseStream(),
+      externalProxy: [{
+        enabled: true,
+        remark: 'blank-sni',
+        dest: 'edge.example.com',
+        port: 443,
+        network: 'same',
+        security: 'tls',
+        forceTls: 'same',
+        keepSniBlank: true,
+        tlsSettings: {
+          serverName: 'must-be-cleared.example.com',
+          alpn: [],
+          settings: {
+            fingerprint: 'chrome',
+            echConfigList: '',
+            pinnedPeerCertSha256: [],
+            verifyPeerCertByName: '',
+            allowInsecure: false,
+          },
+        },
+      }],
+    };
+
+    const [blankEndpoint] = expandSubscriptionProfileEndpoints(
+      blankStream,
+      'resolved.example.com',
+      443,
+    );
+
+    if (blankEndpoint.streamSettings.security !== 'tls') {
+      throw new Error('expected tls');
+    }
+
+    expect(
+      blankEndpoint.streamSettings.tlsSettings.serverName,
+    ).toBe('');
+  });
+
+  it('applies client Sockopt and strips listener-only keys', () => {
+    const sockopt = SubscriptionProfileSockoptSchema.parse({
+      tcpFastOpen: true,
+      domainStrategy: 'UseIP',
+      acceptProxyProtocol: true,
+      V6Only: true,
+      trustedXForwardedFor: ['127.0.0.1'],
+    });
+
+    expect(sockopt).not.toHaveProperty('acceptProxyProtocol');
+    expect(sockopt).not.toHaveProperty('V6Only');
+    expect(sockopt).not.toHaveProperty('trustedXForwardedFor');
+
+    const stream: StreamSettings = {
+      ...baseStream(),
+      externalProxy: [{
+        enabled: true,
+        remark: 'sockopt',
+        dest: 'sockopt.example.com',
+        port: 443,
+        network: 'same',
+        security: 'same',
+        forceTls: 'same',
+        sockopt,
+      }],
+    };
+
+    const [endpoint] = expandSubscriptionProfileEndpoints(
+      stream,
+      'node.example.com',
+      27543,
+    );
+
+    expect(
+      (endpoint.streamSettings as unknown as {
+        sockopt?: Record<string, unknown>;
+      }).sockopt,
+    ).toMatchObject({
+      tcpFastOpen: true,
+      domainStrategy: 'UseIP',
+    });
+  });
 });
 
 describe('default subscription profile port synchronization', () => {
@@ -323,5 +481,28 @@ describe('default subscription profile port synchronization', () => {
     });
 
     expect(relinked.state.linked).toBe(true);
+  });
+});
+
+
+describe('subscription profile editor protocol binding', () => {
+  it('reads the protocol from the RHF inbound form', () => {
+    const source = readFileSync(
+      new URL(
+        '../pages/inbounds/form/transport/subscription-profile-editor.tsx',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+
+    expect(source).toContain(
+      "const { control } = useFormContext();",
+    );
+    expect(source).toContain(
+      "useWatch({ control, name: 'protocol' })",
+    );
+    expect(source).not.toContain(
+      "Form.useWatch('protocol', form)",
+    );
   });
 });

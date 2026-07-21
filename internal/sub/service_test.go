@@ -1110,3 +1110,34 @@ func TestHysteriaHopPorts(t *testing.T) {
 		})
 	}
 }
+
+func TestExternalProxySNIControls(t *testing.T) {
+	params := map[string]string{"sni": "base.example.com"}
+
+	applyExternalProxyTLSParams(
+		map[string]any{
+			"keepSniBlank": true,
+		},
+		params,
+		"tls",
+	)
+
+	if _, exists := params["sni"]; exists {
+		t.Fatalf("keepSniBlank left sni=%q", params["sni"])
+	}
+
+	params = map[string]string{"sni": "base.example.com"}
+
+	applyExternalProxyTLSParams(
+		map[string]any{
+			"overrideSniFromAddress": true,
+			"dest":                   "edge.example.com",
+		},
+		params,
+		"tls",
+	)
+
+	if params["sni"] != "edge.example.com" {
+		t.Fatalf("override sni=%q", params["sni"])
+	}
+}

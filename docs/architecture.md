@@ -1,6 +1,6 @@
 # 3x-ui — Architecture & Code Map
 
-> Navigation map for contributors and AI coding agents (referenced from `CLAUDE.md`).
+> Navigation map for contributors and AI coding agents (referenced from `docs/development/CLAUDE.md`).
 > Goal: jump to the right file in one hop instead of grepping the whole tree.
 > Tracks the `main` branch — paths reflect the latest changes, so verify against the live
 > tree rather than a pinned release (Go module `github.com/mhsanaei/3x-ui/v3`).
@@ -274,10 +274,10 @@ node heartbeat every 5s, periodic traffic resets (hourly/daily/weekly/monthly). 
 ├── docs/                     # Markdown docs (this file, custom-subscription-templates.md, …)
 ├── media/                    # README images
 │
-├── Dockerfile / docker-compose.yml / DockerEntrypoint.sh / DockerInit.sh   # Container build/run
+├── Dockerfile / docker-compose.yml / packaging/docker/entrypoint.sh / packaging/docker/init.sh   # Container build/run
 ├── install.sh / update.sh / x-ui.sh                        # VPS install + management CLI
 ├── x-ui.service.*  / x-ui.rc                               # systemd units (debian/rhel/arch) + rc script
-├── windows_files/                                          # Windows service support
+├── packaging/windows/                                          # Windows packaging policy and support notes
 └── .github/workflows/        # CI: ci.yml, codeql.yml, docker.yml, release.yml, smoke.yml,
                               #     mutation.yml, cleanup_caches.yml, claude-bot.yml
 ```
@@ -556,7 +556,7 @@ npm run build        # gen:api + vite build → outputs to internal/web/dist (th
 **Full local loop:** `cd frontend && npm run build` (refresh embedded `dist/`) → back to repo
 root → `go build ./...` / `go run main.go`.
 
-**Docker:** `docker compose up -d` (uses `Dockerfile` + `DockerEntrypoint.sh`).
+**Docker:** `docker compose up -d` (uses `Dockerfile` + `packaging/docker/entrypoint.sh`).
 
 **CI** (`.github/workflows/`): `ci.yml` (build/test/lint), `codeql.yml` (security scan),
 `smoke.yml` (smoke tests), `mutation.yml` (mutation testing), `docker.yml` + `release.yml`

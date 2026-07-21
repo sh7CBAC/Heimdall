@@ -28,7 +28,7 @@ COPY --from=frontend /src/internal/web/dist ./internal/web/dist
 ENV CGO_ENABLED=1
 ENV CGO_CFLAGS="-D_LARGEFILE64_SOURCE"
 RUN go build -ldflags "-w -s" -o build/x-ui main.go
-RUN ./DockerInit.sh "$TARGETARCH"
+RUN ./packaging/docker/init.sh "$TARGETARCH"
 
 # ========================================================
 # Stage: Final Image of 3x-ui
@@ -45,13 +45,13 @@ RUN apk add --no-cache --update \
   openssl
 
 COPY --from=builder /app/build/ /app/
-COPY --from=builder /app/DockerEntrypoint.sh /app/
+COPY --from=builder /app/packaging/docker/entrypoint.sh /app/entrypoint.sh
 COPY --from=builder /app/x-ui.sh /usr/bin/x-ui
 COPY --from=builder /app/internal/web/translation /app/internal/web/translation
 
 
 RUN chmod +x \
-  /app/DockerEntrypoint.sh \
+  /app/entrypoint.sh \
   /app/x-ui \
   /usr/bin/x-ui
 
@@ -62,4 +62,4 @@ ENV XUI_DB_DSN=""
 EXPOSE 2053
 VOLUME [ "/etc/x-ui" ]
 CMD [ "./x-ui" ]
-ENTRYPOINT [ "/app/DockerEntrypoint.sh" ]
+ENTRYPOINT [ "/app/entrypoint.sh" ]

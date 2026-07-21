@@ -13,6 +13,7 @@ on:
       - "go.sum"
       - "**.sh"
       - "frontend/**"
+      - "packaging/**"
       - "x-ui.service.debian"
       - "x-ui.service.arch"
       - "x-ui.service.rhel"
@@ -23,6 +24,7 @@ on:
       - "go.sum"
       - "**.sh"
       - "frontend/**"
+      - "packaging/**"
       - "x-ui.service.debian"
       - "x-ui.service.arch"
       - "x-ui.service.rhel"
@@ -116,8 +118,8 @@ jobs:
           cp x-ui.service.arch x-ui/
           cp x-ui.service.rhel x-ui/
           cp x-ui.sh x-ui/
-          cp y-ui.sh x-ui/
-          cp y-ui-migration-center.py x-ui/
+          cp packaging/scripts/y-ui.sh x-ui/y-ui.sh
+          cp packaging/migrations/y-ui-migration-center.py x-ui/y-ui-migration-center.py
           chmod +x x-ui/y-ui.sh x-ui/y-ui-migration-center.py
           mv x-ui/xui-release x-ui/x-ui
           mkdir x-ui/bin
@@ -308,7 +310,7 @@ jobs:
           Remove-Item -Recurse -Force "mtg-tmp", "$MTG_PKG.zip"
 
           cd ..
-          Copy-Item -Path ..\windows_files\* -Destination . -Recurse
+          # Third-party OpenSSL installers are intentionally not bundled in Heimdall release archives.
           cd ..
 
       - name: Package to Zip

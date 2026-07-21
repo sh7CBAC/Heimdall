@@ -147,6 +147,10 @@ func fallbackProxyName(proxy map[string]any, idx int) string {
 }
 
 func (s *SubClashService) getProxies(subReq *SubService, inbound *model.Inbound, client model.Client, host string) []map[string]any {
+	rawStream := map[string]any{}
+	if err := json.Unmarshal([]byte(inbound.StreamSettings), &rawStream); err != nil || rawStream == nil {
+		rawStream = map[string]any{}
+	}
 	stream := s.streamData(inbound.StreamSettings)
 	// For node-managed inbounds the Clash proxy "server" must be the
 	// node's address, not the request host. resolveInboundAddress handles
@@ -173,36 +177,58 @@ func (s *SubClashService) getProxies(subReq *SubService, inbound *model.Inbound,
 
 	proxies := make([]map[string]any, 0, len(externalProxies))
 	for _, ep := range externalProxies {
-		extPrxy := ep.(map[string]any)
+		extPrxy, ok := ep.(map[string]any)
+		if !ok || extPrxy == nil {
+			continue
+		}
+		if enabled, present := extPrxy["enabled"].(bool); present && !enabled {
+			continue
+		}
 		if endpointExcludedFromSubType(extPrxy, "clash") {
 			continue
 		}
+
 		// Expand the host's {{VAR}} remark template for this client (no-op for
 		// the synthetic/legacy entry) before it becomes the proxy name.
 		subReq.renderHostRemark(inbound, client, extPrxy, network)
-		workingInbound := *inbound
-		workingInbound.Listen = extPrxy["dest"].(string)
-		workingInbound.Port = int(extPrxy["port"].(float64))
-		workingStream := cloneStreamForExternalProxy(stream)
 
-		switch extPrxy["forceTls"].(string) {
-		case "tls":
-			if workingStream["security"] != "tls" {
-				workingStream["security"] = "tls"
-				workingStream["tlsSettings"] = map[string]any{}
+		dest, _ := extPrxy["dest"].(string)
+		port, _ := extPrxy["port"].(float64)
+		workingInbound := *inbound
+		workingInbound.Listen = dest
+		workingInbound.Port = int(port)
+
+		var workingStream map[string]any
+		if isModernSubscriptionProfile(extPrxy) {
+			effectiveStream := effectiveSubscriptionProfileProductionStream(rawStream, extPrxy)
+			encoded, err := json.Marshal(effectiveStream)
+			if err != nil {
+				continue
 			}
-		case "none":
-			if workingStream["security"] != "none" {
-				workingStream["security"] = "none"
-				delete(workingStream, "tlsSettings")
-				delete(workingStream, "realitySettings")
+			workingStream = s.streamData(string(encoded))
+			applyHostStreamOverrides(extPrxy, workingStream)
+		} else {
+			workingStream = cloneStreamForExternalProxy(stream)
+			forceTLS, _ := extPrxy["forceTls"].(string)
+			switch forceTLS {
+			case "tls":
+				if workingStream["security"] != "tls" {
+					workingStream["security"] = "tls"
+					workingStream["tlsSettings"] = map[string]any{}
+				}
+			case "none":
+				if workingStream["security"] != "none" {
+					workingStream["security"] = "none"
+					delete(workingStream, "tlsSettings")
+					delete(workingStream, "realitySettings")
+				}
 			}
+			security, _ := workingStream["security"].(string)
+			if hasExternalProxy {
+				applyExternalProxyTLSToStream(extPrxy, workingStream, security)
+			}
+			applyHostStreamOverrides(extPrxy, workingStream)
 		}
-		security, _ := workingStream["security"].(string)
-		if hasExternalProxy {
-			applyExternalProxyTLSToStream(extPrxy, workingStream, security)
-		}
-		applyHostStreamOverrides(extPrxy, workingStream)
 
 		proxy := s.buildProxy(subReq, &workingInbound, client, workingStream, extPrxy)
 		if len(proxy) > 0 {
@@ -221,7 +247,7 @@ func (s *SubClashService) buildProxy(subReq *SubService, inbound *model.Inbound,
 	// Hysteria has its own transport + TLS model, applyTransport /
 	// applySecurity don't fit.
 	if inbound.Protocol == model.Hysteria {
-		return s.buildHysteriaProxy(subReq, inbound, client, ep)
+		return s.buildHysteriaProxy(subReq, inbound, client, stream, ep)
 	}
 	if inbound.Protocol == model.WireGuard {
 		return s.buildWireguardProxy(subReq, inbound, client, ep)
@@ -293,7 +319,13 @@ func (s *SubClashService) buildProxy(subReq *SubService, inbound *model.Inbound,
 // directly instead of going through streamData/tlsData, because those
 // helpers prune fields (like `allowInsecure` / the salamander obfs
 // block) that the hysteria proxy wants preserved.
-func (s *SubClashService) buildHysteriaProxy(subReq *SubService, inbound *model.Inbound, client model.Client, ep map[string]any) map[string]any {
+func (s *SubClashService) buildHysteriaProxy(
+	subReq *SubService,
+	inbound *model.Inbound,
+	client model.Client,
+	stream map[string]any,
+	ep map[string]any,
+) map[string]any {
 	inboundSettings := subReq.linkSettings(inbound)
 
 	proxyType := "hysteria2"
@@ -312,31 +344,34 @@ func (s *SubClashService) buildHysteriaProxy(subReq *SubService, inbound *model.
 		authKey:  client.Auth,
 	}
 
-	var rawStream map[string]any
-	_ = json.Unmarshal([]byte(inbound.StreamSettings), &rawStream)
-
 	// TLS details — hysteria always uses TLS.
-	if tlsSettings, ok := rawStream["tlsSettings"].(map[string]any); ok {
+	if tlsSettings, ok := stream["tlsSettings"].(map[string]any); ok {
 		if serverName, ok := tlsSettings["serverName"].(string); ok && serverName != "" {
 			proxy["sni"] = serverName
 		}
 		if alpnList, ok := tlsSettings["alpn"].([]any); ok && len(alpnList) > 0 {
 			out := make([]string, 0, len(alpnList))
 			for _, a := range alpnList {
-				if s, ok := a.(string); ok && s != "" {
-					out = append(out, s)
+				if value, ok := a.(string); ok && value != "" {
+					out = append(out, value)
 				}
 			}
 			if len(out) > 0 {
 				proxy["alpn"] = out
 			}
 		}
+		if insecure, ok := tlsSettings["allowInsecure"].(bool); ok && insecure {
+			proxy["skip-cert-verify"] = true
+		}
+		if fingerprint, ok := tlsSettings["fingerprint"].(string); ok && fingerprint != "" {
+			proxy["client-fingerprint"] = fingerprint
+		}
 		if inner, ok := tlsSettings["settings"].(map[string]any); ok {
 			if insecure, ok := inner["allowInsecure"].(bool); ok && insecure {
 				proxy["skip-cert-verify"] = true
 			}
-			if fp, ok := inner["fingerprint"].(string); ok && fp != "" {
-				proxy["client-fingerprint"] = fp
+			if fingerprint, ok := inner["fingerprint"].(string); ok && fingerprint != "" {
+				proxy["client-fingerprint"] = fingerprint
 			}
 		}
 	}
@@ -346,7 +381,7 @@ func (s *SubClashService) buildHysteriaProxy(subReq *SubService, inbound *model.
 
 	// Salamander obfs (Hysteria2). Read the same finalmask.udp[salamander]
 	// block the subscription link generator uses.
-	if finalmask, ok := rawStream["finalmask"].(map[string]any); ok {
+	if finalmask, ok := stream["finalmask"].(map[string]any); ok {
 		if udpMasks, ok := finalmask["udp"].([]any); ok {
 			for _, m := range udpMasks {
 				mask, _ := m.(map[string]any)
@@ -354,9 +389,9 @@ func (s *SubClashService) buildHysteriaProxy(subReq *SubService, inbound *model.
 					continue
 				}
 				settings, _ := mask["settings"].(map[string]any)
-				if pw, ok := settings["password"].(string); ok && pw != "" {
+				if password, ok := settings["password"].(string); ok && password != "" {
 					proxy["obfs"] = "salamander"
-					proxy["obfs-password"] = pw
+					proxy["obfs-password"] = password
 					break
 				}
 			}
@@ -365,7 +400,7 @@ func (s *SubClashService) buildHysteriaProxy(subReq *SubService, inbound *model.
 
 	// UDP port hopping. mihomo reads the range from a dedicated `ports`
 	// field (the base `port` stays as the redirect target).
-	if hopPorts := hysteriaHopPorts(rawStream); hopPorts != "" {
+	if hopPorts := hysteriaHopPorts(stream); hopPorts != "" {
 		proxy["ports"] = hopPorts
 	}
 
@@ -679,13 +714,16 @@ func (s *SubClashService) applySecurity(proxy map[string]any, security string, s
 			if alpn, ok := externalProxyALPNList(tlsSettings["alpn"]); ok {
 				out := make([]string, 0, len(alpn))
 				for _, item := range alpn {
-					if s, ok := item.(string); ok && s != "" {
-						out = append(out, s)
+					if value, ok := item.(string); ok && value != "" {
+						out = append(out, value)
 					}
 				}
 				if len(out) > 0 {
 					proxy["alpn"] = out
 				}
+			}
+			if insecure, ok := tlsSettings["allowInsecure"].(bool); ok && insecure {
+				proxy["skip-cert-verify"] = true
 			}
 			if inner, ok := tlsSettings["settings"].(map[string]any); ok {
 				if insecure, ok := inner["allowInsecure"].(bool); ok && insecure {
@@ -745,8 +783,17 @@ func (s *SubClashService) tlsData(tData map[string]any) map[string]any {
 	tlsClientSettings, _ := tData["settings"].(map[string]any)
 	tlsData["serverName"] = tData["serverName"]
 	tlsData["alpn"] = tData["alpn"]
-	if fingerprint, ok := tlsClientSettings["fingerprint"].(string); ok {
+	if fingerprint, ok := tData["fingerprint"].(string); ok && fingerprint != "" {
 		tlsData["fingerprint"] = fingerprint
+	}
+	if fingerprint, ok := tlsClientSettings["fingerprint"].(string); ok && fingerprint != "" {
+		tlsData["fingerprint"] = fingerprint
+	}
+	if insecure, ok := tData["allowInsecure"].(bool); ok && insecure {
+		tlsData["allowInsecure"] = true
+	}
+	if insecure, ok := tlsClientSettings["allowInsecure"].(bool); ok && insecure {
+		tlsData["allowInsecure"] = true
 	}
 	if pins, ok := tlsClientSettings["pinnedPeerCertSha256"].([]any); ok && len(pins) > 0 {
 		tlsData["pin-sha256"] = pins

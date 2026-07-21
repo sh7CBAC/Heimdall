@@ -199,9 +199,14 @@ export default function InboundFormModal({
   const { t } = useTranslation();
   const [messageApi, messageContextHolder] = message.useMessage();
   const methods = useForm<InboundFormValues>({ defaultValues: buildAddModeValues() });
+  const [profileForm] = Form.useForm();
   const setV = methods.setValue as unknown as (name: string, value: unknown) => void;
   const getV = methods.getValues as unknown as (name?: string) => unknown;
   const control = methods.control;
+  const watchedInboundPort = useWatch({
+    control,
+    name: 'port',
+  });
   const [saving, setSaving] = useState(false);
   const [scanning, setScanning] = useState(false);
   const [scanResult, setScanResult] = useState<RealityScanResult | null>(null);
@@ -364,6 +369,18 @@ export default function InboundFormModal({
       ? rawInboundToFormValues(dbInbound)
       : buildAddModeValues();
     methods.reset(initial);
+
+    profileForm.resetFields();
+    profileForm.setFieldsValue({
+      port: initial.port,
+      streamSettings: {
+        externalProxy: Array.isArray(
+          initial.streamSettings?.externalProxy,
+        )
+          ? initial.streamSettings.externalProxy
+          : [],
+      },
+    });
     setScanResult(null);
     const initialTag = (initial.tag ?? '') as string;
     autoTagRef.current = isAutoInboundTag(initialTag, {
@@ -385,7 +402,16 @@ export default function InboundFormModal({
     }
 
     /* eslint-disable-next-line react-hooks/exhaustive-deps */
-  }, [open, mode, dbInbound, methods]);
+    }, [open, mode, dbInbound, methods, profileForm]);
+
+    useEffect(() => {
+      if (!open) return;
+
+      profileForm.setFieldValue(
+        'port',
+        watchedInboundPort,
+      );
+    }, [open, profileForm, watchedInboundPort]);
 
   useEffect(() => {
     if (!open) return;
@@ -476,6 +502,17 @@ export default function InboundFormModal({
      * update wire payload never silently drops every client on save.
      */
     const values = methods.getValues() as InboundFormValues;
+    const currentProfiles = profileForm.getFieldValue([
+      'streamSettings',
+      'externalProxy',
+    ]);
+
+    values.streamSettings = {
+      ...(values.streamSettings ?? {}),
+      externalProxy: Array.isArray(currentProfiles)
+        ? currentProfiles
+        : [],
+    };
     const parsed = InboundFormSchema.safeParse(values);
     if (!parsed.success) {
       const issues = parsed.error.issues;
@@ -951,6 +988,19 @@ export default function InboundFormModal({
       >
         <FormProvider {...methods}>
           <Form
+            form={profileForm}
+            onValuesChange={(_changedValues, allValues) => {
+              const profiles = (
+                allValues.streamSettings as {
+                  externalProxy?: unknown[];
+                } | undefined
+              )?.externalProxy;
+
+              setV(
+                'streamSettings.externalProxy',
+                Array.isArray(profiles) ? profiles : [],
+              );
+            }}
             colon={false}
             labelCol={{ sm: { span: 8 } }}
             wrapperCol={{ sm: { span: 14 } }}

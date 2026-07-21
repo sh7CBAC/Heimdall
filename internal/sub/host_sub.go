@@ -152,6 +152,12 @@ func endpointExcludedFromSubType(ep map[string]any, format string) bool {
 // hostMuxOverride returns a host's muxParams when it is valid JSON, else "".
 // Used to override the JSON outbound's mux for that host.
 func hostMuxOverride(ep map[string]any) string {
+	if mux, ok := ep["mux"].(map[string]any); ok && len(mux) > 0 {
+		if data, err := json.Marshal(mux); err == nil {
+			return string(data)
+		}
+	}
+
 	mp, ok := ep["muxParams"].(string)
 	if ok && mp != "" && json.Valid([]byte(mp)) {
 		return mp
@@ -163,34 +169,51 @@ func hostMuxOverride(ep map[string]any) string {
 // per-host stream the JSON/Clash renderers build: sockoptParams (re-added since
 // the base stream strips sockopt) and finalMask. No-op for legacy externalProxy
 // entries (which never carry these keys), so existing output is unchanged.
+func clientSockoptOverride(value any) map[string]any {
+	sockopt, ok := value.(map[string]any)
+	if !ok || len(sockopt) == 0 {
+		return nil
+	}
+
+	cloned, _ := deepCloneJSON(sockopt).(map[string]any)
+	if cloned == nil {
+		return nil
+	}
+
+	delete(cloned, "acceptProxyProtocol")
+	delete(cloned, "V6Only")
+	delete(cloned, "trustedXForwardedFor")
+
+	if len(cloned) == 0 {
+		return nil
+	}
+	return cloned
+}
+
 func applyHostStreamOverrides(ep map[string]any, stream map[string]any) {
-	if sp, ok := ep["sockoptParams"].(string); ok && sp != "" {
-		var sockopt map[string]any
-		if json.Unmarshal([]byte(sp), &sockopt) == nil && len(sockopt) > 0 {
-			stream["sockopt"] = sockopt
+	if sockopt := clientSockoptOverride(ep["sockopt"]); sockopt != nil {
+		stream["sockopt"] = sockopt
+	} else if sp, ok := ep["sockoptParams"].(string); ok && sp != "" {
+		var decoded map[string]any
+		if json.Unmarshal([]byte(sp), &decoded) == nil {
+			if sockopt := clientSockoptOverride(decoded); sockopt != nil {
+				stream["sockopt"] = sockopt
+			}
 		}
 	}
-	// Host finalmask: merge the host's masks into the stream's finalmask (the
-	// JSON renderer consumes streamSettings["finalmask"]; clash ignores it).
-	if fm, ok := ep["finalMask"].(string); ok && fm != "" {
+
+	if masks, ok := ep["finalmask"].(map[string]any); ok && len(masks) > 0 {
+		stream["finalmask"] = mergeFinalMask(
+			stream["finalmask"],
+			masks,
+		)
+	} else if fm, ok := ep["finalMask"].(string); ok && fm != "" {
 		var masks map[string]any
 		if json.Unmarshal([]byte(fm), &masks) == nil && len(masks) > 0 {
-			merged := mergeFinalMask(stream["finalmask"], masks)
-			if len(merged) > 0 {
-				stream["finalmask"] = merged
-			}
-		}
-	}
-	// Reality SNI override (host only): JSON realityData reads serverNames and
-	// clash reads serverName, so set both forms.
-	if isHostEndpoint(ep) {
-		if sec, _ := stream["security"].(string); sec == "reality" {
-			if rs, ok := stream["realitySettings"].(map[string]any); ok && rs != nil {
-				if sni, ok := externalProxySNI(ep); ok {
-					rs["serverName"] = sni
-					rs["serverNames"] = []any{sni}
-				}
-			}
+			stream["finalmask"] = mergeFinalMask(
+				stream["finalmask"],
+				masks,
+			)
 		}
 	}
 }

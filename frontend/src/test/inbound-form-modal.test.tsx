@@ -1,4 +1,10 @@
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+
+vi.mock('@/api/queries/useOutboundTags', () => ({
+  useOutboundTagGroups: () => ({
+    data: { outbounds: [], balancers: [] },
+  }),
+}));
 import { screen, act, render, cleanup } from '@testing-library/react';
 
 import InboundFormModal, { buildAddModeValues } from '@/pages/inbounds/form/InboundFormModal';

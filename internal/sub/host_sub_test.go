@@ -385,3 +385,41 @@ func TestSub_ExcludeFromSubTypes(t *testing.T) {
 		t.Fatalf("host excluded from clash must not appear in GetClash:\n%s", yaml)
 	}
 }
+
+func TestSub_SubscriptionProfileClientStreamOverridesJSON(t *testing.T) {
+	seedSubDB(t)
+
+	stream := `{"network":"tcp","security":"none","tcpSettings":{"header":{"type":"none"}},"externalProxy":[{"enabled":true,"forceTls":"same","dest":"profile.cdn.com","port":8443,"remark":"profile-client-overrides","sockopt":{"tcpFastOpen":true,"domainStrategy":"UseIP","acceptProxyProtocol":true,"V6Only":true,"trustedXForwardedFor":["127.0.0.1"]},"mux":{"enabled":true,"concurrency":4,"xudpConcurrency":8,"xudpProxyUDP443":"allow"},"finalmask":{"tcp":[{"type":"fragment"}]}}]}`
+
+	seedSubInbound(t, "s1", "profile-overrides", 4462, 1, stream)
+
+	service := NewSubJsonService("", "", "", NewSubService(""))
+	out, _, err := service.GetJson("s1", "req.example.com")
+	if err != nil {
+		t.Fatalf("GetJson: %v", err)
+	}
+
+	for _, want := range []string{
+		`"sockopt"`,
+		`"tcpFastOpen": true`,
+		`"domainStrategy": "UseIP"`,
+		`"mux"`,
+		`"concurrency": 4`,
+		`"finalmask"`,
+		`"type": "fragment"`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("JSON is missing %q:\n%s", want, out)
+		}
+	}
+
+	for _, forbidden := range []string{
+		`"acceptProxyProtocol"`,
+		`"V6Only"`,
+		`"trustedXForwardedFor"`,
+	} {
+		if strings.Contains(out, forbidden) {
+			t.Fatalf("listener-only Sockopt key leaked %q:\n%s", forbidden, out)
+		}
+	}
+}

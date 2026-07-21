@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useFormContext, useWatch } from 'react-hook-form';
 import {
   Alert,
   Button,
@@ -25,6 +26,7 @@ import {
 
 import { HeaderMapEditor } from '@/components/form';
 import { FinalMaskForm } from '@/lib/xray/forms/transport';
+import ClientSockoptForm from '@/pages/hosts/json-forms/HostSockoptForm';
 import { canEnableReality, canEnableTls } from '@/lib/xray/protocol-capabilities';
 import { ALPN_OPTION, UTLS_FINGERPRINT } from '@/schemas/primitives';
 import {
@@ -111,7 +113,8 @@ export default function SubscriptionProfileEditor({
     [fieldName],
   );
 
-  const protocol = (Form.useWatch('protocol', form) ?? '') as string;
+  const { control } = useFormContext();
+  const protocol = (useWatch({ control, name: 'protocol' }) ?? '') as string;
   const parentNetwork = (Form.useWatch(['streamSettings', 'network'], form) ?? 'tcp') as string;
   const parentSecurity = (Form.useWatch(['streamSettings', 'security'], form) ?? 'none') as string;
   const enabled = Form.useWatch([...base, 'enabled'], form);
@@ -124,6 +127,10 @@ export default function SubscriptionProfileEditor({
   const mux = Form.useWatch([...base, 'mux'], { form, preserve: true }) as
     | { enabled?: boolean; concurrency?: number; xudpConcurrency?: number; xudpProxyUDP443?: string }
     | undefined;
+  const sockopt = Form.useWatch(
+    [...base, 'sockopt'],
+    { form, preserve: true },
+  ) as Record<string, unknown> | undefined;
   const muxMode = mux === undefined ? 'same' : (mux.enabled === false ? 'disabled' : 'enabled');
 
   const effectiveNetwork = selectedNetwork === 'same' ? parentNetwork : selectedNetwork;
@@ -156,6 +163,10 @@ export default function SubscriptionProfileEditor({
         echConfigList: form.getFieldValue([...base, 'echConfigList']) ?? '',
         pinnedPeerCertSha256:
           form.getFieldValue([...base, 'pinnedPeerCertSha256']) ?? [],
+          verifyPeerCertByName:
+            form.getFieldValue(
+              [...base, 'verifyPeerCertByName'],
+            ) ?? '',
         allowInsecure: form.getFieldValue([...base, 'allowInsecure']) ?? false,
       },
     });
@@ -454,6 +465,28 @@ export default function SubscriptionProfileEditor({
               </Field>
             </div>
           )}
+            <ClientSockoptForm
+              value={sockopt ? JSON.stringify(sockopt) : ''}
+              onChange={(next) => {
+                if (!next) {
+                  form.setFieldValue(
+                    [...base, 'sockopt'],
+                    undefined,
+                  );
+                  return;
+                }
+
+                try {
+                  form.setFieldValue(
+                    [...base, 'sockopt'],
+                    JSON.parse(next) as Record<string, unknown>,
+                  );
+                } catch {
+                  // The isolated adapter emits valid JSON.
+                }
+              }}
+            />
+
             <div className="ext-proxy-grid ext-proxy-grid--three">
               <Field
                 label={t('pages.hosts.fields.excludeFromSubTypes')}
@@ -864,6 +897,14 @@ function SecuritySettingsFields({
   generateRandomPin: () => void;
 }) {
   const { t } = useTranslation();
+  const overrideSniFromAddress = Form.useWatch(
+    [...absoluteBase, 'overrideSniFromAddress'],
+    form,
+  ) === true;
+  const keepSniBlank = Form.useWatch(
+    [...absoluteBase, 'keepSniBlank'],
+    form,
+  ) === true;
 
   if (security === 'none') {
     return <Alert type="info" showIcon title={t('pages.inbounds.form.profileSecurityDisabled')} />;
@@ -874,8 +915,44 @@ function SecuritySettingsFields({
       <>
         <div className="ext-proxy-grid ext-proxy-grid--three">
           <Field label="SNI">
-            <Form.Item name={[fieldName, 'tlsSettings', 'serverName']} noStyle><Input /></Form.Item>
+              <Form.Item name={[fieldName, 'tlsSettings', 'serverName']} noStyle><Input disabled={overrideSniFromAddress || keepSniBlank} /></Form.Item>
           </Field>
+            <Field label={t('pages.hosts.fields.overrideSniFromAddress')}>
+              <Form.Item
+                name={[fieldName, 'overrideSniFromAddress']}
+                valuePropName="checked"
+                noStyle
+              >
+                <Switch
+                  onChange={(checked) => {
+                    if (checked) {
+                      form.setFieldValue(
+                        [...absoluteBase, 'keepSniBlank'],
+                        false,
+                      );
+                    }
+                  }}
+                />
+              </Form.Item>
+            </Field>
+            <Field label={t('pages.hosts.fields.keepSniBlank')}>
+              <Form.Item
+                name={[fieldName, 'keepSniBlank']}
+                valuePropName="checked"
+                noStyle
+              >
+                <Switch
+                  onChange={(checked) => {
+                    if (checked) {
+                      form.setFieldValue(
+                        [...absoluteBase, 'overrideSniFromAddress'],
+                        false,
+                      );
+                    }
+                  }}
+                />
+              </Form.Item>
+            </Field>
           <Field label={t('pages.inbounds.form.fingerprint')}>
             <Form.Item name={[fieldName, 'tlsSettings', 'settings', 'fingerprint']} noStyle>
               <Select options={Object.values(UTLS_FINGERPRINT).map((value) => ({ value, label: value }))} />
@@ -901,6 +978,22 @@ function SecuritySettingsFields({
           <Field label={t('pages.inbounds.form.echConfig')}>
             <Form.Item name={[fieldName, 'tlsSettings', 'settings', 'echConfigList']} noStyle><Input /></Form.Item>
           </Field>
+            <Field
+              label={t('pages.inbounds.form.verifyPeerCertByName')}
+              hint={t('pages.inbounds.form.verifyPeerCertByNameTip')}
+            >
+              <Form.Item
+                name={[
+                  fieldName,
+                  'tlsSettings',
+                  'settings',
+                  'verifyPeerCertByName',
+                ]}
+                noStyle
+              >
+                <Input />
+              </Form.Item>
+            </Field>
         </div>
         <Field label={t('pages.inbounds.form.pinnedPeerCertSha256')}>
           <Space.Compact block>

@@ -289,3 +289,151 @@ func TestExpandSubscriptionEndpoints_TwoInboundsWithThreeProfilesProduceSixConfi
 		t.Fatalf("total configurations = %d, want exactly 6", total)
 	}
 }
+
+func TestEffectiveSubscriptionProfileStream_SNIParity(t *testing.T) {
+	base := map[string]any{
+		"network":  "tcp",
+		"security": "none",
+		"tcpSettings": map[string]any{
+			"header": map[string]any{"type": "none"},
+		},
+	}
+
+	override := effectiveSubscriptionProfileStream(
+		base,
+		map[string]any{
+			"dest":                   "resolved.example.com",
+			"security":               "tls",
+			"overrideSniFromAddress": true,
+			"verifyPeerCertByName":   "verify.example.com",
+		},
+	)
+
+	overrideTLS, _ := override["tlsSettings"].(map[string]any)
+	if overrideTLS["serverName"] != "resolved.example.com" {
+		t.Fatalf("override serverName = %v", overrideTLS["serverName"])
+	}
+
+	overrideSettings, _ := overrideTLS["settings"].(map[string]any)
+	if overrideSettings["verifyPeerCertByName"] != "verify.example.com" {
+		t.Fatalf(
+			"verifyPeerCertByName = %v",
+			overrideSettings["verifyPeerCertByName"],
+		)
+	}
+
+	blank := effectiveSubscriptionProfileStream(
+		base,
+		map[string]any{
+			"dest":         "edge.example.com",
+			"security":     "tls",
+			"keepSniBlank": true,
+			"tlsSettings": map[string]any{
+				"serverName": "must-be-cleared.example.com",
+				"settings":   map[string]any{},
+			},
+		},
+	)
+
+	blankTLS, _ := blank["tlsSettings"].(map[string]any)
+	if blankTLS["serverName"] != "" {
+		t.Fatalf("blank serverName = %v", blankTLS["serverName"])
+	}
+}
+
+func TestEffectiveSubscriptionProfileStream_ClientSockopt(t *testing.T) {
+	base := map[string]any{
+		"network":  "tcp",
+		"security": "none",
+		"tcpSettings": map[string]any{
+			"header": map[string]any{"type": "none"},
+		},
+	}
+
+	stream := effectiveSubscriptionProfileStream(
+		base,
+		map[string]any{
+			"sockopt": map[string]any{
+				"tcpFastOpen":          true,
+				"domainStrategy":       "UseIP",
+				"acceptProxyProtocol":  true,
+				"V6Only":               true,
+				"trustedXForwardedFor": []any{"127.0.0.1"},
+			},
+		},
+	)
+
+	sockopt, _ := stream["sockopt"].(map[string]any)
+	if sockopt["tcpFastOpen"] != true {
+		t.Fatalf("tcpFastOpen = %v", sockopt["tcpFastOpen"])
+	}
+	if sockopt["domainStrategy"] != "UseIP" {
+		t.Fatalf("domainStrategy = %v", sockopt["domainStrategy"])
+	}
+
+	for _, key := range []string{
+		"acceptProxyProtocol",
+		"V6Only",
+		"trustedXForwardedFor",
+	} {
+		if _, exists := sockopt[key]; exists {
+			t.Fatalf("listener-only Sockopt key leaked: %s", key)
+		}
+	}
+}
+
+func TestModernSubscriptionProfileBoundary(t *testing.T) {
+	legacy := map[string]any{
+		"forceTls": "tls",
+		"dest":     "legacy.example.com",
+		"port":     float64(443),
+		"remark":   "legacy",
+		"sni":      "legacy-sni.example.com",
+	}
+	if isModernSubscriptionProfile(legacy) {
+		t.Fatal("legacy external proxy was classified as modern")
+	}
+
+	managedHost := map[string]any{
+		"isHost":   true,
+		"network":  "ws",
+		"security": "tls",
+	}
+	if isModernSubscriptionProfile(managedHost) {
+		t.Fatal("managed host was classified as modern")
+	}
+
+	modern := map[string]any{
+		"network":  "ws",
+		"security": "tls",
+	}
+	if !isModernSubscriptionProfile(modern) {
+		t.Fatal("modern subscription profile was not detected")
+	}
+
+	base := map[string]any{
+		"network":  "tcp",
+		"security": "none",
+		"tcpSettings": map[string]any{
+			"header": map[string]any{"type": "none"},
+		},
+	}
+	productionStream := effectiveSubscriptionProfileProductionStream(
+		base,
+		map[string]any{
+			"network": "ws",
+			"sockopt": map[string]any{
+				"tcpFastOpen": true,
+			},
+			"finalmask": map[string]any{
+				"tcp": []any{map[string]any{"type": "sudoku"}},
+			},
+		},
+	)
+	if _, exists := productionStream["sockopt"]; exists {
+		t.Fatal("production pre-normalization stream must defer profile sockopt")
+	}
+	if _, exists := productionStream["finalmask"]; exists {
+		t.Fatal("production pre-normalization stream must defer profile finalmask")
+	}
+}
