@@ -45,3 +45,5 @@ docker-compose.override.yml
 
 # Local third-party Windows installers must never be committed.
 /packaging/windows/vendor/
+!packaging/release/
+!packaging/release/build-linux-amd64.sh
