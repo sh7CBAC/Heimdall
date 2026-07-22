@@ -324,7 +324,7 @@ do
         "$STAGE/x-ui/bin/$name"
 done
 
-printf 'VERSION=%s\n' "$VERSION" \
+printf '%s\n' "$VERSION" \
     > "$STAGE/x-ui/RELEASE_VERSION"
 
 cat > "$STAGE/x-ui/RELEASE_MANIFEST" <<MANIFEST
