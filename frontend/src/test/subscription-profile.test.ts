@@ -1,0 +1,508 @@
+import { readFileSync } from 'node:fs';
+
+import { describe, expect, it } from 'vitest';
+
+import type { StreamSettings } from '@/schemas/api/inbound';
+import { SubscriptionProfileSockoptSchema } from '@/schemas/protocols/stream/external-proxy';
+import {
+  createSubscriptionProfileDraft,
+  expandSubscriptionProfileEndpoints,
+  planDefaultSubscriptionPortSync,
+} from '@/lib/xray/subscription-profile';
+
+function baseStream(): StreamSettings {
+  return {
+    network: 'tcp',
+    tcpSettings: {
+      acceptProxyProtocol: false,
+      header: { type: 'none' },
+    },
+    security: 'none',
+  };
+}
+
+describe('subscription profile expansion', () => {
+  it('creates a safe editable profile draft', () => {
+    expect(createSubscriptionProfileDraft(8443)).toEqual({
+      enabled: true,
+      remark: '',
+      dest: '',
+      port: 8443,
+      network: 'same',
+      security: 'same',
+      forceTls: 'same',
+        overrideSniFromAddress: false,
+        keepSniBlank: false,
+      excludeFromSubTypes: [],
+      mihomoX25519: false,
+      shuffleHost: false,
+    });
+    expect(createSubscriptionProfileDraft(0).port).toBe(443);
+  });
+
+  it('keeps the legacy single default configuration when profiles are absent', () => {
+    const endpoints = expandSubscriptionProfileEndpoints(baseStream(), 'node.example.com', 27543);
+
+    expect(endpoints).toHaveLength(1);
+    expect(endpoints[0]).toMatchObject({
+      address: 'node.example.com',
+      port: 27543,
+      remark: '',
+      profile: null,
+    });
+    expect(endpoints[0].streamSettings.externalProxy).toBeUndefined();
+  });
+
+  it('inherits the resolved share address when a profile destination is blank', () => {
+    const stream: StreamSettings = {
+      ...baseStream(),
+      externalProxy: [
+        {
+          enabled: true,
+          remark: 'empty',
+          dest: '',
+          port: 443,
+          network: 'same',
+          security: 'same',
+          forceTls: 'same',
+        },
+        {
+          enabled: true,
+          remark: 'whitespace',
+          dest: '   ',
+          port: 8443,
+          network: 'same',
+          security: 'same',
+          forceTls: 'same',
+        },
+        {
+          enabled: true,
+          remark: 'override',
+          dest: 'cdn.example.com',
+          port: 9443,
+          network: 'same',
+          security: 'same',
+          forceTls: 'same',
+        },
+      ],
+    };
+
+    const endpoints = expandSubscriptionProfileEndpoints(
+      stream,
+      'resolved-node.example.com',
+      27543,
+    );
+
+    expect(endpoints.map((endpoint) => endpoint.address)).toEqual([
+      'resolved-node.example.com',
+      'resolved-node.example.com',
+      'cdn.example.com',
+    ]);
+  });
+
+  it('filters disabled profiles and applies independent WS/TLS settings', () => {
+    const stream: StreamSettings = {
+      ...baseStream(),
+      externalProxy: [
+        {
+          enabled: false,
+          remark: 'disabled',
+          dest: 'disabled.example.com',
+          port: 443,
+          network: 'same',
+          security: 'same',
+          forceTls: 'same',
+        },
+        {
+          enabled: true,
+          remark: 'ws-tls',
+          dest: 'cdn.example.com',
+          port: 8443,
+          network: 'ws',
+          security: 'tls',
+          forceTls: 'same',
+          wsSettings: {
+            acceptProxyProtocol: false,
+            path: '/secx',
+            host: 'origin.example.com',
+            headers: {},
+            heartbeatPeriod: 0,
+          },
+          tlsSettings: {
+            serverName: 'sni.example.com',
+            alpn: ['h2'],
+            settings: {
+              fingerprint: 'chrome',
+              echConfigList: '',
+              pinnedPeerCertSha256: [],
+      verifyPeerCertByName: '',
+              allowInsecure: true,
+            },
+          },
+        },
+      ],
+    };
+
+    const endpoints = expandSubscriptionProfileEndpoints(stream, 'node.example.com', 27543);
+
+    expect(endpoints).toHaveLength(1);
+    expect(endpoints[0].address).toBe('cdn.example.com');
+    expect(endpoints[0].port).toBe(8443);
+    expect(endpoints[0].streamSettings.network).toBe('ws');
+    expect(endpoints[0].streamSettings.security).toBe('tls');
+    if (endpoints[0].streamSettings.network !== 'ws') throw new Error('expected ws');
+    expect(endpoints[0].streamSettings.wsSettings.path).toBe('/secx');
+    expect('tcpSettings' in endpoints[0].streamSettings).toBe(false);
+    if (endpoints[0].streamSettings.security !== 'tls') throw new Error('expected tls');
+    expect(endpoints[0].streamSettings.tlsSettings.serverName).toBe('sni.example.com');
+  });
+
+  it('preserves a profile-specific Mux override for JSON subscription generation', () => {
+    const stream: StreamSettings = {
+      ...baseStream(),
+      externalProxy: [
+        {
+          enabled: true,
+          remark: 'mux',
+          dest: 'mux.example.com',
+          port: 443,
+          network: 'same',
+          security: 'same',
+          forceTls: 'same',
+          mux: {
+            enabled: true,
+            concurrency: 4,
+            xudpConcurrency: 8,
+            xudpProxyUDP443: 'allow',
+          },
+        },
+      ],
+    };
+
+    const [endpoint] = expandSubscriptionProfileEndpoints(stream, 'node.example.com', 27543);
+    expect(endpoint.profile?.mux).toEqual({
+      enabled: true,
+      concurrency: 4,
+      xudpConcurrency: 8,
+      xudpProxyUDP443: 'allow',
+    });
+  });
+
+  it('expands two inbounds with three profiles into exactly six endpoints', () => {
+    const withProfiles = (prefix: string): StreamSettings => ({
+      ...baseStream(),
+      externalProxy: [1, 2, 3].map((index) => ({
+        enabled: true,
+        remark: `${prefix}${index}`,
+        dest: `${prefix}${index}.example.com`,
+        port: 443,
+        network: 'same' as const,
+        security: 'same' as const,
+        forceTls: 'same' as const,
+      })),
+    });
+
+    const total = [withProfiles('a'), withProfiles('b')]
+      .flatMap((stream) => expandSubscriptionProfileEndpoints(stream, 'node.example.com', 27543));
+    expect(total).toHaveLength(6);
+  });
+
+  it('returns no configurations when a configured profile list is fully disabled', () => {
+    const stream: StreamSettings = {
+      ...baseStream(),
+      externalProxy: [
+        {
+          enabled: false,
+          remark: 'one',
+          dest: 'one.example.com',
+          port: 443,
+          network: 'same',
+          security: 'same',
+          forceTls: 'same',
+        },
+      ],
+    };
+
+    expect(expandSubscriptionProfileEndpoints(stream, 'node.example.com', 27543)).toEqual([]);
+  });
+
+  it('keeps legacy forceTls/SNI fields working', () => {
+    const stream: StreamSettings = {
+      ...baseStream(),
+      externalProxy: [
+        {
+          enabled: true,
+          remark: 'legacy',
+          dest: 'legacy.example.com',
+          port: 443,
+          network: 'same',
+          security: 'same',
+          forceTls: 'tls',
+          sni: 'sni.example.com',
+          fingerprint: 'firefox',
+          alpn: ['h2'],
+        },
+      ],
+    };
+
+    const [endpoint] = expandSubscriptionProfileEndpoints(stream, 'node.example.com', 27543);
+    expect(endpoint.streamSettings.security).toBe('tls');
+    if (endpoint.streamSettings.security !== 'tls') throw new Error('expected tls');
+    expect(endpoint.streamSettings.tlsSettings.serverName).toBe('sni.example.com');
+    expect(endpoint.streamSettings.tlsSettings.settings.fingerprint).toBe('firefox');
+  });
+
+  it('applies profile Mux to the effective client stream', () => {
+    const stream: StreamSettings = {
+      ...baseStream(),
+      externalProxy: [{
+        enabled: true,
+        remark: 'mux-runtime',
+        dest: 'mux.example.com',
+        port: 443,
+        network: 'same',
+        security: 'same',
+        forceTls: 'same',
+        mux: {
+          enabled: true,
+          concurrency: 4,
+          xudpConcurrency: 8,
+          xudpProxyUDP443: 'allow',
+        },
+      }],
+    };
+
+    const [endpoint] = expandSubscriptionProfileEndpoints(
+      stream,
+      'node.example.com',
+      27543,
+    );
+
+    expect(
+      (endpoint.streamSettings as unknown as { mux?: unknown }).mux,
+    ).toEqual({
+      enabled: true,
+      concurrency: 4,
+      xudpConcurrency: 8,
+      xudpProxyUDP443: 'allow',
+    });
+  });
+
+  it('applies SNI modes and legacy certificate-name verification', () => {
+    const overrideStream: StreamSettings = {
+      ...baseStream(),
+      externalProxy: [{
+        enabled: true,
+        remark: 'override-sni',
+        dest: '',
+        port: 443,
+        network: 'same',
+        security: 'tls',
+        forceTls: 'same',
+        overrideSniFromAddress: true,
+        verifyPeerCertByName: 'verify.example.com',
+      }],
+    };
+
+    const [overrideEndpoint] = expandSubscriptionProfileEndpoints(
+      overrideStream,
+      'resolved.example.com',
+      443,
+    );
+
+    if (overrideEndpoint.streamSettings.security !== 'tls') {
+      throw new Error('expected tls');
+    }
+
+    expect(
+      overrideEndpoint.streamSettings.tlsSettings.serverName,
+    ).toBe('resolved.example.com');
+    expect(
+      overrideEndpoint.streamSettings.tlsSettings.settings
+        .verifyPeerCertByName,
+    ).toBe('verify.example.com');
+
+    const blankStream: StreamSettings = {
+      ...baseStream(),
+      externalProxy: [{
+        enabled: true,
+        remark: 'blank-sni',
+        dest: 'edge.example.com',
+        port: 443,
+        network: 'same',
+        security: 'tls',
+        forceTls: 'same',
+        keepSniBlank: true,
+        tlsSettings: {
+          serverName: 'must-be-cleared.example.com',
+          alpn: [],
+          settings: {
+            fingerprint: 'chrome',
+            echConfigList: '',
+            pinnedPeerCertSha256: [],
+            verifyPeerCertByName: '',
+            allowInsecure: false,
+          },
+        },
+      }],
+    };
+
+    const [blankEndpoint] = expandSubscriptionProfileEndpoints(
+      blankStream,
+      'resolved.example.com',
+      443,
+    );
+
+    if (blankEndpoint.streamSettings.security !== 'tls') {
+      throw new Error('expected tls');
+    }
+
+    expect(
+      blankEndpoint.streamSettings.tlsSettings.serverName,
+    ).toBe('');
+  });
+
+  it('applies client Sockopt and strips listener-only keys', () => {
+    const sockopt = SubscriptionProfileSockoptSchema.parse({
+      tcpFastOpen: true,
+      domainStrategy: 'UseIP',
+      acceptProxyProtocol: true,
+      V6Only: true,
+      trustedXForwardedFor: ['127.0.0.1'],
+    });
+
+    expect(sockopt).not.toHaveProperty('acceptProxyProtocol');
+    expect(sockopt).not.toHaveProperty('V6Only');
+    expect(sockopt).not.toHaveProperty('trustedXForwardedFor');
+
+    const stream: StreamSettings = {
+      ...baseStream(),
+      externalProxy: [{
+        enabled: true,
+        remark: 'sockopt',
+        dest: 'sockopt.example.com',
+        port: 443,
+        network: 'same',
+        security: 'same',
+        forceTls: 'same',
+        sockopt,
+      }],
+    };
+
+    const [endpoint] = expandSubscriptionProfileEndpoints(
+      stream,
+      'node.example.com',
+      27543,
+    );
+
+    expect(
+      (endpoint.streamSettings as unknown as {
+        sockopt?: Record<string, unknown>;
+      }).sockopt,
+    ).toMatchObject({
+      tcpFastOpen: true,
+      domainStrategy: 'UseIP',
+    });
+  });
+});
+
+describe('default subscription profile port synchronization', () => {
+  it('updates the default profile when the inbound port changes', () => {
+    const initial = planDefaultSubscriptionPortSync(null, {
+      inboundPort: 49362,
+      profilePort: 49362,
+    });
+    const changed = planDefaultSubscriptionPortSync(initial.state, {
+      inboundPort: 1995,
+      profilePort: 49362,
+    });
+
+    expect(initial.state.linked).toBe(true);
+    expect(changed.setProfilePort).toBe(1995);
+    expect(changed.setInboundPort).toBeUndefined();
+  });
+
+  it('updates the inbound when the default profile port changes', () => {
+    const initial = planDefaultSubscriptionPortSync(null, {
+      inboundPort: 49362,
+      profilePort: 49362,
+    });
+    const changed = planDefaultSubscriptionPortSync(initial.state, {
+      inboundPort: 49362,
+      profilePort: 1995,
+    });
+
+    expect(changed.setInboundPort).toBe(1995);
+    expect(changed.setProfilePort).toBeUndefined();
+  });
+
+  it('keeps an existing divergent endpoint independent', () => {
+    const initial = planDefaultSubscriptionPortSync(null, {
+      inboundPort: 1995,
+      profilePort: 52096,
+    });
+    const changed = planDefaultSubscriptionPortSync(initial.state, {
+      inboundPort: 443,
+      profilePort: 52096,
+    });
+
+    expect(initial.state.linked).toBe(false);
+    expect(changed.state.linked).toBe(false);
+    expect(changed.setInboundPort).toBeUndefined();
+    expect(changed.setProfilePort).toBeUndefined();
+  });
+
+  it('preserves linkage while an input is temporarily empty', () => {
+    const initial = planDefaultSubscriptionPortSync(null, {
+      inboundPort: 49362,
+      profilePort: 49362,
+    });
+    const cleared = planDefaultSubscriptionPortSync(initial.state, {
+      inboundPort: 49362,
+      profilePort: null,
+    });
+    const typed = planDefaultSubscriptionPortSync(cleared.state, {
+      inboundPort: 49362,
+      profilePort: 1995,
+    });
+
+    expect(cleared.state.linked).toBe(true);
+    expect(typed.setInboundPort).toBe(1995);
+  });
+
+  it('relinks ports after a divergent pair becomes equal', () => {
+    const initial = planDefaultSubscriptionPortSync(null, {
+      inboundPort: 1995,
+      profilePort: 52096,
+    });
+    const relinked = planDefaultSubscriptionPortSync(initial.state, {
+      inboundPort: 1995,
+      profilePort: 1995,
+    });
+
+    expect(relinked.state.linked).toBe(true);
+  });
+});
+
+
+describe('subscription profile editor protocol binding', () => {
+  it('reads the protocol from the RHF inbound form', () => {
+    const source = readFileSync(
+      new URL(
+        '../pages/inbounds/form/transport/subscription-profile-editor.tsx',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+
+    expect(source).toContain(
+      "const { control } = useFormContext();",
+    );
+    expect(source).toContain(
+      "useWatch({ control, name: 'protocol' })",
+    );
+    expect(source).not.toContain(
+      "Form.useWatch('protocol', form)",
+    );
+  });
+});
