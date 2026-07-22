@@ -475,3 +475,159 @@ func TestAccurateBillingDelayedStartRepairsMissingRollup(t *testing.T) {
 	}
 	assertDelayedExpiryState(t, svc, email, []int{inbound.Id}, rollup.ExpiryTime)
 }
+
+func TestAggregateCanonicalClientTrafficDeltas(t *testing.T) {
+	runtimeA := clientInboundStatEmail(
+		"alice@example.com",
+		10,
+	)
+	runtimeB := clientInboundStatEmail(
+		"alice@example.com",
+		20,
+	)
+	unknownRuntime := clientInboundStatEmail(
+		"ghost@example.com",
+		30,
+	)
+
+	got := aggregateCanonicalClientTrafficDeltas(
+		[]*xray.ClientTraffic{
+			{
+				Email: runtimeA,
+				Up:    100,
+				Down:  200,
+			},
+			{
+				Email: runtimeB,
+				Up:    300,
+				Down:  400,
+			},
+			{
+				Email: "bob@example.com",
+				Up:    50,
+				Down:  60,
+			},
+			{
+				Email: unknownRuntime,
+				Up:    700,
+				Down:  800,
+			},
+			nil,
+		},
+		map[string]string{
+			runtimeA: "alice@example.com",
+			runtimeB: "alice@example.com",
+		},
+	)
+
+	if len(got) != 2 {
+		t.Fatalf(
+			"canonical rows = %d, want 2: %#v",
+			len(got),
+			got,
+		)
+	}
+
+	byEmail := make(
+		map[string]*xray.ClientTraffic,
+		len(got),
+	)
+
+	for _, row := range got {
+		if row != nil {
+			byEmail[row.Email] = row
+		}
+	}
+
+	alice := byEmail["alice@example.com"]
+	if alice == nil {
+		t.Fatal("alice canonical row missing")
+	}
+
+	if alice.Up != 400 || alice.Down != 600 {
+		t.Fatalf(
+			"alice delta = up:%d down:%d, want up:400 down:600",
+			alice.Up,
+			alice.Down,
+		)
+	}
+
+	bob := byEmail["bob@example.com"]
+	if bob == nil {
+		t.Fatal("legacy bob row missing")
+	}
+
+	if bob.Up != 50 || bob.Down != 60 {
+		t.Fatalf(
+			"bob delta = up:%d down:%d, want up:50 down:60",
+			bob.Up,
+			bob.Down,
+		)
+	}
+
+	if _, found := byEmail[unknownRuntime]; found {
+		t.Fatal(
+			"unresolved runtime email leaked into canonical output",
+		)
+	}
+}
+
+func TestCanonicalClientTrafficDeltasResolvesDatabaseMapping(
+	t *testing.T,
+) {
+	initAccurateBillingTestDB(t)
+
+	svc := &InboundService{}
+	email := "speed-display@example.com"
+
+	inbound := seedAccurateBillingClient(
+		t,
+		svc,
+		email,
+		3,
+	)
+
+	statEmail := clientInboundStatEmail(
+		email,
+		inbound.Id,
+	)
+
+	got, err := svc.CanonicalClientTrafficDeltas(
+		[]*xray.ClientTraffic{
+			{
+				Email: statEmail,
+				Up:    125,
+				Down:  375,
+			},
+		},
+	)
+	if err != nil {
+		t.Fatalf(
+			"CanonicalClientTrafficDeltas: %v",
+			err,
+		)
+	}
+
+	if len(got) != 1 {
+		t.Fatalf(
+			"canonical rows = %d, want 1",
+			len(got),
+		)
+	}
+
+	if got[0].Email != email {
+		t.Fatalf(
+			"canonical email = %q, want %q",
+			got[0].Email,
+			email,
+		)
+	}
+
+	if got[0].Up != 125 || got[0].Down != 375 {
+		t.Fatalf(
+			"canonical raw delta = up:%d down:%d, want up:125 down:375",
+			got[0].Up,
+			got[0].Down,
+		)
+	}
+}

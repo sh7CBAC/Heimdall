@@ -524,6 +524,128 @@ func (s *InboundService) addAccurateClientInboundTraffic(tx *gorm.DB, traffics [
 	return legacy, nil
 }
 
+func aggregateCanonicalClientTrafficDeltas(
+	traffics []*xray.ClientTraffic,
+	runtimeToLogical map[string]string,
+) []*xray.ClientTraffic {
+	if len(traffics) == 0 {
+		return []*xray.ClientTraffic{}
+	}
+
+	totals := make(map[string]*xray.ClientTraffic, len(traffics))
+	order := make([]string, 0, len(traffics))
+
+	for _, traffic := range traffics {
+		if traffic == nil {
+			continue
+		}
+
+		email := strings.TrimSpace(traffic.Email)
+		if email == "" {
+			continue
+		}
+
+		if isClientInboundStatEmail(email) {
+			email = strings.TrimSpace(runtimeToLogical[email])
+			if email == "" {
+				continue
+			}
+		}
+
+		total, found := totals[email]
+		if !found {
+			total = &xray.ClientTraffic{Email: email}
+			totals[email] = total
+			order = append(order, email)
+		}
+
+		total.Up += traffic.Up
+		total.Down += traffic.Down
+	}
+
+	result := make([]*xray.ClientTraffic, 0, len(order))
+	for _, email := range order {
+		result = append(result, totals[email])
+	}
+
+	return result
+}
+
+func (s *InboundService) CanonicalClientTrafficDeltas(
+	traffics []*xray.ClientTraffic,
+) ([]*xray.ClientTraffic, error) {
+	if len(traffics) == 0 {
+		return []*xray.ClientTraffic{}, nil
+	}
+
+	statEmails := make([]string, 0, len(traffics))
+	seen := make(map[string]struct{}, len(traffics))
+
+	for _, traffic := range traffics {
+		if traffic == nil {
+			continue
+		}
+
+		email := strings.TrimSpace(traffic.Email)
+		if !isClientInboundStatEmail(email) {
+			continue
+		}
+
+		if _, found := seen[email]; found {
+			continue
+		}
+
+		seen[email] = struct{}{}
+		statEmails = append(statEmails, email)
+	}
+
+	if len(statEmails) == 0 {
+		return aggregateCanonicalClientTrafficDeltas(
+			traffics,
+			nil,
+		), nil
+	}
+
+	runtimeToLogical := make(
+		map[string]string,
+		len(statEmails),
+	)
+
+	for _, batch := range chunkStrings(
+		statEmails,
+		sqlInChunk,
+	) {
+		var rows []struct {
+			StatEmail string `gorm:"column:stat_email"`
+			Email     string `gorm:"column:email"`
+		}
+
+		if err := database.GetDB().
+			Model(&model.ClientInboundTraffic{}).
+			Select("stat_email, email").
+			Where("stat_email IN ?", batch).
+			Find(&rows).Error; err != nil {
+			return nil, err
+		}
+
+		for _, row := range rows {
+			statEmail := strings.TrimSpace(row.StatEmail)
+			email := strings.TrimSpace(row.Email)
+
+			if statEmail == "" || email == "" {
+				continue
+			}
+
+			runtimeToLogical[statEmail] = email
+		}
+	}
+
+	return aggregateCanonicalClientTrafficDeltas(
+		traffics,
+		runtimeToLogical,
+	), nil
+}
+
 func resetClientInboundTrafficByEmail(tx *gorm.DB, email string) error {
 	if tx == nil || strings.TrimSpace(email) == "" {
 		return nil

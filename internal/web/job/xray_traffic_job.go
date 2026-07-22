@@ -142,6 +142,12 @@ func (j *XrayTrafficJob) Run() {
 		return
 	}
 
+	clientSpeedTraffics, speedErr := j.inboundService.CanonicalClientTrafficDeltas(clientTraffics)
+	if speedErr != nil {
+		logger.Warning("canonicalize client traffic deltas for websocket failed:", speedErr)
+		clientSpeedTraffics = clientTraffics
+	}
+
 	// Small installs broadcast the full snapshot (see GetAllClientTraffics for
 	// why deltas alone left UI rows stale). Above the threshold the snapshot
 	// would be dropped by the hub's payload cap anyway, so ship this poll's
@@ -187,7 +193,7 @@ func (j *XrayTrafficJob) Run() {
 	}
 	websocket.BroadcastTraffic(map[string]any{
 		"traffics":       traffics,
-		"clientTraffics": clientTraffics,
+		"clientTraffics": clientSpeedTraffics,
 		"onlineClients":  onlineClients,
 		"onlineByGuid":   j.inboundService.GetOnlineClientsByGuid(),
 		"activeInbounds": j.inboundService.GetActiveInboundsByGuid(),
