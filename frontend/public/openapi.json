@@ -2764,6 +2764,10 @@
       "description": "UI sessions use a cookie set by the login endpoint. Programmatic clients authenticate with a Bearer token from Settings → Security → API Token. Most protected panel APIs accept either mode; operations explicitly marked browser-session-only reject Bearer tokens."
     },
     {
+      "name": "Custom Panel Compatibility",
+      "description": "Compatibility endpoint for external sales bots and panel integrations. Authentication is accepted only through X-API-Key using an enabled, unexpired delegated token with the custom-panel:manage scope. The delegated administrator’s current RBAC, inbound allowlist, client limits, ownership, groups, and feature flags remain enforced on every request."
+    },
+    {
       "name": "Inbounds",
       "description": "Manage inbound configurations and their clients. All endpoints live under /panel/api/inbounds and require a logged-in session or a trusted service credential. Delegated user tokens are denied on this group until a dedicated inbound scope is introduced. Link-generating endpoints honour forwarded headers only when the request comes from a configured trusted proxy."
     },
@@ -3101,6 +3105,97 @@
                 "example": {
                   "success": true,
                   "obj": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api": {
+      "post": {
+        "tags": [
+          "Custom Panel Compatibility"
+        ],
+        "summary": "Execute one custom-panel action. Supported actions are create_user, get_user, remove_user, reset_user, extend_user, modify_user, change_status, count_users, revoke_sub, extra_volume, and extra_time. Business-level success and failure responses use HTTP 200; a missing or invalid API key returns HTTP 401.",
+        "operationId": "post_api",
+        "parameters": [
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": true,
+            "description": "Delegated API token with the custom-panel:manage scope.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              },
+              "example": {
+                "action": "get_user",
+                "username": "alice"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    },
+                    "obj": {}
+                  }
+                },
+                "example": {
+                  "status": "success",
+                  "username": "alice",
+                  "data_limit": 53687091200,
+                  "expire": 1767225600,
+                  "used_traffic": 1073741824,
+                  "subscription_url": "https://panel.example/sub/example-sub-id",
+                  "links": [
+                    "vless://..."
+                  ],
+                  "configs": [
+                    "vless://..."
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "status": "error",
+                  "message": "User not found"
                 }
               }
             }

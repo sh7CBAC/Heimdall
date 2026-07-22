@@ -91,6 +91,33 @@ func TestCheckAPIAuth_BearerSuccess(t *testing.T) {
 	}
 }
 
+func TestCheckAPIAuthRejectsXAPIKeyOnStandardAPI(t *testing.T) {
+	engine, _ := newAPIAuthTestEngine(t)
+
+	const plaintext = "standard-api-x-api-key-must-not-authenticate"
+	if err := database.GetDB().Create(&model.ApiToken{
+		Name:    "x-api-key-standard-api",
+		Token:   crypto.HashTokenSHA256(plaintext),
+		Enabled: true,
+	}).Error; err != nil {
+		t.Fatalf("seed token: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/panel/api/ping", nil)
+	req.Header.Set("X-API-Key", plaintext)
+	req.Header.Set("X-Requested-With", "XMLHttpRequest")
+	w := httptest.NewRecorder()
+	engine.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf(
+			"status = %d, want 401; body=%s",
+			w.Code,
+			w.Body.String(),
+		)
+	}
+}
+
 // TestCheckAPIAuth_AcceptsVerifiedClientCert asserts that a completed mTLS
 // handshake (a non-empty verified client chain) authenticates the request even
 // with no bearer token and no session — the equivalent of a valid token — and

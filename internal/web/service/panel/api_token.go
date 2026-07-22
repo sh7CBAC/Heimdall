@@ -21,15 +21,17 @@ const (
 	apiTokenLength             = 48
 	maxPresentedAPITokenLength = 256
 
-	ApiTokenScopeClientsRead   = "clients:read"
-	ApiTokenScopeClientsCreate = "clients:create"
+	ApiTokenScopeClientsRead       = "clients:read"
+	ApiTokenScopeClientsCreate     = "clients:create"
+	ApiTokenScopeCustomPanelManage = "custom-panel:manage"
 )
 
 var (
 	ErrInvalidAPIToken      = errors.New("invalid API token")
 	delegatedAPITokenScopes = map[string]struct{}{
-		ApiTokenScopeClientsRead:   {},
-		ApiTokenScopeClientsCreate: {},
+		ApiTokenScopeClientsRead:       {},
+		ApiTokenScopeClientsCreate:     {},
+		ApiTokenScopeCustomPanelManage: {},
 	}
 )
 

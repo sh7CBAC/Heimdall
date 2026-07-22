@@ -111,6 +111,39 @@ export const sections: readonly Section[] = [
     ],
   },
 
+
+  {
+    id: 'custom-panel',
+    title: 'Custom Panel Compatibility',
+    description:
+      'Compatibility endpoint for external sales bots and panel integrations. Authentication is accepted only through X-API-Key using an enabled, unexpired delegated token with the custom-panel:manage scope. The delegated administrator’s current RBAC, inbound allowlist, client limits, ownership, groups, and feature flags remain enforced on every request.',
+    endpoints: [
+      {
+        method: 'POST',
+        path: '/api',
+        summary:
+          'Execute one custom-panel action. Supported actions are create_user, get_user, remove_user, reset_user, extend_user, modify_user, change_status, count_users, revoke_sub, extra_volume, and extra_time. Business-level success and failure responses use HTTP 200; a missing or invalid API key returns HTTP 401.',
+        params: [
+          { name: 'X-API-Key', in: 'header', type: 'string', desc: 'Delegated API token with the custom-panel:manage scope.' },
+          { name: 'action', in: 'body (json)', type: 'string', desc: 'One of the eleven supported custom-panel actions.' },
+          { name: 'username', in: 'body (json)', type: 'string', desc: 'Client email identifier. Required by every user-specific action.', optional: true },
+          { name: 'data_limit', in: 'body (json)', type: 'integer', desc: 'Traffic quota in bytes.', optional: true },
+          { name: 'expire', in: 'body (json)', type: 'integer', desc: 'Unix expiration timestamp in seconds.', optional: true },
+          { name: 'note', in: 'body (json)', type: 'string', desc: 'Client comment.', optional: true },
+          { name: 'config', in: 'body (json)', type: 'object', desc: 'Partial modify_user payload containing status, data_limit, expire, or note.', optional: true },
+          { name: 'status', in: 'body (json)', type: 'string', desc: 'active or disabled.', optional: true },
+          { name: 'volume', in: 'body (json)', type: 'integer', desc: 'Additional traffic quota in bytes.', optional: true },
+          { name: 'time', in: 'body (json)', type: 'integer', desc: 'Additional validity in whole days.', optional: true },
+        ],
+        body: '{\n  "action": "get_user",\n  "username": "alice"\n}',
+        response:
+          '{\n  "status": "success",\n  "username": "alice",\n  "data_limit": 53687091200,\n  "expire": 1767225600,\n  "used_traffic": 1073741824,\n  "subscription_url": "https://panel.example/sub/example-sub-id",\n  "links": ["vless://..."],\n  "configs": ["vless://..."]\n}',
+        errorResponse:
+          '{\n  "status": "error",\n  "message": "User not found"\n}',
+      },
+    ],
+  },
+
   {
     id: 'inbounds',
     title: 'Inbounds',

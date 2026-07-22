@@ -121,6 +121,7 @@ describe('delegated API token management UI', () => {
     chooseSelectOption('subjectAdminId', 'operator-a — Operator');
     fireEvent.click(screen.getByRole('checkbox', { name: 'Read clients' }));
     fireEvent.click(screen.getByRole('checkbox', { name: 'Create clients' }));
+    expect(screen.getByRole('checkbox', { name: 'Custom panel bot' })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Create token' }));
 
     await waitFor(() => expect(HttpUtil.post).toHaveBeenCalledTimes(1));

@@ -261,6 +261,9 @@ export default function ApiTokenTab() {
   function scopeLabel(scope: string): string {
     if (scope === 'clients:read') return t('pages.settings.security.apiTokenScopeClientsRead');
     if (scope === 'clients:create') return t('pages.settings.security.apiTokenScopeClientsCreate');
+    if (scope === 'custom-panel:manage') {
+      return t('pages.settings.security.apiTokenScopeCustomPanelManage', { defaultValue: 'Custom panel bot' });
+    }
     if (scope === '*') return t('pages.settings.security.apiTokenScopeFullAccess');
     return scope;
   }
@@ -522,6 +525,16 @@ export default function ApiTokenTab() {
                       {t('pages.settings.security.apiTokenScopeClientsCreate')}
                     </Checkbox>
                     <span>{t('pages.settings.security.apiTokenScopeClientsCreateDesc')}</span>
+                  </div>
+                  <div className="api-token-scope-option">
+                    <Checkbox value={API_TOKEN_SCOPES[2]}>
+                      {t('pages.settings.security.apiTokenScopeCustomPanelManage', { defaultValue: 'Custom panel bot' })}
+                    </Checkbox>
+                    <span>
+                      {t('pages.settings.security.apiTokenScopeCustomPanelManageDesc', {
+                        defaultValue: 'Use the X-API-Key custom panel compatibility endpoint within this administrator’s live RBAC scope.',
+                      })}
+                    </span>
                   </div>
                 </Checkbox.Group>
               </Form.Item>
