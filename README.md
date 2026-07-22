@@ -1,107 +1,202 @@
+[English](/README.md) | [فارسی](/docs/readme/fa-IR.md) | [العربية](/docs/readme/ar-EG.md) | [中文](/docs/readme/zh-CN.md) | [Español](/docs/readme/es-ES.md) | [Русский](/docs/readme/ru-RU.md) | [Türkçe](/docs/readme/tr-TR.md)
+
 <p align="center">
-  <img width="2172" height="724" alt="Heimdall README hero banner" src="https://github.com/user-attachments/assets/c5159c4c-2db1-4248-954c-26739e36ee39" />
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="./media/3x-ui-dark.png">
+    <img alt="3x-ui" src="./media/3x-ui-light.png">
+  </picture>
 </p>
 
-## ⚡ Quick Start
+<p align="center">
+  <a href="https://github.com/sh7CBAC/Heimdall/releases"><img src="https://img.shields.io/github/v/release/sh7CBAC/Heimdall" alt="Release"></a>
+  <a href="https://github.com/sh7CBAC/Heimdall/actions"><img src="https://img.shields.io/github/actions/workflow/status/sh7CBAC/Heimdall/release.yml.svg" alt="Build"></a>
+  <a href="#"><img src="https://img.shields.io/github/go-mod/go-version/sh7CBAC/Heimdall.svg" alt="GO Version"></a>
+  <a href="https://github.com/sh7CBAC/Heimdall/releases/latest"><img src="https://img.shields.io/github/downloads/sh7CBAC/Heimdall/total.svg" alt="Downloads"></a>
+  <a href="https://www.gnu.org/licenses/gpl-3.0.en.html"><img src="https://img.shields.io/badge/license-GPL%20V3-blue.svg?longCache=true" alt="License"></a>
+</p>
 
-Install Heimdall with one command:
+**Heimdall** is an advanced, open-source web control panel for managing [Xray-core](https://github.com/XTLS/Xray-core) servers. It provides a clean, multi-language interface for deploying, configuring, and monitoring a wide range of proxy and VPN protocols — from a single VPS to multi-node deployments.
+
+Heimdall is built on the 3X-UI codebase and extends it with project-specific capabilities. The inherited platform adds broader protocol support, improved stability, per-client traffic accounting, and many quality-of-life features.
+
+> [!IMPORTANT]
+> This project is intended for personal use only. Please do not use it for illegal purposes or in a production environment.
+
+## Features
+
+- **Multi-protocol inbounds** — VLESS, VMess, Trojan, Shadowsocks, WireGuard, Hysteria2, HTTP, SOCKS (Mixed), Dokodemo-door / Tunnel, and TUN.
+- **Modern transports & security** — TCP (Raw), mKCP, WebSocket, gRPC, HTTPUpgrade, and XHTTP, secured with TLS, XTLS, and REALITY.
+- **Fallbacks** — serve multiple protocols on a single port (e.g. VLESS and Trojan on 443) using Xray's fallback support.
+- **Per-client management** — traffic quotas, expiry dates, IP limits, live online status, and one-click share links, QR codes, and subscriptions.
+- **Traffic statistics** — per inbound, per client, and per outbound, with reset controls.
+- **Multi-node support** — manage and scale across multiple servers from a single panel.
+- **Outbound & routing** — WARP, NordVPN, custom routing rules, load balancers, and outbound proxy chaining.
+- **Built-in subscription server** with multiple output formats and [custom page templates](docs/custom-subscription-templates.md).
+- **Telegram bot** for remote monitoring and management.
+- **RESTful API** with in-panel Swagger documentation.
+- **Flexible storage** — SQLite (default) or PostgreSQL.
+- **13 UI languages** with dark and light themes.
+
+## Screenshots
+
+<details>
+<summary>Click to expand</summary>
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="./media/01-overview-dark.png">
+  <img alt="Overview" src="./media/01-overview-light.png">
+</picture>
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="./media/02-add-inbound-dark.png">
+  <img alt="Inbounds" src="./media/02-add-inbound-light.png">
+</picture>
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="./media/03-add-client-dark.png">
+  <img alt="Add client" src="./media/03-add-client-light.png">
+</picture>
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="./media/05-add-nodes-dark.png">
+  <img alt="Configs" src="./media/05-add-nodes-light.png">
+</picture>
+
+</details>
+
+## Quick Start
 
 ```bash
 bash <(curl -Ls https://raw.githubusercontent.com/sh7CBAC/Heimdall/main/install.sh)
 ```
 
-During installation, Heimdall downloads the latest public release package, installs the panel, configures the system service, and walks you through the initial setup.
+To install a specific version, append its tag (e.g. `vX.Y.Z`):
 
----
+```bash
+bash <(curl -Ls https://raw.githubusercontent.com/sh7CBAC/Heimdall/main/install.sh) vX.Y.Z
+```
 
-## ✨ What Makes Heimdall Different?
+To install the rolling **dev** build (latest per-commit pre-release from `main`, not a stable release), pass `dev-latest`:
 
-Heimdall is designed for operators who need more control, cleaner subscription delivery, and a more practical workflow for real-world Xray deployments.
-It keeps the familiar panel experience, while adding operational tools for multi-profile subscriptions, per-client controls, infrastructure visibility, smarter routing, and easier service management.
+```bash
+bash <(curl -Ls https://raw.githubusercontent.com/sh7CBAC/Heimdall/main/install.sh) dev-latest
+```
 
-The goal is to make daily operation cleaner, more flexible, and more reliable without making the panel unnecessarily complicated.
+During installation a random username, password, and access path are generated. After installation, run `x-ui` to open the management menu, where you can start/stop the service, view or reset your login credentials, manage SSL certificates, and more.
 
+For full documentation, please visit the [project Wiki](https://github.com/sh7CBAC/Heimdall/wiki).
 
----
+### Unattended install
 
-## 🧩 Multi-Profile Inbounds
+The installer also runs **non-interactively** for cloud-init.
+Set `XUI_NONINTERACTIVE=1` (or pipe with no TTY) and it installs end-to-end with
+zero prompts, generating random credentials and writing them to
+`/etc/x-ui/install-result.env`. See [`deploy/`](deploy/) for:
 
-Multi-Profile Inbounds allow a single inbound to serve multiple independent subscription profiles without duplicating the entire inbound configuration.
+- [Cloud-init user-data](deploy/cloud-init/) — unattended install on any cloud (Hetzner/AWS/DO/Vultr/GCP/Azure/Oracle)
+- [Hetzner Cloud notes](deploy/marketplace/hetzner/) — cloud-init deployment on Hetzner
 
-Each profile can define its own address, transport, security mode, display behavior, and subscription output. This makes it easier to manage multiple domains, brands, user groups, or routing strategies from one organized inbound structure.
+## Supported Platforms
 
-The result is a cleaner backend, fewer duplicate entries, and a much more flexible subscription workflow.
+**Operating systems:** Ubuntu, Debian, Armbian, Fedora, CentOS, RHEL, AlmaLinux, Rocky Linux, Oracle Linux, Amazon Linux, Virtuozzo, Arch, Manjaro, Parch, openSUSE (Tumbleweed / Leap), Alpine, and Windows.
 
-<img width="1672" height="941" alt="multiProfile" src="https://github.com/user-attachments/assets/5e7bc87c-8ca9-4a08-b311-9c9a7af22d85" />
+**Architectures:** `amd64` · `386` · `arm64` (aarch64) · `armv7` · `armv6` · `armv5` · `s390x`.
 
+## Database Options
 
----
+3X-UI supports two backends, chosen during the install:
 
-## 🚦 Per-Client Speed & Connection Limits
+- **SQLite** (default) — a single file at `/etc/x-ui/x-ui.db`. Zero setup, ideal for small and medium deployments.
+- **PostgreSQL** — recommended for high client counts or multi-node setups. The installer can install PostgreSQL locally for you, or accept a DSN to an existing server.
 
-Per-client speed controls make it possible to define separate upload and download speed limits for each client, while also controlling how many concurrent connections the client is allowed to use.
+At runtime the backend is selected via environment variables (the installer writes these to `/etc/default/x-ui` for you):
 
-Unlike a total traffic quota, which limits how much data a client can consume, speed limits control how fast each client can upload or download. This makes it easier to create service tiers, apply fair usage policies, and protect server capacity from heavy or abusive usage.
+```
+XUI_DB_TYPE=postgres
+XUI_DB_DSN=postgres://xui:password@127.0.0.1:5432/xui?sslmode=disable
+```
 
-Concurrent connection limits add another layer of control by helping reduce account sharing and keeping resource usage more predictable across the server.
+### Migrating an existing SQLite install to PostgreSQL
 
-For deployments with many users, these controls make the service more stable, fair, and easier to operate.
+```bash
+x-ui migrate-db --dsn "postgres://xui:password@127.0.0.1:5432/xui?sslmode=disable"
+# then set XUI_DB_TYPE and XUI_DB_DSN in /etc/default/x-ui and restart:
+systemctl restart x-ui
+```
 
-<img width="1672" height="941" alt="file_00000000de9071f498c8a8e178843173" src="https://github.com/user-attachments/assets/0dbc02f7-155b-4225-8f55-86838c59a704" />
+The source SQLite file is left untouched; remove it manually once you have verified the new backend.
 
----
+### Docker
 
-## 📊 Client Activity Monitoring
+The default `docker compose up -d` keeps using SQLite. To run with the bundled PostgreSQL service, uncomment the two `XUI_DB_*` env lines in `docker-compose.yml` and start with the profile:
 
-Client Activity Monitoring provides optional visibility into selected clients and their traffic behavior.
-
-When enabled, it can help operators review observed destinations, traffic usage, and activity patterns. This is useful for abuse investigation, routing diagnostics, service quality checks, and understanding how traffic flows through the system.
-
-The feature is designed for controlled operational use, without making the panel unnecessarily heavy or complicated.
-
-<img width="1672" height="941" alt="ClientActivity" src="https://github.com/user-attachments/assets/cf19552e-51d8-4099-b2e4-23fc10b320d7" />
-
----
-
-## 🕶️ Hidden Infrastructure
-
-Hidden Infrastructure is managed through the y-ui terminal script and allows internal resources to be hidden without changing the actual runtime behavior.
-
-Operators can hide inbound remarks, outbound tags, balancer tags, client emails, and routing-related entries from normal views or subscription outputs. This is useful for tunnel layers, internal routes, backend services, reseller structures, and operational-only configurations.
-
-Hidden items continue to work normally in the background, while the visible panel and subscription output stay cleaner, safer, and easier to manage.
-
-<img width="1672" height="941" alt="826ac078-92da-41f2-a483-993ce4e86edd" src="https://github.com/user-attachments/assets/6425e5af-ff34-4de6-9d5f-c425054e078f" />
-
----
-
-## 🧭 Smart Subscription Links & Iran Direct Routing
-
-Smart Subscription Links turn subscription output into a cleaner and more practical client experience, powered by the customized Ourenus-based subscription template.
-
-Iran Direct Routing adds dedicated routing support for Iranian domains and IP ranges, allowing domestic traffic to be routed directly when direct routing is appropriate instead of passing through the proxy path.
-
-This reduces unnecessary proxy load, improves access to local services, and creates smoother client profiles for users who frequently access Iranian websites, banking platforms, local applications, and domestic resources.
-
-<img width="1672" height="941" alt="sub template" src="https://github.com/user-attachments/assets/626b2086-96cd-405f-9f6e-25ecb87357c8" />
-
-## 🙏 Credits
-
-Heimdall is built on top of the Xray ecosystem and is based on the excellent [3X-UI](https://github.com/MHSanaei/3x-ui/) project by MHSanaei.
-
-It also integrates and customizes ideas from the [Ourenus](https://github.com/MatinDehghanian/Ourenus) subscription template, created by Matin Dehghanian, to provide a cleaner subscription experience.
-
-Special thanks to the open-source projects, developers, and communities that make this ecosystem possible.
+```bash
+docker compose --profile postgres up -d
+```
 
 
+```bash
+docker run -d --cap-add=NET_ADMIN --cap-add=NET_RAW ... ghcr.io/sh7cbac/heimdall
+```
 
-## 💛 Support the Project
+## Environment Variables
 
-Heimdall is developed and maintained with a focus on quality, stability, and real-world usability.
+| Variable | Description | Default |
+| --- | --- | --- |
+| `XUI_DB_TYPE` | Database backend: `sqlite` or `postgres` | `sqlite` |
+| `XUI_DB_DSN` | PostgreSQL connection string (when `XUI_DB_TYPE=postgres`) | — |
+| `XUI_DB_FOLDER` | Directory for the SQLite database file | `/etc/x-ui` |
+| `XUI_DB_MAX_OPEN_CONNS` | Maximum open connections (PostgreSQL pool) | — |
+| `XUI_DB_MAX_IDLE_CONNS` | Maximum idle connections (PostgreSQL pool) | — |
+| `XUI_INIT_WEB_BASE_PATH` | The initial URI path for the web panel | `/` |
+| `XUI_LOG_LEVEL` | Log verbosity (`debug`, `info`, `warning`, `error`) | `info` |
+| `XUI_DEBUG` | Enable debug mode | `false` |
+| `XUI_TUNNEL_HEALTH_MONITOR` | Enable the tunnel health monitor (probes a URL and restarts xray after repeated failures; a restart drops all clients) | `false` |
+| `XUI_TUNNEL_HEALTH_PROXY` | Proxy the probe is sent through; point it at a local xray inbound so the probe tests the tunnel (e.g. `socks5://127.0.0.1:1080`). Empty means the probe only checks host connectivity | — |
+| `XUI_TUNNEL_HEALTH_URL` | URL probed for tunnel health | `https://www.cloudflare.com/cdn-cgi/trace` |
+| `XUI_TUNNEL_HEALTH_INTERVAL` | Interval between probes | `30s` |
+| `XUI_TUNNEL_HEALTH_TIMEOUT` | Per-probe timeout | `10s` |
+| `XUI_TUNNEL_HEALTH_FAILURES` | Consecutive failures before a restart is triggered | `3` |
+| `XUI_TUNNEL_HEALTH_COOLDOWN` | Minimum delay between consecutive restarts | `5m` |
 
-If you find this project useful and want to support its continued development, you can make a donation here:
+## Supported Languages
 
-[Donate to Heimdall](https://reymit.ir/heimdall)
+The panel UI is available in 13 languages:
 
-Your support helps keep the project moving forward with more energy, better features, and long-term improvements.
+English · فارسی · العربية · 中文（简体） · 中文（繁體） · Español · Русский · Українська · Türkçe · Tiếng Việt · 日本語 · Bahasa Indonesia · Português (Brasil)
 
+## Contributing
+
+Contributions are welcome. Please read the [Contributing Guide](/CONTRIBUTING.md) before opening an issue or pull request.
+
+## A Special Thanks to
+
+- [alireza0](https://github.com/alireza0/)
+
+## Acknowledgment
+
+- [Iran v2ray rules](https://github.com/chocolate4u/Iran-v2ray-rules) (License: **GPL-3.0**): _Enhanced v2ray/xray and v2ray/xray-clients routing rules with built-in Iranian domains and a focus on security and adblocking._
+- [Russia v2ray rules](https://github.com/runetfreedom/russia-v2ray-rules-dat) (License: **GPL-3.0**): _This repository contains automatically updated V2Ray routing rules based on data on blocked domains and addresses in Russia._
+
+## Community Tools
+
+Tools and integrations built by the community around 3x-ui.
+
+- [terraform-provider-3x-ui](https://github.com/batonogov/terraform-provider-threexui) (License: **MIT**): _Manage inbounds, clients, panel settings, and Xray configuration as code with Terraform / OpenTofu._
+
+## Support project
+
+**If this project is helpful to you, you may wish to give it a**:star2:
+
+<a href="https://www.buymeacoffee.com/MHSanaei" target="_blank">
+<img src="./media/default-yellow.png" alt="Buy Me A Coffee" style="height: 70px !important;width: 277px !important;" >
+</a>
+
+</br>
+<a href="https://nowpayments.io/donation/hsanaei" target="_blank" rel="noreferrer noopener">
+   <img src="./media/donation-button-black.svg" alt="Crypto donation button by NOWPayments">
+</a>
+
+## Stargazers over Time
+
+[![Stargazers over time](https://starchart.cc/sh7CBAC/Heimdall.svg?variant=adaptive)](https://starchart.cc/sh7CBAC/Heimdall)
