@@ -6,7 +6,6 @@ import { ThemeProvider } from '@/hooks/useTheme';
 import type { AllSetting } from '@/models/setting';
 import ApiTokenTab from '@/pages/settings/ApiTokenTab';
 import SecurityTab from '@/pages/settings/SecurityTab';
-import { chooseSelectOption } from '@/test/test-utils';
 import { HttpUtil } from '@/utils';
 
 const currentAdminState = vi.hoisted(() => ({
@@ -82,78 +81,21 @@ describe('delegated API token management UI', () => {
     expect(screen.getByRole('tab', { name: /API Token/i })).toBeTruthy();
   });
 
-  it('creates a delegated token with an explicit subject, custom panel scope and expiration', async () => {
-    const created = {
-      id: 9,
-      name: 'telegram-operator-a',
-      token: 'hmd_d_one_time_secret',
-      kind: 'delegated',
-      subjectAdminId: 7,
-      subjectUsername: 'operator-a',
-      subjectRoleName: 'Operator',
-      scopes: ['custom-panel:manage'],
-      expiresAt: 1_900_000_000,
-      expired: false,
-      enabled: true,
-      createdAt: 1_800_000_000,
-    };
-
-    vi.mocked(HttpUtil.get)
-      .mockResolvedValueOnce(tokenListResponse([]))
-      .mockResolvedValueOnce(tokenListResponse([{
-        id: 7,
-        username: 'operator-a',
-        roleId: 3,
-        roleName: 'Operator',
-      }]))
-      .mockResolvedValueOnce(tokenListResponse([{ ...created, token: undefined }]));
-    vi.mocked(HttpUtil.post).mockResolvedValueOnce(tokenListResponse(created));
+  it('shows only service-token controls in the create modal', async () => {
+    vi.mocked(HttpUtil.get).mockResolvedValueOnce(tokenListResponse([]));
 
     renderWithTheme(<ApiTokenTab />);
     await waitFor(() => expect(HttpUtil.get).toHaveBeenCalledTimes(1));
 
     fireEvent.click(screen.getByRole('button', { name: /New token/i }));
-    await waitFor(() => expect(HttpUtil.get).toHaveBeenCalledTimes(2));
 
-    fireEvent.change(screen.getByLabelText('Name'), {
-      target: { value: '  telegram-operator-a  ' },
-    });
-    chooseSelectOption('subjectAdminId', 'operator-a — Operator');
-    expect(screen.queryByRole('checkbox', { name: 'Read clients' })).toBeNull();
-    expect(screen.queryByRole('checkbox', { name: 'Create clients' })).toBeNull();
-    const customPanelScope = screen.getByRole('checkbox', { name: 'Custom panel bot' });
-    expect(customPanelScope).toBeTruthy();
-    fireEvent.click(customPanelScope);
-    fireEvent.click(screen.getByRole('button', { name: 'Create token' }));
-
-    await waitFor(() => expect(HttpUtil.post).toHaveBeenCalledTimes(1));
-    const createCall = vi.mocked(HttpUtil.post).mock.calls[0];
-    expect(createCall[0]).toBe('/panel/api/setting/apiTokens/create');
-    expect(createCall[1]).toEqual(expect.objectContaining({
-      name: 'telegram-operator-a',
-      kind: 'delegated',
-      subjectAdminId: 7,
-      scopes: ['custom-panel:manage'],
-      expiresAt: expect.any(Number),
-    }));
-    expect((createCall[1] as { expiresAt: number }).expiresAt).toBeGreaterThan(
-      Math.floor(Date.now() / 1000) + (89 * 24 * 60 * 60),
-    );
-
-    expect(await screen.findByText('hmd_d_one_time_secret')).toBeTruthy();
-    const done = screen.getByRole('button', { name: 'Done' });
-    expect((done as HTMLButtonElement).disabled).toBe(true);
-
-    fireEvent.click(screen.getByRole('checkbox', {
-      name: 'I have saved this token in a secure location.',
-    }));
-    await waitFor(() => expect((screen.getByRole('button', {
-      name: 'Done',
-    }) as HTMLButtonElement).disabled).toBe(false));
-    fireEvent.click(screen.getByRole('button', { name: 'Done' }));
-    await waitFor(() => expect(screen.queryByRole('dialog', {
-      name: 'Token created',
-    })).toBeNull());
+    expect(await screen.findByText('Full-trust infrastructure credential')).toBeTruthy();
+    expect(screen.queryByText('Credential type')).toBeNull();
+    expect(screen.queryByRole('radio', { name: /User token/i })).toBeNull();
+    expect(screen.queryByRole('radio', { name: /Service token/i })).toBeNull();
+    expect(screen.queryByLabelText('Panel administrator')).toBeNull();
+    expect(screen.queryByRole('checkbox', { name: 'Custom panel bot' })).toBeNull();
+    expect(HttpUtil.get).toHaveBeenCalledTimes(1);
   });
 
   it('shows delegated metadata and prevents re-enabling an expired token', async () => {
@@ -197,18 +139,17 @@ describe('delegated API token management UI', () => {
     };
     vi.mocked(HttpUtil.get)
       .mockResolvedValueOnce(tokenListResponse([]))
-      .mockResolvedValueOnce(tokenListResponse([]))
       .mockResolvedValueOnce(tokenListResponse([{ ...created, token: undefined }]));
     vi.mocked(HttpUtil.post).mockResolvedValueOnce(tokenListResponse(created));
 
     renderWithTheme(<ApiTokenTab />);
     await waitFor(() => expect(HttpUtil.get).toHaveBeenCalledTimes(1));
     fireEvent.click(screen.getByRole('button', { name: /New token/i }));
-    await waitFor(() => expect(HttpUtil.get).toHaveBeenCalledTimes(2));
+    expect(HttpUtil.get).toHaveBeenCalledTimes(1);
 
-    const serviceRadio = screen.getByRole('radio', { name: /Service token/i });
-    fireEvent.click(serviceRadio.closest('label') ?? serviceRadio);
     expect(await screen.findByText('Full-trust infrastructure credential')).toBeTruthy();
+    expect(screen.queryByRole('radio', { name: /User token/i })).toBeNull();
+    expect(screen.queryByRole('radio', { name: /Service token/i })).toBeNull();
     fireEvent.change(screen.getByLabelText('Name'), {
       target: { value: 'trusted-remote-panel' },
     });

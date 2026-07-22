@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Alert,
@@ -8,7 +8,6 @@ import {
   Form,
   Input,
   Modal,
-  Radio,
   Select,
   Space,
   Spin,
@@ -19,31 +18,25 @@ import {
 import {
   CloudServerOutlined,
   ReloadOutlined,
-  RobotOutlined,
   UserOutlined,
 } from '@ant-design/icons';
 
 import { ClipboardManager, HttpUtil, IntlUtil } from '@/utils';
 import {
-  API_TOKEN_SCOPES,
   DEFAULT_API_TOKEN_EXPIRY_DAYS,
   apiTokenTimestampMilliseconds,
   buildApiTokenCreatePayload,
   parseApiTokenRows,
-  parseApiTokenSubjects,
   parseCreatedApiToken,
 } from './api-token';
 import type {
   ApiTokenCreatePayload,
   ApiTokenCreateFormValues,
   ApiTokenRow,
-  ApiTokenScope,
-  ApiTokenSubject,
   CreatedApiToken,
 } from './api-token';
 
 const TOKEN_LIST_ENDPOINT = '/panel/api/setting/apiTokens';
-const TOKEN_SUBJECTS_ENDPOINT = '/panel/api/setting/apiTokens/subjects';
 const TOKEN_CREATE_ENDPOINT = '/panel/api/setting/apiTokens/create';
 
 interface ApiMsg<T = unknown> {
@@ -64,20 +57,14 @@ export default function ApiTokenTab() {
   const [modal, modalContextHolder] = Modal.useModal();
   const [messageApi, messageContextHolder] = message.useMessage();
   const [tokenForm] = Form.useForm<ApiTokenCreateFormValues>();
-  const watchedKind = Form.useWatch('kind', tokenForm) ?? 'delegated';
 
   const [apiTokens, setApiTokens] = useState<ApiTokenRow[]>([]);
   const [apiTokensLoading, setApiTokensLoading] = useState(true);
   const [apiTokensError, setApiTokensError] = useState('');
   const [pendingTokenIds, setPendingTokenIds] = useState<Set<number>>(() => new Set());
   const tokenListRequestRef = useRef(0);
-  const subjectsRequestRef = useRef(0);
   const pendingTokenIdsRef = useRef<Set<number>>(new Set());
   const creatingRef = useRef(false);
-
-  const [subjects, setSubjects] = useState<ApiTokenSubject[]>([]);
-  const [subjectsLoading, setSubjectsLoading] = useState(false);
-  const [subjectsError, setSubjectsError] = useState('');
 
   const [createOpen, setCreateOpen] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -106,60 +93,24 @@ export default function ApiTokenTab() {
     }
   }, [t]);
 
-  const loadApiTokenSubjects = useCallback(async () => {
-    const requestId = ++subjectsRequestRef.current;
-    setSubjectsLoading(true);
-    setSubjectsError('');
-    try {
-      const msg = await HttpUtil.get<unknown>(TOKEN_SUBJECTS_ENDPOINT, undefined, { silent: true });
-      if (requestId !== subjectsRequestRef.current) return;
-      if (!msg?.success) {
-        setSubjects([]);
-        setSubjectsError(msg?.msg || t('pages.settings.security.apiTokenSubjectsLoadError'));
-        return;
-      }
-      const rows = parseApiTokenSubjects(msg.obj);
-      if (!rows) {
-        setSubjects([]);
-        setSubjectsError(t('pages.settings.security.apiTokenInvalidResponse'));
-        return;
-      }
-      setSubjects(rows);
-    } finally {
-      if (requestId === subjectsRequestRef.current) setSubjectsLoading(false);
-    }
-  }, [t]);
-
   useEffect(() => {
     void loadApiTokens();
   }, [loadApiTokens]);
-
-  const subjectOptions = useMemo(() => subjects.map((subject) => ({
-    value: subject.id,
-    label: `${subject.username} — ${subject.roleName}`,
-  })), [subjects]);
 
   function openCreateModal() {
     tokenForm.resetFields();
     tokenForm.setFieldsValue({
       name: '',
-      kind: 'delegated',
-      subjectAdminId: undefined,
-      scopes: [],
+      kind: 'service',
       expiryDays: DEFAULT_API_TOKEN_EXPIRY_DAYS,
       serviceAcknowledged: false,
     });
-    setSubjects([]);
-    setSubjectsError('');
     setCreateOpen(true);
-    void loadApiTokenSubjects();
   }
 
   function closeCreateModal() {
     if (creating) return;
-    subjectsRequestRef.current += 1;
     setCreateOpen(false);
-    setSubjectsLoading(false);
     tokenForm.resetFields();
   }
 
@@ -168,8 +119,6 @@ export default function ApiTokenTab() {
     const keyByCode: Record<string, string> = {
       'name-required': 'pages.settings.security.apiTokenNameRequired',
       'name-too-long': 'pages.settings.security.apiTokenNameTooLong',
-      'subject-required': 'pages.settings.security.apiTokenSubjectRequired',
-      'scope-required': 'pages.settings.security.apiTokenScopeRequired',
       'service-ack-required': 'pages.settings.security.apiTokenServiceAcknowledgementRequired',
     };
     return t(keyByCode[code] || 'pages.settings.security.apiTokenFormInvalid');
@@ -408,9 +357,6 @@ export default function ApiTokenTab() {
         confirmLoading={creating}
         okText={t('pages.settings.security.apiTokenCreate')}
         cancelText={t('cancel')}
-        okButtonProps={{
-          disabled: watchedKind === 'delegated' && (subjectsLoading || subjects.length === 0),
-        }}
         closable={!creating}
         keyboard={!creating}
         mask={{ closable: !creating }}
@@ -439,118 +385,35 @@ export default function ApiTokenTab() {
             />
           </Form.Item>
 
-          <Form.Item
-            name="kind"
-            label={t('pages.settings.security.apiTokenKind')}
-            rules={[{ required: true }]}
-          >
-            <Radio.Group className="api-token-kind-options">
-              <Radio.Button value="delegated">
-                <RobotOutlined /> {t('pages.settings.security.apiTokenKindDelegated')}
-              </Radio.Button>
-              <Radio.Button value="service">
-                <CloudServerOutlined /> {t('pages.settings.security.apiTokenKindService')}
-              </Radio.Button>
-            </Radio.Group>
+          <Form.Item name="kind" initialValue="service" hidden>
+            <Input />
           </Form.Item>
 
-          {watchedKind === 'delegated' ? (
-            <>
-              <Alert
-                type="info"
-                showIcon
-                className="api-token-form-alert"
-                title={t('pages.settings.security.apiTokenDelegatedInfoTitle')}
-                description={t('pages.settings.security.apiTokenDelegatedInfo')}
-              />
+          <Alert
+            type="error"
+            showIcon
+            className="api-token-form-alert"
+            title={t('pages.settings.security.apiTokenServiceWarningTitle')}
+            description={t('pages.settings.security.apiTokenServiceWarning')}
+          />
 
-              <Form.Item
-                name="subjectAdminId"
-                label={t('pages.settings.security.apiTokenSubject')}
-                rules={[{ required: true, message: t('pages.settings.security.apiTokenSubjectRequired') }]}
-              >
-                <Select
-                  showSearch
-                  loading={subjectsLoading}
-                  disabled={subjectsLoading || subjects.length === 0}
-                  options={subjectOptions}
-                  optionFilterProp="label"
-                  placeholder={t('pages.settings.security.apiTokenSubjectPlaceholder')}
-                  notFoundContent={subjectsLoading ? <Spin size="small" /> : null}
-                />
-              </Form.Item>
-
-              {subjectsError && (
-                <Alert
-                  type="error"
-                  showIcon
-                  className="api-token-form-alert"
-                  title={subjectsError}
-                  action={(
-                    <Button size="small" onClick={() => void loadApiTokenSubjects()}>
-                      {t('pages.settings.security.apiTokenRetry')}
-                    </Button>
-                  )}
-                />
-              )}
-              {!subjectsLoading && !subjectsError && subjects.length === 0 && (
-                <Alert
-                  type="warning"
-                  showIcon
-                  className="api-token-form-alert"
-                  title={t('pages.settings.security.apiTokenNoSubjects')}
-                />
-              )}
-
-              <Form.Item
-                name="scopes"
-                label={t('pages.settings.security.apiTokenScopes')}
-                rules={[{
-                  validator: (_, value: ApiTokenScope[] | undefined) => (
-                    value && value.length > 0
-                      ? Promise.resolve()
-                      : Promise.reject(new Error(t('pages.settings.security.apiTokenScopeRequired')))
-                  ),
-                }]}
-              >
-                <Checkbox.Group className="api-token-scope-options">
-                  <div className="api-token-scope-option">
-                    <Checkbox value={API_TOKEN_SCOPES[2]}>
-                      {t('pages.settings.security.apiTokenScopeCustomPanelManage', { defaultValue: 'Custom panel bot' })}
-                    </Checkbox>
-                    <span>
-                      {t('pages.settings.security.apiTokenScopeCustomPanelManageDesc', {
-                        defaultValue: 'Use the X-API-Key custom panel compatibility endpoint within this administrator’s live RBAC scope.',
-                      })}
-                    </span>
-                  </div>
-                </Checkbox.Group>
-              </Form.Item>
-            </>
-          ) : (
-            <>
-              <Alert
-                type="error"
-                showIcon
-                className="api-token-form-alert"
-                title={t('pages.settings.security.apiTokenServiceWarningTitle')}
-                description={t('pages.settings.security.apiTokenServiceWarning')}
-              />
-              <Form.Item
-                name="serviceAcknowledged"
-                valuePropName="checked"
-                rules={[{
-                  validator: (_, checked: boolean | undefined) => (
-                    checked
-                      ? Promise.resolve()
-                      : Promise.reject(new Error(t('pages.settings.security.apiTokenServiceAcknowledgementRequired')))
-                  ),
-                }]}
-              >
-                <Checkbox>{t('pages.settings.security.apiTokenServiceAcknowledgement')}</Checkbox>
-              </Form.Item>
-            </>
-          )}
+          <Form.Item
+            name="serviceAcknowledged"
+            valuePropName="checked"
+            rules={[{
+              validator: (_, checked: boolean | undefined) => (
+                checked
+                  ? Promise.resolve()
+                  : Promise.reject(new Error(
+                    t('pages.settings.security.apiTokenServiceAcknowledgementRequired'),
+                  ))
+              ),
+            }]}
+          >
+            <Checkbox>
+              {t('pages.settings.security.apiTokenServiceAcknowledgement')}
+            </Checkbox>
+          </Form.Item>
 
           <Form.Item
             name="expiryDays"
