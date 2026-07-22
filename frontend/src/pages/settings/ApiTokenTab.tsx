@@ -515,18 +515,6 @@ export default function ApiTokenTab() {
               >
                 <Checkbox.Group className="api-token-scope-options">
                   <div className="api-token-scope-option">
-                    <Checkbox value={API_TOKEN_SCOPES[0]}>
-                      {t('pages.settings.security.apiTokenScopeClientsRead')}
-                    </Checkbox>
-                    <span>{t('pages.settings.security.apiTokenScopeClientsReadDesc')}</span>
-                  </div>
-                  <div className="api-token-scope-option">
-                    <Checkbox value={API_TOKEN_SCOPES[1]}>
-                      {t('pages.settings.security.apiTokenScopeClientsCreate')}
-                    </Checkbox>
-                    <span>{t('pages.settings.security.apiTokenScopeClientsCreateDesc')}</span>
-                  </div>
-                  <div className="api-token-scope-option">
                     <Checkbox value={API_TOKEN_SCOPES[2]}>
                       {t('pages.settings.security.apiTokenScopeCustomPanelManage', { defaultValue: 'Custom panel bot' })}
                     </Checkbox>

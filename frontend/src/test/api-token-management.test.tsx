@@ -82,7 +82,7 @@ describe('delegated API token management UI', () => {
     expect(screen.getByRole('tab', { name: /API Token/i })).toBeTruthy();
   });
 
-  it('creates a delegated token with an explicit subject, scopes and expiration', async () => {
+  it('creates a delegated token with an explicit subject, custom panel scope and expiration', async () => {
     const created = {
       id: 9,
       name: 'telegram-operator-a',
@@ -91,7 +91,7 @@ describe('delegated API token management UI', () => {
       subjectAdminId: 7,
       subjectUsername: 'operator-a',
       subjectRoleName: 'Operator',
-      scopes: ['clients:create', 'clients:read'],
+      scopes: ['custom-panel:manage'],
       expiresAt: 1_900_000_000,
       expired: false,
       enabled: true,
@@ -119,9 +119,11 @@ describe('delegated API token management UI', () => {
       target: { value: '  telegram-operator-a  ' },
     });
     chooseSelectOption('subjectAdminId', 'operator-a — Operator');
-    fireEvent.click(screen.getByRole('checkbox', { name: 'Read clients' }));
-    fireEvent.click(screen.getByRole('checkbox', { name: 'Create clients' }));
-    expect(screen.getByRole('checkbox', { name: 'Custom panel bot' })).toBeTruthy();
+    expect(screen.queryByRole('checkbox', { name: 'Read clients' })).toBeNull();
+    expect(screen.queryByRole('checkbox', { name: 'Create clients' })).toBeNull();
+    const customPanelScope = screen.getByRole('checkbox', { name: 'Custom panel bot' });
+    expect(customPanelScope).toBeTruthy();
+    fireEvent.click(customPanelScope);
     fireEvent.click(screen.getByRole('button', { name: 'Create token' }));
 
     await waitFor(() => expect(HttpUtil.post).toHaveBeenCalledTimes(1));
@@ -131,7 +133,7 @@ describe('delegated API token management UI', () => {
       name: 'telegram-operator-a',
       kind: 'delegated',
       subjectAdminId: 7,
-      scopes: ['clients:read', 'clients:create'],
+      scopes: ['custom-panel:manage'],
       expiresAt: expect.any(Number),
     }));
     expect((createCall[1] as { expiresAt: number }).expiresAt).toBeGreaterThan(
